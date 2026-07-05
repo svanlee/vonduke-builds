@@ -1,0 +1,25 @@
+## Dev Log — Sat, Jul 4 2026
+
+### AKSUMAEL / T7 Dev Environment
+- Samsung T7 saga officially closed: duplicate filesystem UUID, UAS driver quirk (`usb-storage quirks=04e8:4001:u`), and weak USB port power all resolved — proven with a 46.8GB sustained write at 630 MB/s on the Z490's rear ports
+- Fresh Ubuntu 24.04 + ROS 2 Jazzy environment installed and verified on the T7
+- `robocar_ws` rebuilt via colcon; Claude Code installed
+- Fixed vision pipeline bug: YOLO detection context was never being passed into vision prompts
+- Built new `core/cognitive.py` — Belief State, Goal Stack, Episodic Memory, Inner Monologue
+- Status: syntax-verified, pending runtime test and sync back to the Pi
+
+### YOLO Training
+- Dataset: 61 labeled frames, 18 classes
+- Train-4 locked in as best weights (`runs/detect/train-4/weights/best.pt`)
+  - All HUD classes >0.97 mAP50
+  - coal_ore 0.974, redstone_ore 0.995
+- Train-5 regression root-caused: imgsz=416 resume dropped class performance
+- Corrective train-6 launched: resume from train-4, 30 epochs, imgsz=640, batch=4
+
+### Hardware Decisions
+- Pi 4 USB boot media: 64GB INLAND drives (~$9.60/drive) — f3write/f3read verification on arrival
+- Edge inference scoping: D-Robotics RDK S600 (560 TOPS) vs S100 — S100 sufficient for SLAM + detection + monocular depth workloads
+
+### Carryover
+- [ ] Sync AKSUMAEL changes from T7 back to the Pi (T7 is currently a single point of failure)
+- [ ] Test T7 boot on the HP Victus
