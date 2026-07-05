@@ -1,0 +1,146 @@
+{
+  "session_num": 4,
+  "last_saved": 1781480442.1759868,
+  "history": [
+    {
+      "tick": 118,
+      "session": 4,
+      "ts": 1781480402.8464792,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 119,
+      "session": 4,
+      "ts": 1781480404.8462422,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 120,
+      "session": 4,
+      "ts": 1781480407.2749178,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 121,
+      "session": 4,
+      "ts": 1781480408.8465145,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 122,
+      "session": 4,
+      "ts": 1781480410.8472798,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 123,
+      "session": 4,
+      "ts": 1781480412.8467166,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 124,
+      "session": 4,
+      "ts": 1781480414.8473854,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 125,
+      "session": 4,
+      "ts": 1781480417.1825767,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 126,
+      "session": 4,
+      "ts": 1781480418.8469305,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 127,
+      "session": 4,
+      "ts": 1781480420.8496797,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 128,
+      "session": 4,
+      "ts": 1781480422.8471766,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 129,
+      "session": 4,
+      "ts": 1781480424.8476176,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 130,
+      "session": 4,
+      "ts": 1781480430.0534892,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 131,
+      "session": 4,
+      "ts": 1781480430.0867224,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 132,
+      "session": 4,
+      "ts": 1781480432.0839827,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 133,
+      "session": 4,
+      "ts": 1781480434.0836258,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 134,
+      "session": 4,
+      "ts": 1781480436.0843382,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 135,
+      "session": 4,
+      "ts": 1781480438.455469,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 136,
+      "session": 4,
+      "ts": 1781480440.0840542,
+      "objects": [],
+      "action": "wait"
+    },
+    {
+      "tick": 137,
+      "session": 4,
+      "ts": 1781480442.0843198,
+      "objects": [],
+      "action": "wait"
+    }
+  ]
+}

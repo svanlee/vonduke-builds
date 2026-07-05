@@ -1,0 +1,24 @@
+# AURORA v1.0.0 — Python dependencies
+# Install: pip install -r requirements.txt --break-system-packages
+
+# Vision
+opencv-python
+numpy
+ultralytics          # YOLO
+
+# Vision providers
+anthropic            # Claude (optional)
+
+# Action output
+pyserial             # UART to KB2040 or CH9329
+
+# Controller input
+evdev                # real controller on Pi
+smbus2               # I2C joystick
+
+# Audio — TTS
+pyttsx3
+requests             # ElevenLabs
+
+# Audio — Game Ear (optional, graceful if missing)
+sounddevice

@@ -1,0 +1,23 @@
+path: data/yolo_dataset
+train: images/train
+val: images/train
+nc: 18
+names:
+  0: health_bar
+  1: hunger_bar
+  2: armor_bar
+  3: xp_bar
+  4: hotbar
+  5: crosshair
+  6: fire_hazard
+  7: chest_row
+  8: bed
+  9: torch
+  10: furnace
+  11: water
+  12: coal_ore
+  13: redstone_ore
+  14: emerald_ore
+  15: copper_ore
+  16: creeper
+  17: diamond_ore
