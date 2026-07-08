@@ -255,3 +255,88 @@ This is a quota/rate-limit problem with the configured Gemini free tier,
 unrelated to the throttling bug above — worth a follow-up look at
 `LOOP_INTERVAL_SEC` / `LLM_EVERY_N_TICKS` against Gemini's actual current
 free-tier RPM/RPD limits, or adding backoff/retry in `_ask_gemini`.
+
+## 7. Provider switch to Claude, retry/backoff, key rotation (follow-up, 2026-07-08)
+
+Addresses the Gemini `429` issue left open in §6, by moving off the free
+tier rather than tuning around its limits.
+
+**Provider switch**: `config.py:9` `VISION_PROVIDER` changed from
+`"gemini"` to `"claude"`. `core/vision_brain.py` already had a working
+`_ask_claude()` path (unused dead code until now); no new provider
+integration was needed.
+
+**Retry/backoff added**: `_ask_claude()` previously had the same
+no-retry behavior as `_ask_gemini()` — a single `urllib.request.urlopen`
+call, any failure returned straight through as a `"wait"` no-op. Added a
+3-attempt loop with exponential backoff (1s/2s/4s) in
+`core/vision_brain.py`, but only for transient failures — HTTP 429, 500,
+502, 503, 529, and network exceptions. Non-transient HTTP errors (4xx
+auth/bad-request/not-found) fail fast on the first attempt without
+retrying, since retrying a bad model id or bad key three times just
+wastes time and ticks.
+
+**Second bug found via live test**: right after the switch, every live
+Claude call failed:
+
+```
+Claude error 404: {"type":"error","error":{"t...
+```
+
+The retry/backoff code behaved correctly here — a 404 is non-transient,
+so it failed fast on the first attempt rather than burning 7s retrying a
+request that was never going to succeed. Confirmed the actual cause with
+a direct `curl` probe against `api.anthropic.com/v1/messages`:
+
+```
+HTTP_STATUS=404
+{"type":"error","error":{"type":"not_found_error","message":"model: claude-sonnet-4-20250514"}}
+```
+
+`config.py`'s `CLAUDE_MODEL` was set to a decommissioned model id. Fixed
+to `"claude-sonnet-5"` (verified via the same curl probe returning 200
+before changing the code).
+
+**Verified live** (session 9, 20 ticks): ticks 5, 10, and 15 all returned
+real Claude observations instead of errors:
+
+```
+[0005] 3.82s | LLM  | conf:0.80 | A diamond ore vein is visible in a cave wall
+[0010] 3.5s  | LLM  | conf:0.80 | I am in a cave with a diamond ore block visib
+[0015] 4.53s | LLM  | conf:0.80 | A diamond ore vein is visible in a cave wall
+```
+
+**Incidental exposure + key rotation**: while diagnosing where
+`ANTHROPIC_API_KEY`/`GEMINI_API_KEY` were set, a `grep -A2 -B2` against
+`~/.bashrc` echoed both keys in plaintext into the session transcript.
+Both were rotated on their respective dashboards (Anthropic Console,
+Google AI Studio) as a precaution; the new values were never printed
+during rotation or verification (`curl` checks used `-w "HTTP_STATUS=..."`
+with output discarded, not echoed).
+
+**`.bashrc` bug found during the same diagnosis**: `~/.bashrc` has the
+standard Debian non-interactive-shell guard near the top
+(`case $- in *i*) ;; *) return;; esac`), and the `export
+ANTHROPIC_API_KEY=...` / `export GEMINI_API_KEY=...` lines were placed
+*after* it. Since `~/.profile` unconditionally sources `~/.bashrc`, any
+**login** shell invoking bash non-interactively (`bash -lc '...'` — the
+pattern used to launch background/automated processes) would hit the
+guard's `return` before reaching the exports, so those processes never
+saw either key. A bare non-login `bash -c '...'` never reads `.bashrc` at
+all regardless of the guard — that's normal bash behavior, not this bug.
+Fixed by moving the three export lines (`GEMINI_API_KEY`,
+`ANTHROPIC_API_KEY`, `PATH`) above the guard. Verified: `bash -lc` picked
+up `$ANTHROPIC_API_KEY` (length check only, value never printed) where it
+previously reported empty.
+
+**Final end-to-end live test** (session 10, 20 ticks, after rotation +
+`.bashrc` fix), launched via `bash -lc` to match how the key is actually
+loaded: ticks 5, 10, and 15 again returned real Claude observations at
+0.70–0.80 confidence, confirming the rotated key, the fixed model id, and
+the `.bashrc` fix all work together.
+
+Commits: `096c19d` (provider switch + retry/backoff), `9723769` (fix
+decommissioned `CLAUDE_MODEL`), `a6b409f` / `60d758b` (world_model.json
+telemetry from the verification runs). The `.bashrc` fix and key
+rotation happened outside the git repo (home directory dotfile,
+provider dashboards) and aren't captured in any commit.
