@@ -10,7 +10,7 @@ VISION_PROVIDER   = "claude"
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL      = "claude-sonnet-4-20250514"
+CLAUDE_MODEL      = "claude-sonnet-5"
 
 
 # ── Agent Loop ────────────────────────────────────────────────
