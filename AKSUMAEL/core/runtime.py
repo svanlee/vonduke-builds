@@ -139,7 +139,7 @@ def run():
             # ── Decision ──────────────────────────────────────
             action_dict = _idle()
             used_skill  = None
-            src_tag     = 'LLM'
+            src_tag     = 'idle'
 
             if replayer.is_active():
                 name = replayer._current.name[:10] if replayer._current else '?'

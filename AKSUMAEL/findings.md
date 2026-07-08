@@ -174,7 +174,84 @@ Actions taken:
    entirely (per user decision on the zip backup).
 
 `/home/pi/vonduke-builds/AKSUMAEL` is now the single canonical copy of
-this project. The copied-in files (`cutouts/`, the 4 `new_frames*.zip`
-archives) are currently untracked in git — worth a follow-up commit if
-they should be preserved in version control (the zips are large; consider
-whether they belong in git history or should stay local-only/Git LFS).
+this project. The reconciliation (including `cutouts/` and the 4
+`new_frames*.zip` archives) was committed as `59ac632` and pushed to
+`origin/main`. The stray, always-identical `config.py.bak` was deleted
+separately (it was never tracked by git).
+
+## 6. Actual root cause found and fixed (follow-up, 2026-07-08)
+
+Section 2 concluded the on-disk gating logic looked correct and speculated
+the discrepancy was a stale in-memory process. That speculation was wrong.
+Restarting AKSUMAEL fresh (`venv/bin/python3 main.py`, real hardware: HDMI
+capture card, KB2040, YOLO model, Gemini key all live) reproduced the
+"every tick looks like an LLM call" symptom immediately, which made the
+real bug visible:
+
+```python
+# core/runtime.py, decision block
+action_dict = _idle()
+used_skill  = None
+src_tag     = 'LLM'          # <-- default set unconditionally, before the gate
+
+if replayer.is_active():
+    ...
+else:
+    skill, match = skills.find_best(objects)
+    if skill and match >= skills.MIN_MATCH_SCORE:
+        ...                   # overwrites src_tag with 'SK:...'
+    elif tick % config.LLM_EVERY_N_TICKS == 0:
+        ...
+        src_tag = 'LLM'       # overwrites src_tag with 'LLM' again (redundant here)
+```
+
+`src_tag` defaults to `'LLM'` before the skill/tick-gate check ever runs.
+On any tick where no skill matches **and** `tick % LLM_EVERY_N_TICKS != 0`,
+neither branch executes, so `src_tag` is never reassigned — it just stays
+at its default value of `'LLM'`. The console log then prints `LLM` on
+every line, whether or not Gemini was actually called that tick. The
+*actual* Gemini network call frequency was correct the whole time (one
+call every 5 ticks, as configured); only the log line was mislabeled,
+making it look like every tick called Gemini.
+
+**Fix**: changed the default at `core/runtime.py:142` from
+`src_tag = 'LLM'` to `src_tag = 'idle'`.
+
+**Verification** — live run before fix — every tick tagged `LLM` regardless of whether
+`ask_vision` ran (only tick 5's timing/observation showed an actual call):
+
+```
+[0001] 8.2s  | LLM  | conf:0.00 | ...
+[0002] 1.28s | LLM  | conf:0.00 | ...
+[0003] 1.25s | LLM  | conf:0.00 | ...
+[0004] 1.38s | LLM  | conf:0.00 | ...
+[0005] 3.74s | LLM  | conf:0.00 | { ...        <- actual Gemini call
+[0006] 1.21s | LLM  | conf:0.00 | ...
+```
+
+Live run after fix — `idle` on non-throttled ticks, `LLM` only on ticks
+5 and 10:
+
+```
+[0001] 6.51s | idle | conf:0.00 | ...
+[0002] 1.2s  | idle | conf:0.00 | ...
+[0003] 1.17s | idle | conf:0.00 | ...
+[0004] 1.19s | idle | conf:0.00 | ...
+[0005] 1.44s | LLM  | conf:0.00 | Gemini error 429: ...
+[0006] 1.11s | idle | conf:0.00 | ...
+[0007] 1.22s | idle | conf:0.00 | ...
+[0008] 1.1s  | idle | conf:0.00 | ...
+[0009] 1.16s | idle | conf:0.00 | ...
+[0010] 1.43s | LLM  | conf:0.00 | Gemini error 429: ...
+[0011] 1.1s  | idle | conf:0.00 | ...
+```
+
+Confirms `LLM_EVERY_N_TICKS` throttling was, and now visibly is, working
+as configured.
+
+**Separate, still-open issue**: the calls that do go out are hitting
+Gemini `429` (rate limit) on both observed occurrences (ticks 5 and 10).
+This is a quota/rate-limit problem with the configured Gemini free tier,
+unrelated to the throttling bug above — worth a follow-up look at
+`LOOP_INTERVAL_SEC` / `LLM_EVERY_N_TICKS` against Gemini's actual current
+free-tier RPM/RPD limits, or adding backoff/retry in `_ask_gemini`.

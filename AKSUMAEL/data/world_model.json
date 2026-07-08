@@ -1,144 +1,149 @@
 {
-  "session_num": 5,
-  "last_saved": 1783518065.111594,
+  "session_num": 7,
+  "last_saved": 1783523704.2107737,
   "history": [
     {
-      "tick": 162,
-      "session": 5,
-      "ts": 1783518025.321792,
+      "tick": 1,
+      "session": 6,
+      "ts": 1783523571.2034118,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 163,
-      "session": 5,
-      "ts": 1783518027.2870374,
+      "tick": 2,
+      "session": 6,
+      "ts": 1783523572.5266173,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 164,
-      "session": 5,
-      "ts": 1783518029.3107297,
+      "tick": 3,
+      "session": 6,
+      "ts": 1783523574.495677,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 165,
-      "session": 5,
-      "ts": 1783518031.5614882,
+      "tick": 4,
+      "session": 6,
+      "ts": 1783523576.5899239,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 166,
-      "session": 5,
-      "ts": 1783518033.3953776,
+      "tick": 5,
+      "session": 6,
+      "ts": 1783523580.9879804,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 167,
-      "session": 5,
-      "ts": 1783518035.4437668,
+      "tick": 6,
+      "session": 6,
+      "ts": 1783523582.2292395,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 168,
-      "session": 5,
-      "ts": 1783518037.3154922,
+      "tick": 7,
+      "session": 6,
+      "ts": 1783523584.1644216,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 169,
-      "session": 5,
-      "ts": 1783518039.3015125,
+      "tick": 8,
+      "session": 6,
+      "ts": 1783523586.1255534,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 170,
-      "session": 5,
-      "ts": 1783518041.6953154,
+      "tick": 9,
+      "session": 6,
+      "ts": 1783523588.1046598,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 171,
-      "session": 5,
-      "ts": 1783518043.3065355,
+      "tick": 1,
+      "session": 7,
+      "ts": 1783523684.5084345,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 172,
-      "session": 5,
-      "ts": 1783518045.2960105,
+      "tick": 2,
+      "session": 7,
+      "ts": 1783523685.7122865,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 173,
-      "session": 5,
-      "ts": 1783518047.2926247,
+      "tick": 3,
+      "session": 7,
+      "ts": 1783523687.67974,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 174,
-      "session": 5,
-      "ts": 1783518049.2885551,
+      "tick": 4,
+      "session": 7,
+      "ts": 1783523689.6982815,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 175,
-      "session": 5,
-      "ts": 1783518051.6454718,
+      "tick": 5,
+      "session": 7,
+      "ts": 1783523691.9487069,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 176,
-      "session": 5,
-      "ts": 1783518053.2933984,
+      "tick": 6,
+      "session": 7,
+      "ts": 1783523693.6172838,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 177,
-      "session": 5,
-      "ts": 1783518055.4060836,
+      "tick": 7,
+      "session": 7,
+      "ts": 1783523695.7328243,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 178,
-      "session": 5,
-      "ts": 1783518057.4376671,
+      "tick": 8,
+      "session": 7,
+      "ts": 1783523697.6134648,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 179,
-      "session": 5,
-      "ts": 1783518059.4148226,
+      "tick": 9,
+      "session": 7,
+      "ts": 1783523699.6737537,
       "objects": [],
       "action": "wait"
     },
     {
-      "tick": 180,
-      "session": 5,
-      "ts": 1783518061.6840851,
-      "objects": [],
+      "tick": 10,
+      "session": 7,
+      "ts": 1783523701.9394538,
+      "objects": [
+        {
+          "label": "coal_ore",
+          "conf": 0.34
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 181,
-      "session": 5,
-      "ts": 1783518063.2967026,
+      "tick": 11,
+      "session": 7,
+      "ts": 1783523703.6144445,
       "objects": [],
       "action": "wait"
     }
