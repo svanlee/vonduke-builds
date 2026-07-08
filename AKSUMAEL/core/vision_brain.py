@@ -1,10 +1,14 @@
 import base64
 import json
+import time
 import urllib.request
 import urllib.error
 import cv2
 
 import config
+
+CLAUDE_MAX_RETRIES  = 3
+CLAUDE_BACKOFF_BASE = 1.0   # seconds; doubles each retry (1s, 2s, 4s)
 
 
 def _frame_to_b64(frame) -> str:
@@ -101,16 +105,28 @@ Only output valid JSON, nothing else."""
             'anthropic-version': '2023-06-01'
         }
     )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        text = data['content'][0]['text'].strip()
-        if text.startswith('```'):
-            text = '\n'.join(text.split('\n')[1:-1])
-        return text
-    except Exception as e:
-        return json.dumps({"observation": f"error: {e}",
-                           "action": "wait", "key": None, "click": None, "confidence": 0.0})
+
+    last_error = None
+    for attempt in range(CLAUDE_MAX_RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            text = data['content'][0]['text'].strip()
+            if text.startswith('```'):
+                text = '\n'.join(text.split('\n')[1:-1])
+            return text
+        except urllib.error.HTTPError as e:
+            last_error = f"Claude error {e.code}: {e.read().decode()[:200]}"
+            if e.code not in (429, 500, 502, 503, 529):
+                break   # non-transient (e.g. bad request/auth) — don't retry
+        except Exception as e:
+            last_error = f"error: {e}"
+
+        if attempt < CLAUDE_MAX_RETRIES - 1:
+            time.sleep(CLAUDE_BACKOFF_BASE * (2 ** attempt))
+
+    return json.dumps({"observation": last_error,
+                       "action": "wait", "key": None, "click": None, "confidence": 0.0})
 
 
 def _format_detections(objects: list) -> str:
