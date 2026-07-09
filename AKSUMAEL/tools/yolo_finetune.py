@@ -37,13 +37,14 @@ MIN_IMAGES  = 30    # minimum before training makes sense
 
 
 # ── Minecraft class list ───────────────────────────────────────
-# Ordered list — index becomes the YOLO class ID
+# Ordered list — index becomes the YOLO class ID.
+# Must match data/yolo_dataset/data.yaml exactly (that file is the
+# source of truth for training; this list backs collect/annotate).
 MC_CLASSES = [
-    'tree', 'water', 'stone', 'mob', 'item', 'chest',
-    'door', 'food', 'grass', 'ore', 'player', 'animal',
-    'fire', 'crafting', 'building', 'sky', 'wood', 'dirt',
-    'sand', 'snow', 'flower', 'mushroom', 'torch', 'sign',
-    'boat', 'minecart', 'tnt', 'bed', 'portal',
+    'health_bar', 'hunger_bar', 'armor_bar', 'xp_bar', 'hotbar',
+    'crosshair', 'fire_hazard', 'chest_row', 'bed', 'torch',
+    'furnace', 'water', 'coal_ore', 'redstone_ore', 'emerald_ore',
+    'copper_ore', 'creeper', 'diamond_ore',
 ]
 
 
@@ -183,7 +184,8 @@ def write_dataset_yaml():
 # ── Trainer ───────────────────────────────────────────────────
 def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     """
-    Fine-tune yolov8n on the collected Minecraft dataset.
+    Fine-tune aksumael_mc.pt (or bootstrap from yolov8n.pt if it doesn't
+    exist yet) on the labeled Minecraft dataset in data/yolo_dataset.
     Pi 4 is slow — use epochs=10 for a quick first run.
     For serious training, offload to a laptop/desktop with GPU.
     """
@@ -193,23 +195,31 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
         print('ultralytics not installed: pip install ultralytics')
         return
 
-    stats = FrameCollector().stats()
-    total = stats.get('total', 0)
-    print(f'[TRAIN] dataset: {stats}')
+    yaml_path = f'{DATASET_DIR}/data.yaml'
+    if not os.path.exists(yaml_path):
+        print(f'[TRAIN] {yaml_path} not found — run tools/prep_new_frames.py first.')
+        return
+
+    train_dir = f'{IMAGES_DIR}/train'
+    img_exts  = ('.jpg', '.jpeg', '.png')
+    total = (len([f for f in os.listdir(train_dir) if f.lower().endswith(img_exts)])
+             if os.path.exists(train_dir) else 0)
+    print(f'[TRAIN] dataset: {total} images in {train_dir}')
 
     if total < MIN_IMAGES:
         print(f'[TRAIN] only {total} images — need at least {MIN_IMAGES}.')
         print('        Keep playing with collect mode on to gather more data.')
         return
 
-    yaml_path = write_dataset_yaml()
     os.makedirs('data/models', exist_ok=True)
 
-    print(f'[TRAIN] starting fine-tune: epochs={epochs} imgsz={imgsz} batch={batch}')
+    base_weights = MODEL_OUT if os.path.exists(MODEL_OUT) else 'yolov8n.pt'
+    print(f'[TRAIN] starting fine-tune from {base_weights}: '
+          f'epochs={epochs} imgsz={imgsz} batch={batch}')
     print('        This will take a while on Pi 4. Run on a laptop for speed.')
     print()
 
-    model = YOLO('yolov8n.pt')
+    model = YOLO(base_weights)
     results = model.train(
         data=yaml_path,
         epochs=epochs,
@@ -226,14 +236,17 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
         device='cpu',
     )
 
-    # Copy best weights to standard path
-    best = 'data/models/aksumael_mc/weights/best.pt'
+    # Copy best weights to standard path. Use results.save_dir (the actual
+    # directory ultralytics wrote to) rather than a hardcoded guess — this
+    # version of ultralytics nests it under runs/detect/<project>/<name>
+    # instead of directly at <project>/<name>.
+    best = str(results.save_dir / 'weights' / 'best.pt')
     if os.path.exists(best):
         shutil.copy(best, MODEL_OUT)
         print(f'\n[TRAIN] done. Best model saved to {MODEL_OUT}')
         print(f'        To use it: set YOLO_MODEL = "{MODEL_OUT}" in config.py')
     else:
-        print('[TRAIN] training finished but best.pt not found — check logs')
+        print(f'[TRAIN] training finished but {best} not found — check logs')
 
 
 # ── Status ────────────────────────────────────────────────────
