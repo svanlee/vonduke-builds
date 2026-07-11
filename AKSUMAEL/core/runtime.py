@@ -143,9 +143,11 @@ def run():
                 inventory.save()
                 goals.save()
 
-            # ── UI quit check + reward from labeling input ─────
-            # Display is handled by DisplayThread at ~30 fps; we only need to
-            # check for quit and consume any manual reward signals here.
+            # ── Display (must run on main thread for Qt/OpenCV) ───
+            # poll_display() calls cv2.imshow() here on the main thread,
+            # avoiding the Qt "No such method GuiReceiver::showImage" spam.
+            if not pipeline.poll_display():
+                break
             if pipeline.quit:
                 break
             if ui.enabled:

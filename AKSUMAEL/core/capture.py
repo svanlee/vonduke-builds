@@ -177,59 +177,36 @@ class DisplayThread(threading.Thread):
 
     def __init__(self, display_queue: queue.Queue, labeling_ui=None):
         super().__init__(name='DisplayThread', daemon=True)
-        self._dq   = display_queue
-        self._ui   = labeling_ui
-        self._stop = threading.Event()
-        self.quit  = False   # True when user presses 'q' (or ui.quit is set)
+        self._dq         = display_queue
+        self._ui         = labeling_ui
+        self._stop       = threading.Event()
+        self._lock       = threading.Lock()
+        self._last_frame = None
+        self._last_objs  = []
+        self.quit        = False   # set by poll_display() when user presses 'q'
 
     def stop(self):
         self._stop.set()
 
     def run(self):
-        interval   = 1.0 / self.TARGET_FPS
-        last_frame = None
-        last_objs  = []
-
-        # Fallback window (only created if no LabelingUI)
-        if self._ui is None:
-            cv2.namedWindow(self.WINDOW, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.WINDOW, 960, 540)
-
-        print(f'[DISPLAY] DisplayThread started @ {self.TARGET_FPS} fps')
-
+        # DisplayThread no longer calls cv2.imshow() — Qt requires imshow to
+        # run on the main thread.  This thread now only drains the display queue
+        # and caches the latest (frame, objects) pair for poll_display() to use.
+        print('[DISPLAY] DisplayThread started (frame buffer only — imshow on main thread)')
         while not self._stop.is_set():
-            t0 = time.time()
-
-            # Pull latest frame/objects; if nothing new, keep showing last frame
             try:
-                last_frame, last_objs = self._dq.get(timeout=0.05)
+                frame, objs = self._dq.get(timeout=0.05)
+                with self._lock:
+                    self._last_frame = frame
+                    self._last_objs  = objs
             except queue.Empty:
                 pass
-
-            if last_frame is not None:
-                if self._ui is not None:
-                    self._ui.update(last_frame, last_objs)
-                    if not self._ui.render():
-                        self.quit = True
-                        break
-                else:
-                    cv2.imshow(self.WINDOW, last_frame)
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord('q'):
-                        self.quit = True
-                        break
-
-            sleep = interval - (time.time() - t0)
-            if sleep > 0:
-                time.sleep(sleep)
-
-        if self._ui is None:
-            try:
-                cv2.destroyWindow(self.WINDOW)
-            except Exception:
-                pass
-
         print('[DISPLAY] DisplayThread stopped')
+
+    def get_display_frame(self):
+        """Return (frame, objects) of the most recent YOLO result, or (None, [])."""
+        with self._lock:
+            return self._last_frame, list(self._last_objs)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -283,6 +260,34 @@ class VideoCapturePipeline:
     def quit(self):
         """True when the user has pressed 'q' in the display window."""
         return self.display.quit
+
+    def poll_display(self, window_name: str = 'AKSUMAEL') -> bool:
+        """
+        Call this from the MAIN THREAD each tick to update the display window.
+
+        Pulls the latest (frame, objects) from DisplayThread, calls cv2.imshow()
+        on the main thread (required by Qt/OpenCV), and checks for 'q' keypress.
+
+        Returns False when the user presses 'q' (signal to exit), True otherwise.
+        """
+        frame, objs = self.display.get_display_frame()
+        if frame is None:
+            key = cv2.waitKey(1) & 0xFF
+        elif self.display._ui is not None:
+            # LabelingUI handles its own rendering; call update+render here.
+            self.display._ui.update(frame, objs)
+            if not self.display._ui.render():
+                self.display.quit = True
+                return False
+            key = cv2.waitKey(1) & 0xFF
+        else:
+            cv2.imshow(window_name, frame)
+            key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('q'):
+            self.display.quit = True
+            return False
+        return True
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
