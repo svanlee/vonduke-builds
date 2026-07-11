@@ -24,10 +24,13 @@ class WorldMemory:
         self.total_ticks   = 0
         self.deaths        = 0
         self.surveys       = 0
-        self.depth_estimate = 64   # surface default
+        self.depth_estimate = 64   # surface default, keyword-heuristic fallback
         self.hunger_level  = 20    # 0-20 scale, estimated from hunger_bar bbox width
         self.game_tick     = 0     # wraps at config.MC_DAY_TICKS
         self.pickaxe_uses  = 0     # incremented each time a mine_* skill fires
+        self.y_level       = 64    # real Y-level from F3 OCR, surface default
+        self.biome         = 'unknown'   # real biome from F3 OCR
+        self._ticks_since_f3 = 9999   # ticks since last successful F3 read
         self._load()
 
     def _load(self):
@@ -43,6 +46,8 @@ class WorldMemory:
                 self.hunger_level  = d.get('hunger_level', 20)
                 self.game_tick     = d.get('game_tick', 0)
                 self.pickaxe_uses  = d.get('pickaxe_uses', 0)
+                self.y_level       = d.get('y_level', 64)
+                self.biome         = d.get('biome', 'unknown')
             except Exception:
                 pass
 
@@ -58,6 +63,8 @@ class WorldMemory:
             'hunger_level':  self.hunger_level,
             'game_tick':     self.game_tick,
             'pickaxe_uses':  self.pickaxe_uses,
+            'y_level':       self.y_level,
+            'biome':         self.biome,
             'last_saved':    time.strftime('%Y-%m-%d %H:%M:%S'),
         }
         with open(MEMORY_FILE, 'w') as f:
@@ -77,14 +84,33 @@ class WorldMemory:
             self.recent_events = self.recent_events[-MAX_RECENT:]
 
         observation = (action or {}).get('observation', '') if action else ''
+        self._ticks_since_f3 += 1
         self._update_depth(observation)
 
         # Auto-save every 50 ticks
         if self.total_ticks % 50 == 0:
             self.save()
 
+    def update_f3(self, f3_data: dict):
+        """Call with the dict returned by vision.f3_reader.read_f3()."""
+        if not f3_data or not f3_data.get('f3_active'):
+            return
+        if f3_data.get('y_level') is not None:
+            self.y_level = f3_data['y_level']
+            self.depth_estimate = self.y_level
+        if f3_data.get('biome'):
+            self.biome = f3_data['biome']
+        self._ticks_since_f3 = 0
+
+    # Real F3 reads stay authoritative for this many ticks before the
+    # keyword heuristic is trusted to take back over.
+    F3_FRESH_TICKS = 60
+
     def _update_depth(self, observation: str):
-        """Rough depth estimate inferred from Claude's own observation text."""
+        """Depth estimate: trust a recent F3 OCR read, else fall back to a
+        rough guess inferred from Claude's own observation text."""
+        if self._ticks_since_f3 <= self.F3_FRESH_TICKS:
+            return
         obs = (observation or '').lower()
         if any(w in obs for w in ('cave', 'underground', 'dark')):
             self.depth_estimate = max(0, self.depth_estimate - 5)
@@ -96,14 +122,14 @@ class WorldMemory:
         top = self.seen_objects.most_common(5)
         top_str = ', '.join(f'{k}({v})' for k, v in top) if top else 'nothing yet'
         recent = '; '.join(e['event'] for e in self.recent_events[-3:]) if self.recent_events else 'none'
-        depth_range = ('diamond range' if self.depth_estimate < 16
-                       else 'coal range' if self.depth_estimate < 40
-                       else 'surface')
         day_str = 'DAY' if self.is_daytime() else 'NIGHT'
+        y_range = ('diamond range' if self.y_level < 16
+                   else 'coal range' if self.y_level < 40
+                   else 'surface')
         summary = (
             f'[MEMORY] Lifetime: {self.total_ticks} ticks, {self.deaths} deaths. '
             f'Most seen: {top_str}. Recent: {recent}. '
-            f'Estimated depth: Y~{self.depth_estimate} ({depth_range}). '
+            f'Y={self.y_level} biome={self.biome} ({y_range}). '
             f'{day_str} (tick {self.game_tick}/{config.MC_DAY_TICKS}). '
             f'Hunger: {self.hunger_level}/20.'
         )

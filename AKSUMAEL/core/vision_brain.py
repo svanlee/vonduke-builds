@@ -81,8 +81,10 @@ Look at this screenshot and respond with a JSON object:
   "key": "keyboard key if applicable, else null",
   "click": [x_percent, y_percent] or null,
   "look": {{"dx": -15, "dy": 0}} or null,
+  "goal": "optional short natural-language goal, e.g. 'go deeper to find diamonds'",
   "confidence": 0.0-1.0
 }}
+"goal" is optional — only include it when you have a multi-step objective in mind.
 Only output valid JSON, nothing else."""
 
     payload = json.dumps({

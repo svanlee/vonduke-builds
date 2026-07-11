@@ -7,6 +7,7 @@ import config
 
 from vision.screen           import ScreenCapture
 from vision.yolo             import YOLODetector
+from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision
 from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
@@ -14,6 +15,7 @@ from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
 from memory.goals            import GoalStack
+from memory.goal_interpreter import GoalInterpreter
 from memory.rl_policy        import RLPolicy
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
@@ -76,10 +78,13 @@ def run():
     from behaviors.auto_trainer import AutoTrainer
     from behaviors.respawn import RespawnBehavior
     from behaviors.hunger import HungerBehavior
+    from behaviors.crafting import CraftingBehavior
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor)
     hunger_behavior = HungerBehavior(executor)
+    crafting_behavior = CraftingBehavior(executor)
+    goal_interp = GoalInterpreter(goals, crafting_behavior)
 
     # Start background threads
     router.start()
@@ -94,6 +99,7 @@ def run():
     SAME_SKILL_LIMIT = 3
     last_action   = {}   # most recent Claude (LLM) response dict
     prev_objects  = []   # last tick's YOLO detections (for HUD-delta reward)
+    f3_countdown  = 50   # ticks until next F3 OCR read (offset from startup)
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -217,6 +223,10 @@ def run():
                     action_dict = ask_vision(frame, history, objects)
                     src_tag = 'LLM'
                     last_action = action_dict
+                    if action_dict.get('goal'):
+                        behavior = goal_interp.interpret(action_dict['goal'], objects)
+                        if behavior:
+                            goal_interp.execute_behavior(behavior, executor, objects)
                     if tick % (config.LLM_EVERY_N_TICKS * 5) == 0:
                         tts.say_observation(
                             action_dict.get('observation', ''),
@@ -229,6 +239,12 @@ def run():
 
             # ── Hunger ───────────────────────────────────────────
             hunger_behavior.update(objects, world_mem=world_mem)
+
+            # ── Crafting (pickaxe nearing durability limit) ─────
+            if (world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
+                    and not replayer.is_active()
+                    and crafting_behavior.should_trigger(objects)):
+                crafting_behavior.run()
 
             # ── Curiosity survey ────────────────────────────────
             if surveyor:
@@ -277,6 +293,20 @@ def run():
             # ── Skill pruning ───────────────────────────────────
             if tick % 50 == 0:
                 skills.prune_bad()
+
+            # ── F3 debug overlay OCR ─────────────────────────────
+            f3_countdown -= 1
+            if f3_countdown <= 0:
+                f3_countdown = config.F3_READ_EVERY_N_TICKS
+                if frame is not None:
+                    executor.execute({'key': 'f3'})
+                    time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
+                    f3_frame = cam.capture()
+                    f3_data = read_f3(f3_frame)
+                    executor.execute({'key': 'f3'})  # close
+                    if f3_data['f3_active']:
+                        world_mem.update_f3(f3_data)
+                        print(f"[F3] Y={f3_data['y_level']} biome={f3_data['biome']}")
 
             # ── Console log ────────────────────────────────────
             elapsed = round(time.time() - t0, 2)

@@ -1,61 +1,13 @@
 {
   "seen_objects": {
-    "hotbar": 982,
-    "xp_bar": 987,
-    "health_bar": 975,
-    "armor_bar": 975,
-    "hunger_bar": 9,
-    "coal_ore": 2
+    "hotbar": 1720,
+    "xp_bar": 1631,
+    "health_bar": 1609,
+    "armor_bar": 1609,
+    "hunger_bar": 13,
+    "coal_ore": 3
   },
   "recent_events": [
-    {
-      "t": "13:25:42",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:29:01",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:34:50",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:37:03",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:38:11",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:40:19",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:42:57",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:47:13",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:52:09",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:56:02",
-      "event": "survey sweep"
-    },
-    {
-      "t": "13:56:28",
-      "event": "survey sweep"
-    },
-    {
-      "t": "14:00:16",
-      "event": "survey sweep"
-    },
     {
       "t": "14:01:32",
       "event": "survey sweep"
@@ -83,10 +35,66 @@
     {
       "t": "14:11:05",
       "event": "survey sweep"
+    },
+    {
+      "t": "14:14:24",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:17:39",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:18:05",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:19:33",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:20:32",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:25:16",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:26:38",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:31:34",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:33:12",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:37:38",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:41:26",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:42:08",
+      "event": "survey sweep"
+    },
+    {
+      "t": "14:42:58",
+      "event": "survey sweep"
     }
   ],
-  "total_ticks": 1000,
+  "total_ticks": 1650,
   "deaths": 0,
-  "surveys": 19,
-  "last_saved": "2026-07-11 14:11:28"
+  "surveys": 32,
+  "depth_estimate": 0,
+  "hunger_level": 20,
+  "game_tick": 650,
+  "pickaxe_uses": 1,
+  "last_saved": "2026-07-11 14:42:59"
 }

@@ -30,9 +30,11 @@ Analyse the screenshot and decide ONE action. Respond with JSON only:
   "key": "w/a/s/d/space/ctrl/e/f/1/2/3/4/5/6/7/8/9/esc or null",
   "click": "left/right/null",
   "look": {"dx": -15, "dy": 0},
+  "goal": "optional short natural-language goal",
   "confidence": 0.0-1.0
 }
 "look" pans the camera: dx=-turn left, dx=+turn right, dy=-look up, dy=+look down; null to skip.
+You may include a "goal" field with a short natural-language description of what you are trying to achieve (e.g. "go deeper to find diamonds", "flee from danger"). This helps with planning.
 Be bold and decisive. Rules:
 - Ores or resources visible → approach and mine (w + left click)
 - Ore visible but off-center → use look to aim crosshair at it before mining
@@ -130,6 +132,12 @@ DAYTIME_SAFE_RANGE = (0, 13000)   # ticks 0-13000 are daylight
 
 # ── Tool Durability ───────────────────────────────────────────
 PICKAXE_DURABILITY = 200   # uses before warning Claude to craft/switch tools
+
+# ── F3 Debug Screen OCR ────────────────────────────────────────
+F3_OCR_EVERY_N_TICKS = 30    # opportunistically OCR the F3 overlay this often
+F3_READ_EVERY_N_TICKS = 300  # periodically open/close F3 ourselves (~10 min);
+                             # 0 disables the auto-toggle (opportunistic-only)
+F3_KEY_WAIT_TICKS = 2        # ticks to wait after pressing F3 before OCR
 
 # ── Paths ─────────────────────────────────────────────────────
 SKILLS_DIR = "data/skills"
