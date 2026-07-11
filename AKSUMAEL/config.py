@@ -14,9 +14,10 @@ CLAUDE_MODEL      = "claude-sonnet-5"
 
 
 # ── Agent Loop ────────────────────────────────────────────────
-LOOP_INTERVAL_SEC  = 2.0   # seconds between ticks (safe under free Gemini quota)
+LOOP_INTERVAL_SEC  = 0.5   # seconds between ticks — faster loop for responsive mining
 YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
-KEY_HOLD_MS = 500   # ms to hold each key press (was hardcoded 20ms)
+KEY_HOLD_MS  = 500   # ms to hold each key press (was hardcoded 20ms)
+MINE_HOLD_MS = 450   # ms to hold left-click per mining tick (fills most of LOOP_INTERVAL)
 
 LLM_EVERY_N_TICKS  = 15    # call Claude every 15 ticks (~30s); only in EXPLORE/EAT
 LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
