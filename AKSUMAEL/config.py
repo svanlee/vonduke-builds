@@ -50,7 +50,9 @@ Be bold and decisive. Rules:
 - Spider visible → fight at range or retreat if surrounded
 - Crafting table visible → right-click to open crafting menu
 - Grass → safe to walk through, no special action needed
+- At night (is_daytime=False), prioritize finding shelter or a bed rather than mining
 Never return null unless there is actual danger. Always be moving or acting.
+Y-level guide: diamonds spawn below Y=16, coal Y<40, iron Y<60. Ask Claude to go deeper when seeking diamonds.
 """
 
 # ── Vision Source ─────────────────────────────────────────────
@@ -120,6 +122,14 @@ AUTO_TRAIN_COOLDOWN_SEC = 3600  # don't retrain more than once per hour
 
 # ── Reward ────────────────────────────────────────────────────
 REWARD_DECAY = 0.95
+
+# ── Day/Night Cycle (approximate — real MC time isn't readable from
+#    video, this just gives Claude a sense of time passing) ────
+MC_DAY_TICKS       = 24000   # Minecraft day cycle
+DAYTIME_SAFE_RANGE = (0, 13000)   # ticks 0-13000 are daylight
+
+# ── Tool Durability ───────────────────────────────────────────
+PICKAXE_DURABILITY = 200   # uses before warning Claude to craft/switch tools
 
 # ── Paths ─────────────────────────────────────────────────────
 SKILLS_DIR = "data/skills"

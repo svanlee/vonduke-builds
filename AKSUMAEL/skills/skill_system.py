@@ -325,6 +325,11 @@ class SkillSystem:
                 best_sk    = (sk, match)
         return best_sk if best_sk else (None, 0.0)
 
+    def find_candidates(self, current_objects: list) -> list:
+        """Return all skills matching >= MIN_MATCH_SCORE, as (Skill, match_score) pairs."""
+        return [(sk, match) for sk in self.skills.values()
+                if (match := sk.matches(current_objects)) >= self.MIN_MATCH_SCORE]
+
     def mark_used(self, skill: Skill):
         skill.last_used = time.time()
         self.save(skill)

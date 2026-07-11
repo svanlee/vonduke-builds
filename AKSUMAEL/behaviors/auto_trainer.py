@@ -59,17 +59,32 @@ class AutoTrainer:
         t.start()
         print(f'[AUTOTRAIN] started — {self._frames_since_train} new frames collected')
 
+    def label_then_train(self):
+        """Run the Claude auto-labeler over pending survey frames, then train."""
+        python = sys.executable
+        tools_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools'))
+
+        autolabel_script = os.path.join(tools_dir, 'claude_autolabel.py')
+        print('[AUTOTRAIN] auto-labeling new survey frames with Claude...')
+        label_result = subprocess.run(
+            [python, autolabel_script],
+            capture_output=True, text=True, timeout=1800
+        )
+        if label_result.returncode != 0:
+            print(f'[AUTOTRAIN] auto-labeling failed:\n{label_result.stderr[-500:]}')
+        else:
+            print('[AUTOTRAIN] auto-labeling complete')
+
+        train_script = os.path.join(tools_dir, 'yolo_finetune.py')
+        return subprocess.run(
+            [python, train_script, 'train'],
+            capture_output=True, text=True, timeout=1800  # 30 min max
+        )
+
     def _train_thread(self):
         try:
-            script = os.path.join(os.path.dirname(__file__), '..', 'tools', 'yolo_finetune.py')
-            script = os.path.abspath(script)
-            python = sys.executable
-
             print('[AUTOTRAIN] training in background (this takes a few minutes)...')
-            result = subprocess.run(
-                [python, script, 'train'],
-                capture_output=True, text=True, timeout=1800  # 30 min max
-            )
+            result = self.label_then_train()
 
             if result.returncode == 0:
                 print('[AUTOTRAIN] training complete — hot-reloading weights')
