@@ -14,6 +14,7 @@ class RewardSystem:
         self._decay  = config.REWARD_DECAY
         self._manual = 0.0         # accumulated manual reward this tick
         self._audio  = 0.0         # accumulated audio reward this tick
+        self._hud    = 0.0         # accumulated HUD-delta reward this tick
 
     def compute(self, state: dict, action_result: dict) -> float:
         """
@@ -37,10 +38,12 @@ class RewardSystem:
         # Incorporate accumulated signals from this tick
         r += self._manual
         r += self._audio
+        r += self._hud
 
         # Reset per-tick accumulators
         self._manual = 0.0
         self._audio  = 0.0
+        self._hud    = 0.0
 
         r = round(r, 3)
         self.total += r
@@ -57,6 +60,10 @@ class RewardSystem:
     def add_audio_reward(self, value: float):
         """Audio event reward signal from GameEar."""
         self._audio += value
+
+    def add_hud_reward(self, value: float):
+        """Reward signal derived from tick-over-tick HUD bbox changes (XP/health)."""
+        self._hud += value
 
     def average(self) -> float:
         return round(self.total / self.ticks, 3) if self.ticks else 0.0

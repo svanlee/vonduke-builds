@@ -88,6 +88,11 @@ def pack_mouse_relative(dx: int = 0, dy: int = 0,
     ])
 
 
+def pack_mouse_move(dx: int = 0, dy: int = 0) -> bytes:
+    """Relative mouse movement packet (no buttons/wheel) — camera look."""
+    return pack_mouse_relative(dx=dx, dy=dy)
+
+
 def pack_mouse_absolute(x_pct: float, y_pct: float,
                         buttons: int = 0) -> bytes:
     """x_pct, y_pct: 0.0–100.0 percent of screen."""
@@ -147,6 +152,7 @@ def action_dict_to_packets(action_dict: dict,
     key     = action_dict.get('key')
     click   = action_dict.get('click')
     gamepad = action_dict.get('gamepad')
+    look    = action_dict.get('look')
 
     # Keyboard
     if key and str(key).lower() not in ('null', 'none', 'wait', ''):
@@ -164,6 +170,13 @@ def action_dict_to_packets(action_dict: dict,
                                                button=button))
         except (TypeError, IndexError, ValueError):
             pass
+
+    # Mouse look (relative camera pan)
+    if look and isinstance(look, dict):
+        dx = int(look.get('dx', 0))
+        dy = int(look.get('dy', 0))
+        if dx != 0 or dy != 0:
+            packets.append(pack_mouse_move(dx, dy))
 
     # Gamepad (all platforms — KB2040 supports it natively)
     if gamepad and isinstance(gamepad, dict):

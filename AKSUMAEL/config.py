@@ -19,6 +19,7 @@ YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
 KEY_HOLD_MS = 500   # ms to hold each key press (was hardcoded 20ms)
 
 LLM_EVERY_N_TICKS  = 3     # call Claude every 3 ticks (~6s)
+LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
 
 GAME_CONTEXT = """
 You are AKSUMAEL, an AI agent playing Minecraft in survival mode.
@@ -28,10 +29,13 @@ Analyse the screenshot and decide ONE action. Respond with JSON only:
   "action": "what you are doing",
   "key": "w/a/s/d/space/ctrl/e/f/1/2/3/4/5/6/7/8/9/esc or null",
   "click": "left/right/null",
+  "look": {"dx": -15, "dy": 0},
   "confidence": 0.0-1.0
 }
+"look" pans the camera: dx=-turn left, dx=+turn right, dy=-look up, dy=+look down; null to skip.
 Be bold and decisive. Rules:
 - Ores or resources visible → approach and mine (w + left click)
+- Ore visible but off-center → use look to aim crosshair at it before mining
 - Open cave/passage → explore forward (w)
 - Dark area → light it up (place torch if you have one)
 - Items on ground → pick up (w to walk over)
@@ -40,6 +44,12 @@ Be bold and decisive. Rules:
 - Chests, furnaces, doors, beds → right-click to open/use (click: "right_click")
 - Need to cover ground fast → hold ctrl while moving (ctrl+w) to sprint
 - Hotbar slots are assumed: 1=sword, 2=pickaxe, 3=axe — select before mining or fighting
+- Iron/gold/lapis ore visible → approach and mine (w + left click), same as other ores
+- Log (tree trunk) visible → chop for wood (w + left click); leaves can be ignored or broken for saplings
+- Zombie or skeleton visible → fight if healthy and armed (left click), flee (s or a/d) if low health
+- Spider visible → fight at range or retreat if surrounded
+- Crafting table visible → right-click to open crafting menu
+- Grass → safe to walk through, no special action needed
 Never return null unless there is actual danger. Always be moving or acting.
 """
 

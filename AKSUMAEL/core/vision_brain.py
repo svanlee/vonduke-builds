@@ -30,6 +30,7 @@ Look at this screenshot and respond with a JSON object:
   "action": "one specific action to take (e.g. press W, click at center, wait)",
   "key": "keyboard key if applicable, else null",
   "click": [x_percent, y_percent] or null,
+  "look": {{"dx": -15, "dy": 0}} or null,
   "confidence": 0.0-1.0
 }}
 Only output valid JSON, nothing else."""
@@ -79,6 +80,7 @@ Look at this screenshot and respond with a JSON object:
   "action": "one specific action to take",
   "key": "keyboard key if applicable, else null",
   "click": [x_percent, y_percent] or null,
+  "look": {{"dx": -15, "dy": 0}} or null,
   "confidence": 0.0-1.0
 }}
 Only output valid JSON, nothing else."""

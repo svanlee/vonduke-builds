@@ -45,6 +45,16 @@ MC_CLASSES = [
     'crosshair', 'fire_hazard', 'chest_row', 'bed', 'torch',
     'furnace', 'water', 'coal_ore', 'redstone_ore', 'emerald_ore',
     'copper_ore', 'creeper', 'diamond_ore',
+    'iron_ore',       # 18
+    'gold_ore',       # 19
+    'lapis_ore',      # 20
+    'log',            # 21 - tree trunk
+    'leaves',         # 22 - tree leaves
+    'zombie',         # 23
+    'skeleton',       # 24
+    'spider',         # 25
+    'crafting_table', # 26
+    'grass',          # 27
 ]
 
 
