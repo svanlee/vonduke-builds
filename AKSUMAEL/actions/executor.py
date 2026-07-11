@@ -82,7 +82,8 @@ class ActionExecutor:
 
     def _execute_hid(self, ad: dict):
         if self._hid:
-            self._hid.send_action(ad, platform=self.platform, delay_ms=config.KEY_HOLD_MS)
+            delay = ad.get('delay_ms', config.KEY_HOLD_MS)
+            self._hid.send_action(ad, platform=self.platform, delay_ms=delay)
 
     def release_all(self):
         if self._hid:

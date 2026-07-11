@@ -31,6 +31,7 @@
 
 import math
 import enum
+import time
 import config
 from core.aim import bbox_to_mouse_delta, is_on_target
 
@@ -58,6 +59,16 @@ ORE_TARGETS = {
     'deepslate_iron_ore', 'deepslate_gold_ore', 'deepslate_coal_ore',
     'nether_quartz_ore', 'nether_gold_ore', 'ancient_debris',
 }
+
+# Priority order: higher index = lower priority; diamond always wins over emerald
+ORE_PRIORITY = [
+    'diamond_ore', 'deepslate_diamond_ore', 'ancient_debris',
+    'emerald_ore',
+    'gold_ore', 'deepslate_gold_ore', 'nether_gold_ore',
+    'iron_ore', 'deepslate_iron_ore',
+    'lapis_ore', 'redstone_ore', 'copper_ore',
+    'deepslate_coal_ore', 'coal_ore', 'nether_quartz_ore',
+]
 
 TREE_TARGETS = {
     'log', 'oak_log', 'spruce_log', 'birch_log', 'jungle_log',
@@ -92,7 +103,7 @@ MIN_CONF = 0.50
 # ── Tuning ────────────────────────────────────────────────────────────────────
 
 APPROACH_TICKS   = 8     # ticks in APPROACH before switching to MINE
-MINE_MAX_TICKS   = 15    # give up and re-approach after this many MINE ticks
+MINE_MAX_TICKS   = 40    # give up and re-approach after this many MINE ticks (40×0.5s=20s)
 COLLECT_TICKS    = 4     # walk forward this long after block breaks
 EXPLORE_WALK     = 12    # ticks walking before each pan
 EXPLORE_PAN      = 6     # ticks of each directional pan
@@ -132,6 +143,28 @@ def _pick_best(objects: list, label_set: set):
         and o.get('conf', 0.0) >= MIN_CONF
     ]
     return max(hits, key=lambda o: o.get('conf', 0.0)) if hits else None
+
+
+def _pick_best_ore(objects: list):
+    """
+    Pick the highest-priority ore detection.
+    Uses ORE_PRIORITY order so diamond always beats emerald even if
+    emerald has higher YOLO confidence.
+    Falls back to highest-conf ore if label not in ORE_PRIORITY.
+    """
+    hits = {
+        o.get('label', '').lower(): o
+        for o in objects
+        if o.get('label', '').lower() in ORE_TARGETS
+        and o.get('conf', 0.0) >= MIN_CONF
+    }
+    if not hits:
+        return None
+    for label in ORE_PRIORITY:
+        if label in hits:
+            return hits[label]
+    # fallback: highest conf
+    return max(hits.values(), key=lambda o: o.get('conf', 0.0))
 
 
 def _infer_frame_dims(objects: list) -> tuple:
@@ -216,7 +249,7 @@ class GameFSM:
             return self._goto(State.COMBAT, self._combat_action(mob))
 
         # ── Gather candidate targets ───────────────────────────────
-        ore_obj      = _pick_best(objects, ORE_TARGETS)
+        ore_obj      = _pick_best_ore(objects)
         tree_obj     = _pick_best(objects, TREE_TARGETS)
         mine_obj     = ore_obj or tree_obj or _pick_best(objects, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
@@ -336,19 +369,23 @@ class GameFSM:
         return State.APPROACH, ad
 
     def _begin_mine(self, target: dict, fw: int, fh: int) -> dict:
-        """Build the initial action_dict for entering MINE state."""
+        """Build the initial action_dict for entering MINE state (aim only, no click yet)."""
         self._mine_ticks = 0
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         ad = _idle()
-        ad['key']    = '2'             # select pickaxe hotbar slot
-        ad['look']   = {'dx': dx, 'dy': dy}
-        ad['click']  = [50.0, 50.0]   # left-click screen centre
-        ad['action'] = f'mine:{target.get("label","block")}'
+        ad['key']    = '2'                   # select pickaxe hotbar slot
+        ad['look']   = {'dx': dx, 'dy': dy}  # aim toward ore
+        ad['action'] = f'aim:{target.get("label","block")}'
         return ad
 
     def _do_mine(self, mine_obj, fw: int, fh: int):
-        """Hold left-click on the target block; re-aim each tick."""
+        """
+        Two-phase mining:
+          AIM  — send look delta each tick until crosshair is on the ore bbox.
+                 No click yet; prevents chipping the wrong block.
+          MINE — once on target, hold left-click for MINE_HOLD_MS per tick.
+        """
         self._mine_ticks += 1
 
         # Block disappeared — broken!  Walk forward to collect drops.
@@ -359,18 +396,29 @@ class GameFSM:
 
         box = mine_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
+        on_target = is_on_target(box, fw, fh)
+
         ad = _idle()
-        ad['key']         = '2'
-        ad['look']        = {'dx': dx, 'dy': dy}
-        ad['click']       = [50.0, 50.0]   # continuous left-click to mine
-        ad['action']      = f'mine:{mine_obj.get("label","block")}'
-        ad['observation'] = (f'Mining {mine_obj.get("label","block")} '
-                             f'({self._mine_ticks}/{MINE_MAX_TICKS})')
+        ad['key']  = '2'                         # keep pickaxe selected
+        ad['look'] = {'dx': dx, 'dy': dy}        # always correct aim
+
+        if on_target:
+            ad['click']    = [50.0, 50.0]        # left-click screen centre
+            ad['delay_ms'] = config.MINE_HOLD_MS  # hold for full mining tick
+            phase = 'mining'
+        else:
+            phase = 'aiming'
+
+        label = mine_obj.get('label', 'block')
+        ad['action']      = f'{phase}:{label}'
+        ad['observation'] = (f'{phase.capitalize()} {label} '
+                             f'({self._mine_ticks}/{MINE_MAX_TICKS})'
+                             f'{" dx="+str(dx)+",dy="+str(dy) if not on_target else ""}')
         ad['confidence']  = mine_obj.get('conf', 0.7)
 
         # Timed out — block probably at a bad angle; go back and re-approach
         if self._mine_ticks >= MINE_MAX_TICKS:
-            print('[FSM] MINE: timed out, re-approaching')
+            print(f'[FSM] MINE: timed out after {MINE_MAX_TICKS} ticks, re-approaching')
             self._mine_ticks = 0
             return self._goto(State.APPROACH, _idle())
 
