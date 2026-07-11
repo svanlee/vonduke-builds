@@ -1,1 +1,63 @@
-{"name":"pick_up_torch","trigger_objects":["torch"],"steps":[{"action":{"key":"w","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":400},{"action":{"key":"w","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":400},{"action":{"key":"w","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300}],"avg_reward":0.55,"uses":0,"created":1783790011.0,"last_used":null}
+{
+  "name": "pick_up_torch",
+  "trigger_objects": [
+    "torch"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    }
+  ],
+  "avg_reward": 0.55,
+  "uses": 0,
+  "created": 1783790011.0,
+  "last_used": null
+}

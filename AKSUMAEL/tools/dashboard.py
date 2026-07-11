@@ -85,6 +85,7 @@ def render_cards(mem):
       <div class="stat"><span>Total ticks</span><span class="val">{mem.get('total_ticks', 0)}</span></div>
       <div class="stat"><span>Deaths</span><span class="val">{mem.get('deaths', 0)}</span></div>
       <div class="stat"><span>Surveys</span><span class="val">{mem.get('surveys', 0)}</span></div>
+      <div class="stat"><span>LLM calls</span><span class="val">{mem.get('llm_calls', 0)}</span></div>
       <div class="stat"><span>Session #</span><span class="val">{mem.get('session', 1)}</span></div>
     </div>
     <div class="card">

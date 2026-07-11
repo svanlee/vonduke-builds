@@ -1,1 +1,148 @@
-{"name":"flee_creeper","trigger_objects":["creeper"],"steps":[{"action":{"key":"1","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":150},{"action":{"key":"s","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"s","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"s","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"d","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"d","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"space","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":200},{"action":{"key":"s","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":400}],"avg_reward":0.9,"uses":0,"created":1783790005.0,"last_used":null}
+{
+  "name": "flee_creeper",
+  "trigger_objects": [
+    "creeper"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "1",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    },
+    {
+      "action": {
+        "key": "s",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "s",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "s",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "d",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "d",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 200
+    },
+    {
+      "action": {
+        "key": "s",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    }
+  ],
+  "avg_reward": 0.9,
+  "uses": 0,
+  "created": 1783790005.0,
+  "last_used": null
+}

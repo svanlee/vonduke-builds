@@ -1,25 +1,13 @@
 {
   "seen_objects": {
-    "hotbar": 1720,
-    "xp_bar": 1631,
-    "health_bar": 1609,
-    "armor_bar": 1609,
-    "hunger_bar": 13,
+    "hotbar": 4742,
+    "xp_bar": 3286,
+    "health_bar": 3261,
+    "armor_bar": 3261,
+    "hunger_bar": 1459,
     "coal_ore": 3
   },
   "recent_events": [
-    {
-      "t": "14:01:32",
-      "event": "survey sweep"
-    },
-    {
-      "t": "14:05:07",
-      "event": "survey sweep"
-    },
-    {
-      "t": "14:05:18",
-      "event": "survey sweep"
-    },
     {
       "t": "14:06:11",
       "event": "survey sweep"
@@ -87,14 +75,33 @@
     {
       "t": "14:42:58",
       "event": "survey sweep"
+    },
+    {
+      "t": "14:53:00",
+      "event": "survey sweep"
+    },
+    {
+      "t": "15:28:02",
+      "event": "survey sweep"
+    },
+    {
+      "t": "15:33:43",
+      "event": "survey sweep"
     }
   ],
-  "total_ticks": 1650,
+  "total_ticks": 3305,
   "deaths": 0,
-  "surveys": 32,
+  "surveys": 35,
   "depth_estimate": 0,
-  "hunger_level": 20,
-  "game_tick": 650,
+  "hunger_level": 19,
+  "game_tick": 2305,
   "pickaxe_uses": 1,
-  "last_saved": "2026-07-11 14:42:59"
+  "y_level": 64,
+  "biome": "unknown",
+  "wood_count": 0,
+  "food_items": [],
+  "animals_seen": {},
+  "near_water": false,
+  "llm_calls": 3,
+  "last_saved": "2026-07-11 15:59:40"
 }

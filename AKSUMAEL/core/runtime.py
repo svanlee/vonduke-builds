@@ -3,9 +3,10 @@
 # ╚══════════════════════════════════════════════════════╝
 
 import time
+import cv2
 import config
 
-from vision.screen           import ScreenCapture
+from core.capture            import VideoCapturePipeline
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision
@@ -46,7 +47,6 @@ def run():
     print()
 
     # ── Initialise all subsystems ──────────────────────────────
-    cam       = ScreenCapture()
     yolo      = YOLODetector()
     world     = WorldModel()
     world_mem = WorldMemory()
@@ -62,6 +62,12 @@ def run():
     rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
     ui        = LabelingUI(yolo, router, reward, skills=skills)
+
+    # ── Threaded capture / YOLO / display pipeline ─────────────
+    # CaptureThread reads /dev/video2 at full speed (MJPEG, CAP_PROP_BUFFERSIZE=1)
+    # YOLOThread runs inference on the latest frame at GPU speed
+    # DisplayThread calls cv2.imshow via LabelingUI at ~30 fps
+    pipeline  = VideoCapturePipeline(yolo, ui, device_index=config.CAMERA_INDEX)
 
     # Frame collector for YOLO fine-tuning — kept around for force_save()
     # even though the old timer-based COLLECT_FRAMES auto-save is disabled;
@@ -79,14 +85,17 @@ def run():
     from behaviors.respawn import RespawnBehavior
     from behaviors.hunger import HungerBehavior
     from behaviors.crafting import CraftingBehavior
+    from core.fsm import GameFSM, State
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor)
     hunger_behavior = HungerBehavior(executor)
     crafting_behavior = CraftingBehavior(executor)
     goal_interp = GoalInterpreter(goals, crafting_behavior)
+    fsm = GameFSM()
 
     # Start background threads
+    pipeline.start()   # CaptureThread + YOLOThread + DisplayThread
     router.start()
     if ear.enabled:
         ear.start()
@@ -97,9 +106,12 @@ def run():
     last_skill_name  = None
     same_skill_count = 0
     SAME_SKILL_LIMIT = 3
-    last_action   = {}   # most recent Claude (LLM) response dict
-    prev_objects  = []   # last tick's YOLO detections (for HUD-delta reward)
-    f3_countdown  = 50   # ticks until next F3 OCR read (offset from startup)
+    last_action      = {}    # most recent Claude (LLM) response dict
+    prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
+    f3_countdown     = 50    # ticks until next F3 OCR read (offset from startup)
+    fsm_state        = None  # updated each tick for console logging
+    _llm_call_count  = 0     # total LLM calls this session
+    _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -111,21 +123,18 @@ def run():
             h = router.human_state
             _handle_joystick(h, ui, router, reward, tts)
 
-            # ── Capture frame ──────────────────────────────────
-            frame = cam.capture_small(width=640)
+            # ── Capture frame (from CaptureThread) ────────────
+            # CaptureThread continuously reads /dev/video2; we take the
+            # freshest 640-wide frame without blocking.
+            frame = pipeline.latest_small_frame
             if frame is None:
                 tts.say_line('no_frame', priority=True)
-                if ui.enabled:
-                    ui.update(None, [])
-                    if not ui.render():
-                        break
                 time.sleep(1)
                 continue
 
-            # ── YOLO detection ─────────────────────────────────
-            objects = []
-            if tick % config.YOLO_EVERY_N_TICKS == 0:
-                objects = yolo.detect(frame)
+            # ── YOLO detection (from YOLOThread) ───────────────
+            # YOLOThread runs YOLO at GPU speed; we read its latest results.
+            objects = pipeline.latest_objects
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
@@ -134,11 +143,12 @@ def run():
                 inventory.save()
                 goals.save()
 
-            # ── UI render + labeling input ─────────────────────
+            # ── UI quit check + reward from labeling input ─────
+            # Display is handled by DisplayThread at ~30 fps; we only need to
+            # check for quit and consume any manual reward signals here.
+            if pipeline.quit:
+                break
             if ui.enabled:
-                ui.update(frame, objects)
-                if not ui.render():
-                    break
                 ui_r = ui.consume_reward()
                 if ui_r > 0:
                     reward.add_manual(+1.0)
@@ -167,6 +177,18 @@ def run():
                     print(f'[YOLO] unknown at {unknown["box"]} '
                           f'conf={unknown["conf"]:.2f} '
                           f'— click in window to label')
+
+            # ── FSM tick (runs every tick; drives core gameplay) ──────
+            # Compute hunger fraction from the detected hunger_bar bbox width.
+            _hbar = next((o for o in objects if o.get('label') == 'hunger_bar'), None)
+            if _hbar and _hbar.get('box') and len(_hbar['box']) == 4:
+                _hw = _hbar['box'][2] - _hbar['box'][0]
+                _hmax = hunger_behavior._max_width if hunger_behavior._max_width > 0 else max(_hw, 1)
+                _hunger_frac = _hw / _hmax
+            else:
+                _hunger_frac = 1.0   # assume full when not visible
+
+            fsm_state, fsm_action = fsm.tick(objects, world_mem, _hunger_frac)
 
             # ── Decision ──────────────────────────────────────
             action_dict = _idle()
@@ -212,25 +234,63 @@ def run():
                         'observation': f'skill match {match:.2f} {skill.name}',
                     })
 
-                # Fall back to Gemini
+                # FSM takes over when no skill matched and FSM is actively
+                # targeting something (APPROACH / MINE / COMBAT / COLLECT /
+                # INTERACT).  In pure EXPLORE or EAT we fall through to the
+                # LLM so it can direct higher-level decisions.
+                elif fsm_state not in (State.EXPLORE, State.EAT):
+                    action_dict = fsm_action
+                    src_tag = f'FSM:{fsm_state.value}'
+
+                # Fall back to LLM — only in EXPLORE/EAT, only every N ticks
                 elif tick % config.LLM_EVERY_N_TICKS == 0:
-                    history = (world_mem.context_summary() + '\n'
-                               + inventory.context_summary() + '\n'
-                               + goals.context_summary() + '\n'
-                               + world.recent_summary(n=3))
-                    if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
-                        history = world.cross_session_summary() + '\n' + history
-                    action_dict = ask_vision(frame, history, objects)
-                    src_tag = 'LLM'
-                    last_action = action_dict
-                    if action_dict.get('goal'):
-                        behavior = goal_interp.interpret(action_dict['goal'], objects)
-                        if behavior:
-                            goal_interp.execute_behavior(behavior, executor, objects)
-                    if tick % (config.LLM_EVERY_N_TICKS * 5) == 0:
-                        tts.say_observation(
-                            action_dict.get('observation', ''),
-                            action_dict.get('confidence', 0))
+                    # Frame-diff gate: skip call if scene hasn't changed enough
+                    _scene_changed = True
+                    if _last_llm_frame is not None and frame is not None:
+                        _diff = cv2.absdiff(frame, _last_llm_frame)
+                        if _diff.mean() < 8.0:
+                            _scene_changed = False
+                            action_dict = last_action   # reuse previous response
+                            src_tag = 'LLM-SKIP'
+
+                    if _scene_changed:
+                        _last_llm_frame = frame.copy() if frame is not None else None
+                        history = (world_mem.context_summary() + '\n'
+                                   + inventory.context_summary() + '\n'
+                                   + goals.context_summary() + '\n'
+                                   + world.recent_summary(n=3))
+                        if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
+                            history = world.cross_session_summary() + '\n' + history
+                        action_dict = ask_vision(frame, history, objects)
+                        _llm_call_count += 1
+                        world_mem.record_llm_call()
+                        src_tag = 'LLM'
+                        last_action = action_dict
+                        if action_dict.get('goal'):
+                            behavior = goal_interp.interpret(action_dict['goal'], objects)
+                            if behavior:
+                                goal_interp.execute_behavior(behavior, executor, objects)
+                        if tick % (config.LLM_EVERY_N_TICKS * 5) == 0:
+                            tts.say_observation(
+                                action_dict.get('observation', ''),
+                                action_dict.get('confidence', 0))
+
+                        # Claude-vision skill override: Claude's own text
+                        # says it sees diamond ore, but YOLO produced no
+                        # diamond_ore box this tick — force a mine action
+                        # rather than trust the (missing) detection.
+                        if config.VISION_SKILL_OVERRIDE:
+                            obs_text = (action_dict.get('observation', '') + ' '
+                                        + action_dict.get('action', '')).lower()
+                            yolo_labels = {o.get('label') for o in objects}
+                            if 'diamond' in obs_text and 'diamond_ore' not in yolo_labels:
+                                print('[OVERRIDE] Claude sees diamond ore, YOLO missed it — forcing mine action')
+                                action_dict.update({
+                                    'key':    'w',
+                                    'click':  'left',
+                                    'action': 'mine diamond ore (vision override)',
+                                })
+                                src_tag = 'VISION_OVERRIDE'
 
             # ── Death/respawn detection ─────────────────────────
             if respawner.update(objects, last_observation=last_action.get('observation', '')):
@@ -278,6 +338,7 @@ def run():
             # ── RL policy bookkeeping ───────────────────────────
             if tick % 100 == 0:
                 rl.save()
+                print(f'[LLM] {_llm_call_count} calls so far this session')
             if tick % 200 == 0:
                 print(f'[RL] {rl.stats()}')
 
@@ -301,7 +362,7 @@ def run():
                 if frame is not None:
                     executor.execute({'key': 'f3'})
                     time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
-                    f3_frame = cam.capture()
+                    f3_frame = pipeline.latest_raw_frame   # fresh full-res frame
                     f3_data = read_f3(f3_frame)
                     executor.execute({'key': 'f3'})  # close
                     if f3_data['f3_active']:
@@ -313,8 +374,9 @@ def run():
             obs  = action_dict.get('observation', '')[:45]
             conf = action_dict.get('confidence', 0)
             ear_state = '🔊' if ear.enabled else '🔇'
+            fsm_tag = fsm_state.value[:6] if fsm_state else '?'
             print(f'[{tick:04d}] {elapsed}s {ear_state} | '
-                  f'yolo:{len(objects):2d} | {src_tag:<18} | '
+                  f'yolo:{len(objects):2d} | {src_tag:<18} | fsm:{fsm_tag:<7} | '
                   f'conf:{conf:.2f} | r:{r:+.3f} | avg:{reward.average():+.3f} | '
                   f'{obs}')
 
@@ -343,8 +405,8 @@ def run():
         if ear.enabled:
             ear.stop()
         tts.stop()
+        pipeline.stop()   # signals CaptureThread, YOLOThread, DisplayThread
         ui.close()
-        cam.release()
 
 
 def _idle() -> dict:

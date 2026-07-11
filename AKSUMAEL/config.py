@@ -18,8 +18,13 @@ LOOP_INTERVAL_SEC  = 2.0   # seconds between ticks (safe under free Gemini quota
 YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
 KEY_HOLD_MS = 500   # ms to hold each key press (was hardcoded 20ms)
 
-LLM_EVERY_N_TICKS  = 3     # call Claude every 3 ticks (~6s)
+LLM_EVERY_N_TICKS  = 15    # call Claude every 15 ticks (~30s); only in EXPLORE/EAT
 LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
+
+# If Claude's own observation/action text mentions "diamond" but YOLO's
+# detector produced no diamond_ore box that tick, force a mine action
+# instead of trusting the (missing) detection. Set False to disable.
+VISION_SKILL_OVERRIDE = True
 
 GAME_CONTEXT = """
 You are AKSUMAEL, an AI agent playing Minecraft in survival mode.
