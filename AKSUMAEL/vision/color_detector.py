@@ -21,13 +21,15 @@ ORE_COLOR_RANGES = [
     # label,            H_lo H_hi  S_lo S_hi  V_lo V_hi  min_px
     # Diamond: tight teal/cyan — high sat+val, large cluster required
     ('diamond_ore',     85,  105,  140,  255,  160, 255,  60),
-    # Emerald: bright green, tightened sat floor
-    ('emerald_ore',     50,   80,  140,  255,  130, 255,  40),
+    # Emerald: bright pure green — tightened to avoid oxidised copper (teal H~85-100)
+    # Raised sat+val floors to exclude dull greenish cave blocks
+    ('emerald_ore',     55,   75,  180,  255,  170, 255,  60),
     # Gold: bright yellow, very high sat+val, large cluster required
     # (torchlight also produces yellow — require 100+ pixels to reduce FP)
     ('gold_ore',        20,   30,  180,  255,  180, 255,  100),
-    # Redstone: glowing red/pink — only bright pixels
-    ('redstone_ore',     0,   10,  160,  255,  120, 255,  40),
+    # Redstone: glowing red/pink — tightened to avoid copper orange (H~10-20)
+    # Raised sat+val floors; also covers high-H red wraparound (H 168-180)
+    ('redstone_ore',     0,    8,  190,  255,  160, 255,  60),
     # Lapis DISABLED — cave stone blue causes constant false positives.
     # YOLO handles lapis detection; re-enable only after tuning HSV ranges.
     # ('lapis_ore',      100,  130,  100,  255,   80, 200,  20),
@@ -70,12 +72,19 @@ def detect_ores_by_color(frame_bgr: np.ndarray,
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-        # Find connected components
+        # Find connected components — keep only the largest qualifying cluster
+        # to avoid emitting 5+ detections for the same ore vein per frame
         n_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(mask)
+        best = None
         for i in range(1, n_labels):
             area = stats[i, cv2.CC_STAT_AREA]
             if area < min_px:
                 continue
+            if best is None or area > best[0]:
+                best = (area, i)
+
+        if best is not None:
+            area, i = best
             x1 = stats[i, cv2.CC_STAT_LEFT]
             y1 = stats[i, cv2.CC_STAT_TOP]
             x2 = x1 + stats[i, cv2.CC_STAT_WIDTH]
