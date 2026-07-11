@@ -24,6 +24,19 @@ class YOLODetector:
         except Exception as e:
             print(f'[YOLO] failed to load: {e} — running without YOLO')
 
+    def reload_weights(self, path: str = None):
+        """Hot-swap YOLO model weights. Call after retraining completes."""
+        import config as cfg
+        weights = path or cfg.YOLO_MODEL
+        try:
+            from ultralytics import YOLO
+            self.model = YOLO(weights)
+            print(f'[YOLO] hot-reloaded weights from {weights}')
+            return True
+        except Exception as e:
+            print(f'[YOLO] reload failed: {e}')
+            return False
+
     def _load_label_db(self):
         path = config.YOLO_LABEL_DB
         if os.path.exists(path):
