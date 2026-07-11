@@ -19,11 +19,17 @@ import numpy as np
 
 ORE_COLOR_RANGES = [
     # label,            H_lo H_hi  S_lo S_hi  V_lo V_hi  min_px
-    ('diamond_ore',     85,  105,  120,  255,  150, 255,  30),
-    ('emerald_ore',     45,   85,  120,  255,  120, 255,  20),
-    ('gold_ore',        18,   35,  150,  255,  150, 255,  25),
-    ('redstone_ore',     0,   10,  150,  255,  100, 255,  25),
-    ('lapis_ore',      100,  130,  100,  255,   80, 200,  20),
+    # Diamond: tight teal/cyan — high sat+val, large cluster required
+    ('diamond_ore',     85,  105,  140,  255,  160, 255,  60),
+    # Emerald: bright green, tightened sat floor
+    ('emerald_ore',     50,   80,  140,  255,  130, 255,  40),
+    # Gold: bright yellow, high sat+val
+    ('gold_ore',        18,   32,  160,  255,  160, 255,  40),
+    # Redstone: glowing red/pink — only bright pixels
+    ('redstone_ore',     0,   10,  160,  255,  120, 255,  40),
+    # Lapis DISABLED — cave stone blue causes constant false positives.
+    # YOLO handles lapis detection; re-enable only after tuning HSV ranges.
+    # ('lapis_ore',      100,  130,  100,  255,   80, 200,  20),
 ]
 
 # Exclude bottom 25 % of frame (HUD area) from color detection

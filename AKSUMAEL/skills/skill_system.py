@@ -137,8 +137,14 @@ class Skill:
     def matches(self, current_objects: list) -> float:
         if not self.trigger_objects:
             return 0.0
+        # Strip HUD-only elements from trigger before scoring.
+        # HUD labels (armor_bar, health_bar, hotbar, xp_bar, hunger_bar) are
+        # always visible — including them inflates scores for junk skills.
+        meaningful_trigger = set(self.trigger_objects) - HUD_ALWAYS_VISIBLE
+        if not meaningful_trigger:
+            return 0.0   # skill triggered only by HUD — never fire it
         current_labels = {o.get('label', '') for o in current_objects}
-        return _fuzzy_overlap(set(self.trigger_objects), current_labels)
+        return _fuzzy_overlap(meaningful_trigger, current_labels)
 
     def __repr__(self):
         return (f'<Skill {self.name} trig={self.trigger_objects} '
