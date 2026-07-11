@@ -36,7 +36,7 @@ def run():
     print(f'  blend    : {config.BLEND_MODE}')
     print(f'  tts      : {"on" if config.ENABLE_TTS else "off"}  '
           f'game_ear : {"on" if config.ENABLE_GAME_EAR else "off"}  '
-          f'collect  : {"on" if getattr(config, "COLLECT_FRAMES", False) else "off"}')
+          f'survey   : on (conf<{config.SURVEY_CONF_THRESH})')
     print()
 
     # ── Initialise all subsystems ──────────────────────────────
@@ -53,15 +53,19 @@ def run():
     replayer  = SkillReplayer(executor)
     ui        = LabelingUI(yolo, router, reward, skills=skills)
 
-    # Optional frame collector for YOLO fine-tuning
+    # Frame collector for YOLO fine-tuning — kept around for force_save()
+    # even though the old timer-based COLLECT_FRAMES auto-save is disabled;
+    # the survey behavior below drives frame saving now.
     collector = None
-    if getattr(config, 'COLLECT_FRAMES', False):
-        try:
-            from tools.yolo_finetune import FrameCollector
-            collector = FrameCollector()
-            print('[COLLECT] frame collection active')
-        except Exception as e:
-            print(f'[COLLECT] could not start collector: {e}')
+    try:
+        from tools.yolo_finetune import FrameCollector
+        collector = FrameCollector()
+        print('[COLLECT] frame collector ready (survey-driven)')
+    except Exception as e:
+        print(f'[COLLECT] could not start collector: {e}')
+
+    from behaviors.survey import SurveyBehavior
+    surveyor = SurveyBehavior(collector, executor) if collector else None
 
     # Start background threads
     router.start()
@@ -74,6 +78,7 @@ def run():
     last_skill_name  = None
     same_skill_count = 0
     SAME_SKILL_LIMIT = 3
+    last_action = {}   # most recent Claude (LLM) response dict
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -100,10 +105,6 @@ def run():
             objects = []
             if tick % config.YOLO_EVERY_N_TICKS == 0:
                 objects = yolo.detect(frame)
-
-            # ── Frame collection for fine-tuning ──────────────
-            if collector:
-                collector.maybe_save(frame, objects)
 
             # ── UI render + labeling input ─────────────────────
             if ui.enabled:
@@ -178,10 +179,17 @@ def run():
                         history = world.cross_session_summary() + '\n' + history
                     action_dict = ask_vision(frame, history, objects)
                     src_tag = 'LLM'
+                    last_action = action_dict
                     if tick % (config.LLM_EVERY_N_TICKS * 5) == 0:
                         tts.say_observation(
                             action_dict.get('observation', ''),
                             action_dict.get('confidence', 0))
+
+            # ── Curiosity survey ────────────────────────────────
+            if surveyor:
+                llm_conf = last_action.get('confidence', 1.0)
+                if surveyor.should_trigger(objects, llm_conf):
+                    surveyor.run(frame, objects)
 
             # ── Controller blend ───────────────────────────────
             if not replayer.is_active():
