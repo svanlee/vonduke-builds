@@ -24,6 +24,7 @@ from input.controller_router import ControllerRouter
 from audio.tts               import TTSEngine
 from audio.game_ear          import GameEar
 from skills.skill_system     import SkillSystem, SkillReplayer
+from actions.aim_controller  import AimController
 from ui.labeling             import LabelingUI
 
 BANNER = """
@@ -62,6 +63,7 @@ def run():
     skills    = SkillSystem()
     rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
+    aim_ctrl  = AimController()          # uses YOLO-frame coords (640×360)
     ui        = LabelingUI(yolo, router, reward, skills=skills)
 
     # ── Threaded capture / YOLO / display pipeline ─────────────
@@ -236,7 +238,17 @@ def run():
                 if skill and match >= skills.MIN_MATCH_SCORE:
                     same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
                     last_skill_name  = skill.name
-                    replayer.start(skill)
+                    # Find the box of the trigger object so the aim phase
+                    # can centre the crosshair on it before action steps run.
+                    aim_box = None
+                    for obj in objects:
+                        olabel = obj.get('label', '').lower()
+                        if any(olabel == t.lower() or
+                               olabel in t.lower() or t.lower() in olabel
+                               for t in skill.trigger_objects):
+                            aim_box = obj.get('box')
+                            break
+                    replayer.start(skill, aim_box=aim_box, aim_ctrl=aim_ctrl)
                     skills.mark_used(skill)
                     inventory.on_skill_fired(skill.name)
                     if skill.name.startswith('mine_'):

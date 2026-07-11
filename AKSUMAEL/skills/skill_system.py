@@ -124,10 +124,10 @@ class Skill:
         return s
 
     def has_real_action(self) -> bool:
-        """False if every step is a no-op (null key/click, zeroed gamepad)."""
+        """False if every step is a no-op (null key/click/look, zeroed gamepad)."""
         for s in self.steps:
             a = s.action
-            if a.get('key') or a.get('click'):
+            if a.get('key') or a.get('click') or a.get('look'):
                 return True
             gp = a.get('gamepad') or {}
             if any(gp.get(k) for k in ('lx', 'ly', 'rx', 'ry', 'lt', 'rt', 'buttons')):
@@ -165,20 +165,25 @@ class SkillReplayer:
         self._active    = False
         self._current   = None   # Skill being replayed
 
-    def start(self, skill: Skill):
+    def start(self, skill: Skill, aim_box: list = None, aim_ctrl=None):
         if self._active:
             return   # don't interrupt ongoing replay
         self._current = skill
         self._active  = True
         self._thread  = threading.Thread(
             target=self._replay,
-            args=(skill,),
+            args=(skill, aim_box, aim_ctrl),
             daemon=True,
             name=f'replay_{skill.name[:12]}'
         )
         self._thread.start()
 
-    def _replay(self, skill: Skill):
+    def _replay(self, skill: Skill, aim_box: list = None, aim_ctrl=None):
+        # Aim phase: centre crosshair on the trigger object before acting
+        if aim_box is not None and aim_ctrl is not None and self._active:
+            print(f'[SKILL] aiming before {skill.name}')
+            aim_ctrl.aim_until(aim_box, self.executor, max_ticks=12)
+
         print(f'[SKILL] replaying {skill.name} ({len(skill.steps)} steps)')
         for i, step in enumerate(skill.steps):
             if not self._active:
@@ -291,6 +296,7 @@ class SkillSystem:
                 action={
                     'key':     a.get('key'),
                     'click':   a.get('click'),
+                    'look':    a.get('look'),
                     'gamepad': a.get('gamepad'),
                     'source':  'skill',
                 },
