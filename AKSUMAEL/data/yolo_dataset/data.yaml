@@ -1,7 +1,7 @@
 path: data/yolo_dataset
 train: images/train
 val: images/train
-nc: 18
+nc: 28
 names:
   0: health_bar
   1: hunger_bar
@@ -21,3 +21,13 @@ names:
   15: copper_ore
   16: creeper
   17: diamond_ore
+  18: iron_ore
+  19: gold_ore
+  20: lapis_ore
+  21: log
+  22: leaves
+  23: zombie
+  24: skeleton
+  25: spider
+  26: crafting_table
+  27: grass

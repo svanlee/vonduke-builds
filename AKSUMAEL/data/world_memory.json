@@ -1,0 +1,35 @@
+{
+  "seen_objects": {
+    "hotbar": 294,
+    "xp_bar": 295,
+    "health_bar": 292,
+    "armor_bar": 292,
+    "hunger_bar": 3
+  },
+  "recent_events": [
+    {
+      "t": "13:25:42",
+      "event": "survey sweep"
+    },
+    {
+      "t": "13:29:01",
+      "event": "survey sweep"
+    },
+    {
+      "t": "13:34:50",
+      "event": "survey sweep"
+    },
+    {
+      "t": "13:37:03",
+      "event": "survey sweep"
+    },
+    {
+      "t": "13:38:11",
+      "event": "survey sweep"
+    }
+  ],
+  "total_ticks": 300,
+  "deaths": 0,
+  "surveys": 5,
+  "last_saved": "2026-07-11 13:38:59"
+}

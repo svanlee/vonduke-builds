@@ -11,6 +11,7 @@ from core.vision_brain       import ask_vision
 from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
 from memory.reward           import RewardSystem
+from memory.world_memory     import WorldMemory
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
 from audio.tts               import TTSEngine
@@ -43,6 +44,7 @@ def run():
     cam       = ScreenCapture()
     yolo      = YOLODetector()
     world     = WorldModel()
+    world_mem = WorldMemory()
     cognitive = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
@@ -66,8 +68,10 @@ def run():
 
     from behaviors.survey import SurveyBehavior
     from behaviors.auto_trainer import AutoTrainer
+    from behaviors.respawn import RespawnBehavior
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
+    respawner = RespawnBehavior(executor)
 
     # Start background threads
     router.start()
@@ -80,7 +84,8 @@ def run():
     last_skill_name  = None
     same_skill_count = 0
     SAME_SKILL_LIMIT = 3
-    last_action = {}   # most recent Claude (LLM) response dict
+    last_action   = {}   # most recent Claude (LLM) response dict
+    prev_objects  = []   # last tick's YOLO detections (for HUD-delta reward)
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -107,6 +112,8 @@ def run():
             objects = []
             if tick % config.YOLO_EVERY_N_TICKS == 0:
                 objects = yolo.detect(frame)
+
+            world_mem.update(objects, action=last_action)
 
             # ── UI render + labeling input ─────────────────────
             if ui.enabled:
@@ -176,7 +183,7 @@ def run():
 
                 # Fall back to Gemini
                 elif tick % config.LLM_EVERY_N_TICKS == 0:
-                    history = world.recent_summary(n=3)
+                    history = world_mem.context_summary() + '\n' + world.recent_summary(n=3)
                     if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
                         history = world.cross_session_summary() + '\n' + history
                     action_dict = ask_vision(frame, history, objects)
@@ -187,11 +194,17 @@ def run():
                             action_dict.get('observation', ''),
                             action_dict.get('confidence', 0))
 
+            # ── Death/respawn detection ─────────────────────────
+            if respawner.update(objects, last_observation=last_action.get('observation', '')):
+                world_mem.record_death()
+                continue
+
             # ── Curiosity survey ────────────────────────────────
             if surveyor:
                 llm_conf = last_action.get('confidence', 1.0)
                 if surveyor.should_trigger(objects, llm_conf):
                     surveyor.run(frame, objects)
+                    world_mem.record_survey()
 
             # ── Controller blend ───────────────────────────────
             if not replayer.is_active():
@@ -210,7 +223,9 @@ def run():
             })
 
             # ── Reward ────────────────────────────────────────
+            reward.add_hud_reward(_hud_reward(objects, prev_objects))
             r = reward.compute({'objects': objects}, action_dict)
+            prev_objects = objects
 
             # ── Cognitive architecture ──────────────────────────
             cognitive.update(tick, objects, action_dict, r)
@@ -250,6 +265,7 @@ def run():
         tts.say_line('shutdown', priority=True)
         skills.save_all()
         world.save()
+        world_mem.save()
         time.sleep(1.5)
         executor.close()
         router.stop()
@@ -264,6 +280,40 @@ def _idle() -> dict:
     return {'observation': '', 'action': 'wait',
             'key': None, 'click': None,
             'gamepad': None, 'confidence': 0.0}
+
+
+def _hud_reward(objects: list, prev_objects: list) -> float:
+    """Estimate reward delta from tick-over-tick HUD/object bbox changes."""
+    def _find(objs, label):
+        return next((o for o in objs if o.get('label') == label), None)
+
+    def _width(o):
+        box = o.get('box') if o else None
+        return (box[2] - box[0]) if box and len(box) == 4 else 0.0
+
+    reward = 0.0
+    EPS = 2.0   # px — ignore jitter below this
+
+    curr_xp, prev_xp = _find(objects, 'xp_bar'), _find(prev_objects, 'xp_bar')
+    if curr_xp and prev_xp and _width(curr_xp) > _width(prev_xp) + EPS:
+        reward += 0.3   # XP bar grew → XP gained
+
+    curr_hp, prev_hp = _find(objects, 'health_bar'), _find(prev_objects, 'health_bar')
+    if curr_hp and prev_hp:
+        curr_w, prev_w = _width(curr_hp), _width(prev_hp)
+        if curr_w < prev_w - EPS:
+            reward -= 0.4   # health bar shrank → took damage
+        elif curr_w > prev_w + EPS:
+            reward += 0.1   # health bar grew → healed
+
+    curr_labels = {o.get('label') for o in objects}
+    prev_labels = {o.get('label') for o in prev_objects}
+    valuable = {'diamond_ore', 'emerald_ore', 'chest_row', 'furnace'}
+    new_valuable = (curr_labels & valuable) - prev_labels
+    if new_valuable:
+        reward += 0.5 * len(new_valuable)   # new valuable object spotted → exploration reward
+
+    return reward
 
 
 def _handle_joystick(h, ui, router, reward, tts):
