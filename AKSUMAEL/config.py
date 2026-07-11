@@ -103,6 +103,11 @@ SURVEY_LLM_CONF_THRESH = 0.45    # trigger survey when Claude reports low confid
 SURVEY_FRAMES_PER_SWEEP = 3      # number of frames to save per survey (from diff angles)
 SURVEY_COOLDOWN_SEC    = 8.0     # min seconds between surveys
 
+# ── Auto-Training ─────────────────────────────────────────────
+AUTO_TRAIN_AFTER_FRAMES = 50    # trigger retraining after this many new survey frames
+AUTO_TRAIN_MIN_TOTAL    = 30    # minimum total dataset size before any training
+AUTO_TRAIN_COOLDOWN_SEC = 3600  # don't retrain more than once per hour
+
 # ── Reward ────────────────────────────────────────────────────
 REWARD_DECAY = 0.95
 

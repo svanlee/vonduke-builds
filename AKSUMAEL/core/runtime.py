@@ -65,7 +65,9 @@ def run():
         print(f'[COLLECT] could not start collector: {e}')
 
     from behaviors.survey import SurveyBehavior
-    surveyor = SurveyBehavior(collector, executor) if collector else None
+    from behaviors.auto_trainer import AutoTrainer
+    auto_trainer = AutoTrainer(yolo)
+    surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
 
     # Start background threads
     router.start()

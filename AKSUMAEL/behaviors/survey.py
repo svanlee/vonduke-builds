@@ -11,9 +11,10 @@ import config
 
 
 class SurveyBehavior:
-    def __init__(self, collector, executor):
+    def __init__(self, collector, executor, auto_trainer=None):
         self._collector = collector
         self._executor  = executor
+        self._auto_trainer = auto_trainer
         self._last_survey = 0.0
         self._active = False
 
@@ -65,7 +66,13 @@ class SurveyBehavior:
             if self._collector:
                 if self._collector.force_save(frame, objects):
                     saved += 1
+                    if self._auto_trainer:
+                        self._auto_trainer.on_survey_saved(1)
 
         print(f'[SURVEY] saved {saved} frames (uncertain → sweep complete)')
         self._active = False
+
+        if self._auto_trainer and self._auto_trainer.should_train():
+            self._auto_trainer.start_training()
+
         return saved
