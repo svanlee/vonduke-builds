@@ -101,11 +101,8 @@ class FrameCollector:
         now = time.time()
         if now - self._last_save < self.SAVE_INTERVAL_SEC:
             return False
-        # Only save if there's at least one known (non-unknown) object
         known = [o for o in objects
                  if not o.get('unknown') and o.get('label')]
-        if not known:
-            return False
 
         fh, fw = frame.shape[:2]
         split  = 'train' if random.random() < TRAIN_SPLIT else 'val'
