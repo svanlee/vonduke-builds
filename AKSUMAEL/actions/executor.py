@@ -11,6 +11,9 @@ class ActionExecutor:
         self.mode     = config.ACTION_OUTPUT.lower()
         self.platform = config.PLATFORM_TARGET.lower()
         self._hid     = None   # KB2040Serial or CH9329Serial
+        # Remember what the user actually asked for, so we know what to
+        # reconnect back to if we fall back to 'print' at startup.
+        self._intended_mode = self.mode
 
         if self.mode == 'kb2040':
             self._init_kb2040()
@@ -46,9 +49,21 @@ class ActionExecutor:
         if not action_dict:
             return
         if self.mode == 'print':
+            self._check_reconnect()
+        if self.mode == 'print':
             self._print_action(action_dict)
         else:
             self._execute_hid(action_dict)
+
+    def _check_reconnect(self):
+        """If we fell back to print because the HID device wasn't there at
+        startup, periodically retry the connection (rate-limited inside
+        the HID driver itself) and resume HID output once it's back."""
+        if self._hid is None or self._intended_mode not in ('kb2040', 'ch9329'):
+            return
+        if hasattr(self._hid, 'try_reconnect') and self._hid.try_reconnect():
+            self.mode = self._intended_mode
+            print(f'[ACTION] {self._intended_mode} reconnected — resuming HID output')
 
     def _print_action(self, ad: dict):
         key   = ad.get('key')
@@ -67,7 +82,7 @@ class ActionExecutor:
 
     def _execute_hid(self, ad: dict):
         if self._hid:
-            self._hid.send_action(ad, platform=self.platform)
+            self._hid.send_action(ad, platform=self.platform, delay_ms=config.KEY_HOLD_MS)
 
     def release_all(self):
         if self._hid:

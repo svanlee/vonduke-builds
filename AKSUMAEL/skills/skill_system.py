@@ -29,6 +29,10 @@ LABEL_SYNONYMS = {
     'building':{'wall','roof','floor','building','structure','house'},
 }
 
+# HUD elements that are permanently on screen — never valid as a skill's
+# *only* trigger, since a skill triggered solely by these fires every tick.
+HUD_ALWAYS_VISIBLE = {'health_bar', 'armor_bar', 'hunger_bar', 'xp_bar', 'hotbar'}
+
 def _canonical(label: str) -> str:
     """Map any label to its canonical group name, or itself."""
     l = label.lower().strip()
@@ -118,6 +122,17 @@ class Skill:
         )
         s.last_used = d.get('last_used')
         return s
+
+    def has_real_action(self) -> bool:
+        """False if every step is a no-op (null key/click, zeroed gamepad)."""
+        for s in self.steps:
+            a = s.action
+            if a.get('key') or a.get('click'):
+                return True
+            gp = a.get('gamepad') or {}
+            if any(gp.get(k) for k in ('lx', 'ly', 'rx', 'ry', 'lt', 'rt', 'buttons')):
+                return True
+        return False
 
     def matches(self, current_objects: list) -> float:
         if not self.trigger_objects:
@@ -250,6 +265,13 @@ class SkillSystem:
         if not trigger:
             return None
 
+        # HUD elements (health/armor/hunger/xp bars, hotbar) are visible on
+        # every frame — a skill triggered solely by these would fire on
+        # every tick. Drop HUD-only triggers rather than mining a skill
+        # that can never stop looping.
+        if set(trigger) <= HUD_ALWAYS_VISIBLE:
+            return None
+
         # Build timed steps — infer delay from actual tick timestamps
         steps = []
         for i, step in enumerate(window):
@@ -325,7 +347,9 @@ class SkillSystem:
 
     def prune_bad(self, min_reward: float = 0.0) -> int:
         to_remove = [n for n, s in self.skills.items()
-                     if s.avg_reward < min_reward and s.uses >= 3]
+                     if (s.avg_reward < min_reward and s.uses >= 3)
+                     or set(s.trigger_objects) <= HUD_ALWAYS_VISIBLE
+                     or not s.has_real_action()]
         for n in to_remove:
             self.delete(n)
         return len(to_remove)
