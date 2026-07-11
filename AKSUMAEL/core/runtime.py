@@ -12,6 +12,9 @@ from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
+from memory.inventory        import InventoryTracker
+from memory.goals            import GoalStack
+from memory.rl_policy        import RLPolicy
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
 from audio.tts               import TTSEngine
@@ -45,6 +48,8 @@ def run():
     yolo      = YOLODetector()
     world     = WorldModel()
     world_mem = WorldMemory()
+    inventory = InventoryTracker()
+    goals     = GoalStack()
     cognitive = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
@@ -52,6 +57,7 @@ def run():
     tts       = TTSEngine()
     ear       = GameEar()          # graceful if no audio device
     skills    = SkillSystem()
+    rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
     ui        = LabelingUI(yolo, router, reward, skills=skills)
 
@@ -69,9 +75,11 @@ def run():
     from behaviors.survey import SurveyBehavior
     from behaviors.auto_trainer import AutoTrainer
     from behaviors.respawn import RespawnBehavior
+    from behaviors.hunger import HungerBehavior
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor)
+    hunger_behavior = HungerBehavior(executor)
 
     # Start background threads
     router.start()
@@ -114,6 +122,11 @@ def run():
                 objects = yolo.detect(frame)
 
             world_mem.update(objects, action=last_action)
+            goals.auto_update(world_mem, inventory)
+
+            if tick % 50 == 0:
+                inventory.save()
+                goals.save()
 
             # ── UI render + labeling input ─────────────────────
             if ui.enabled:
@@ -159,8 +172,17 @@ def run():
                 src_tag = f'REPLAY:{name}'
 
             else:
-                # Try a learned skill first
-                skill, match = skills.find_best(objects)
+                # Try a learned skill first — if multiple candidates match,
+                # let the RL policy pick among them instead of the naive best.
+                candidates = skills.find_candidates(objects)
+                if len(candidates) > 1:
+                    names = [sk.name for sk, _ in candidates]
+                    chosen_name = rl.choose_skill(names, objects)
+                    by_name = {sk.name: (sk, m) for sk, m in candidates}
+                    skill, match = by_name.get(chosen_name, (None, 0.0))
+                else:
+                    skill, match = skills.find_best(objects)
+
                 if skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
                     # Same skill has fired too many times in a row — cool it down
                     print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, skipping')
@@ -173,6 +195,9 @@ def run():
                     last_skill_name  = skill.name
                     replayer.start(skill)
                     skills.mark_used(skill)
+                    inventory.on_skill_fired(skill.name)
+                    if skill.name.startswith('mine_'):
+                        world_mem.record_pickaxe_use()
                     used_skill = skill
                     src_tag    = f'SK:{skill.name[:12]}'
                     action_dict.update({
@@ -183,7 +208,10 @@ def run():
 
                 # Fall back to Gemini
                 elif tick % config.LLM_EVERY_N_TICKS == 0:
-                    history = world_mem.context_summary() + '\n' + world.recent_summary(n=3)
+                    history = (world_mem.context_summary() + '\n'
+                               + inventory.context_summary() + '\n'
+                               + goals.context_summary() + '\n'
+                               + world.recent_summary(n=3))
                     if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
                         history = world.cross_session_summary() + '\n' + history
                     action_dict = ask_vision(frame, history, objects)
@@ -198,6 +226,9 @@ def run():
             if respawner.update(objects, last_observation=last_action.get('observation', '')):
                 world_mem.record_death()
                 continue
+
+            # ── Hunger ───────────────────────────────────────────
+            hunger_behavior.update(objects, world_mem=world_mem)
 
             # ── Curiosity survey ────────────────────────────────
             if surveyor:
@@ -225,7 +256,14 @@ def run():
             # ── Reward ────────────────────────────────────────
             reward.add_hud_reward(_hud_reward(objects, prev_objects))
             r = reward.compute({'objects': objects}, action_dict)
+            rl.update(r, objects)
             prev_objects = objects
+
+            # ── RL policy bookkeeping ───────────────────────────
+            if tick % 100 == 0:
+                rl.save()
+            if tick % 200 == 0:
+                print(f'[RL] {rl.stats()}')
 
             # ── Cognitive architecture ──────────────────────────
             cognitive.update(tick, objects, action_dict, r)
@@ -264,8 +302,11 @@ def run():
         replayer.stop()
         tts.say_line('shutdown', priority=True)
         skills.save_all()
+        rl.save()
         world.save()
         world_mem.save()
+        inventory.save()
+        goals.save()
         time.sleep(1.5)
         executor.close()
         router.stop()
