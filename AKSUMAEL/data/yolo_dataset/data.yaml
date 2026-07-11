@@ -1,7 +1,7 @@
 path: data/yolo_dataset
 train: images/train
 val: images/train
-nc: 28
+nc: 44
 names:
   0: health_bar
   1: hunger_bar
@@ -31,3 +31,19 @@ names:
   25: spider
   26: crafting_table
   27: grass
+  28: cow
+  29: sheep
+  30: pig
+  31: chicken
+  32: fish
+  33: fishing_bobber
+  34: wheat
+  35: carrot
+  36: potato
+  37: sugar_cane
+  38: pumpkin
+  39: melon
+  40: villager
+  41: sheep_wool
+  42: iron_ingot
+  43: diamond

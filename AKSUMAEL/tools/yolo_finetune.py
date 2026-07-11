@@ -55,6 +55,23 @@ MC_CLASSES = [
     'spider',         # 25
     'crafting_table', # 26
     'grass',          # 27
+    # ── Extended classes (v1.1) ──────────────────────────────────
+    'cow',            # 28
+    'sheep',          # 29
+    'pig',            # 30
+    'chicken',        # 31
+    'fish',           # 32
+    'fishing_bobber', # 33
+    'wheat',          # 34
+    'carrot',         # 35
+    'potato',         # 36
+    'sugar_cane',     # 37
+    'pumpkin',        # 38
+    'melon',          # 39
+    'villager',       # 40
+    'sheep_wool',     # 41 - white/shearable sheep
+    'iron_ingot',     # 42
+    'diamond',        # 43
 ]
 
 

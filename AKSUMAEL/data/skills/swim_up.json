@@ -1,1 +1,97 @@
-{"name":"swim_up","trigger_objects":["water"],"steps":[{"action":{"key":"space","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"space","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"w","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"space","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300},{"action":{"key":"w","click":null,"gamepad":{"lx":0,"ly":0,"rx":0,"ry":0,"lt":0,"rt":0,"buttons":0},"source":"skill"},"delay_after_ms":300}],"avg_reward":0.75,"uses":0,"created":1783790007.0,"last_used":null}
+{
+  "name": "swim_up",
+  "trigger_objects": [
+    "water"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    }
+  ],
+  "avg_reward": 0.75,
+  "uses": 0,
+  "created": 1783790007.0,
+  "last_used": null
+}
