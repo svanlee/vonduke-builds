@@ -7,6 +7,7 @@ import cv2
 import config
 
 from core.capture            import VideoCapturePipeline
+from vision.color_detector   import detect_ores_by_color, merge_with_yolo
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision
@@ -135,6 +136,18 @@ def run():
             # ── YOLO detection (from YOLOThread) ───────────────
             # YOLOThread runs YOLO at GPU speed; we read its latest results.
             objects = pipeline.latest_objects
+
+            # ── Color-based ore detection ───────────────────────
+            # Catches diamond/emerald/gold ore that YOLO misses by scanning
+            # for their distinctive HSV color signatures. Color detections
+            # are only injected when YOLO has no match for that ore type.
+            _color_dets = detect_ores_by_color(frame)
+            if _color_dets:
+                _new = [d for d in _color_dets if d['label'] not in {o.get('label') for o in objects}]
+                if _new:
+                    for d in _new:
+                        print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
+                objects = merge_with_yolo(objects, _color_dets)
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
