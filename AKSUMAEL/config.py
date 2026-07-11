@@ -96,7 +96,7 @@ YOLO_CONF_THRESHOLD = 0.25
 YOLO_LABEL_DB       = "data/yolo_labels.json"
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
-COLLECT_FRAMES = False   # set True to save labeled frames during play
+COLLECT_FRAMES = True   # set True to save labeled frames during play
 
 # ── Reward ────────────────────────────────────────────────────
 REWARD_DECAY = 0.95
