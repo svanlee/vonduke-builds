@@ -129,6 +129,15 @@ def pack_release_all() -> bytes:
 
 def key_to_hid(key_name: str) -> tuple:
     k = str(key_name).lower().strip()
+    if '+' in k:
+        # Combo keys, e.g. "ctrl+w" for sprint — modifier(s) + one regular key
+        hid, mod = 0x00, 0x00
+        for part in (p.strip() for p in k.split('+')):
+            if part in MOD_MAP:
+                mod |= MOD_MAP[part]
+            elif part in KEY_MAP:
+                hid = KEY_MAP[part]
+        return hid, mod
     return KEY_MAP.get(k, 0x00), MOD_MAP.get(k, 0x00)
 
 
@@ -142,15 +151,17 @@ def action_dict_to_packets(action_dict: dict,
     # Keyboard
     if key and str(key).lower() not in ('null', 'none', 'wait', ''):
         hid, mod = key_to_hid(str(key))
-        if hid:
-            packets.append(pack_keyboard(keys=[hid], modifiers=mod))
+        if hid or mod:   # mod-only (e.g. plain "ctrl") is still a valid press
+            packets.append(pack_keyboard(keys=[hid] if hid else [], modifiers=mod))
             packets.append(pack_keyboard())   # release
 
     # Absolute click
     if click and click not in ('null', None):
         try:
+            button = 0x02 if action_dict.get('button', 'left') == 'right' else 0x01
             packets.extend(pack_mouse_click_at(float(click[0]),
-                                               float(click[1])))
+                                               float(click[1]),
+                                               button=button))
         except (TypeError, IndexError, ValueError):
             pass
 
@@ -171,28 +182,51 @@ def action_dict_to_packets(action_dict: dict,
 
 # ── KB2040Serial (thread-safe) ────────────────────────────────
 class KB2040Serial:
+    RECONNECT_INTERVAL = 30  # seconds between reconnect attempts
+
     def __init__(self, port=None, baud=None):
         self.port  = port or config.UART_PORT
         self.baud  = baud or config.UART_BAUD
         self._ser  = None
         self._lock = threading.Lock()
+        self._last_reconnect_attempt = 0.0
         self._connect()
 
-    def _connect(self):
+    def _connect(self, quiet=False):
         try:
             import serial as pyserial
             self._ser = pyserial.Serial(self.port, self.baud, timeout=0.1)
             time.sleep(0.15)
             # Send release-all to clear any stale HID state
             self._ser.write(pack_release_all())
-            print(f'[KB2040] connected on {self.port} @ {self.baud}')
+            if not quiet:
+                print(f'[KB2040] connected on {self.port} @ {self.baud}')
         except ImportError:
-            print('[KB2040] pyserial not installed')
-        except Exception as e:
-            print(f'[KB2040] UART open failed: {e}')
+            if not quiet:
+                print('[KB2040] pyserial not installed')
             self._ser = None
+        except Exception as e:
+            if not quiet:
+                print(f'[KB2040] UART open failed: {e}')
+            self._ser = None
+        self._last_reconnect_attempt = time.time()
+
+    def try_reconnect(self) -> bool:
+        """Rate-limited reconnect attempt (at most once per RECONNECT_INTERVAL).
+        Returns True if connected (already, or freshly reconnected)."""
+        if self.is_connected:
+            return True
+        if time.time() - self._last_reconnect_attempt < self.RECONNECT_INTERVAL:
+            return False
+        self._connect(quiet=True)
+        if self.is_connected:
+            print(f'[KB2040] reconnected on {self.port}')
+            return True
+        return False
 
     def send(self, pkt: bytes) -> bool:
+        if not self._ser:
+            self.try_reconnect()
         if not self._ser:
             return False
         try:
@@ -201,6 +235,11 @@ class KB2040Serial:
             return True
         except Exception as e:
             print(f'[KB2040] send error: {e}')
+            if isinstance(e, OSError):
+                # Cable likely unplugged — drop the handle and let the
+                # next send()/try_reconnect() re-open it once it's back.
+                self._ser = None
+                self.try_reconnect()
             return False
 
     def send_action(self, action_dict: dict,

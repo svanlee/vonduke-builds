@@ -71,6 +71,9 @@ def run():
     tts.say_line('startup')
 
     tick = 0
+    last_skill_name  = None
+    same_skill_count = 0
+    SAME_SKILL_LIMIT = 3
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -148,7 +151,16 @@ def run():
             else:
                 # Try a learned skill first
                 skill, match = skills.find_best(objects)
+                if skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
+                    # Same skill has fired too many times in a row — cool it down
+                    print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, skipping')
+                    skill = None
+                    last_skill_name  = None
+                    same_skill_count = 0
+
                 if skill and match >= skills.MIN_MATCH_SCORE:
+                    same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
+                    last_skill_name  = skill.name
                     replayer.start(skill)
                     skills.mark_used(skill)
                     used_skill = skill
@@ -198,6 +210,10 @@ def run():
                 mined = skills.observe(objects, final, r)
                 if mined:
                     tts.say_line('skill_learned')
+
+            # ── Skill pruning ───────────────────────────────────
+            if tick % 50 == 0:
+                skills.prune_bad()
 
             # ── Console log ────────────────────────────────────
             elapsed = round(time.time() - t0, 2)
