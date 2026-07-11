@@ -125,6 +125,39 @@ class FrameCollector:
         self._count    += 1
         return True
 
+    def force_save(self, frame, objects: list) -> bool:
+        """
+        Save frame + annotations immediately, bypassing the time throttle
+        and the known-object gate. Used by the survey behavior to capture
+        frames from multiple angles while AKSUMAEL is uncertain.
+        Saves even if objects is empty. Filenames use a 'survey_' prefix.
+        """
+        import cv2
+        now = time.time()
+        known = [o for o in objects
+                 if not o.get('unknown') and o.get('label')]
+
+        fh, fw = frame.shape[:2]
+        split  = 'train' if random.random() < TRAIN_SPLIT else 'val'
+        stem   = f'survey_{int(now*1000)}_{self._count}'
+        img_path = f'{IMAGES_DIR}/{split}/{stem}.jpg'
+        lbl_path = f'{LABELS_DIR}/{split}/{stem}.txt'
+
+        cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
+        lines = []
+        for obj in known:
+            cid  = class_id(obj['label'])
+            yolo = _box_to_yolo(obj['box'], fw, fh)
+            lines.append(f'{cid} {yolo}')
+
+        with open(lbl_path, 'w') as f:
+            f.write('\n'.join(lines))
+
+        self._last_save = now
+        self._count    += 1
+        return True
+
     def stats(self) -> dict:
         result = {}
         for split in ('train', 'val'):

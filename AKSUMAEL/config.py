@@ -96,7 +96,12 @@ YOLO_CONF_THRESHOLD = 0.25
 YOLO_LABEL_DB       = "data/yolo_labels.json"
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
-COLLECT_FRAMES = True   # set True to save labeled frames during play
+COLLECT_FRAMES         = False   # disabled — survey behavior handles collection now
+SURVEY_CONF_THRESH     = 0.45    # trigger survey when avg YOLO conf below this
+SURVEY_UNKNOWN_TRIGGER = True    # trigger survey when unknown objects detected
+SURVEY_LLM_CONF_THRESH = 0.45    # trigger survey when Claude reports low confidence
+SURVEY_FRAMES_PER_SWEEP = 3      # number of frames to save per survey (from diff angles)
+SURVEY_COOLDOWN_SEC    = 8.0     # min seconds between surveys
 
 # ── Reward ────────────────────────────────────────────────────
 REWARD_DECAY = 0.95
