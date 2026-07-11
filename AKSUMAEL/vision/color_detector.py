@@ -23,8 +23,9 @@ ORE_COLOR_RANGES = [
     ('diamond_ore',     85,  105,  140,  255,  160, 255,  60),
     # Emerald: bright green, tightened sat floor
     ('emerald_ore',     50,   80,  140,  255,  130, 255,  40),
-    # Gold: bright yellow, high sat+val
-    ('gold_ore',        18,   32,  160,  255,  160, 255,  40),
+    # Gold: bright yellow, very high sat+val, large cluster required
+    # (torchlight also produces yellow — require 100+ pixels to reduce FP)
+    ('gold_ore',        20,   30,  180,  255,  180, 255,  100),
     # Redstone: glowing red/pink — only bright pixels
     ('redstone_ore',     0,   10,  160,  255,  120, 255,  40),
     # Lapis DISABLED — cave stone blue causes constant false positives.
