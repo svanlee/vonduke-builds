@@ -65,7 +65,9 @@ _PHASE_UNLOCK = {
         "items_any": [("iron_ingot", 3), ("iron_pickaxe", 1)],
     },
     "iron": {
-        "items_any": [("diamond", 3)],
+        # Either 3+ diamonds collected, or a diamond pickaxe already crafted —
+        # don't wait on the LLM to notice either signal.
+        "items_any": [("diamond", 3), ("diamond_pickaxe", 1)],
     },
     "diamond": {
         # Detected by Nether-specific seen objects or items

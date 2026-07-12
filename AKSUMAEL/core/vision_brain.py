@@ -162,12 +162,17 @@ def _format_detections(objects: list) -> str:
     return 'YOLO detections:\n' + '\n'.join(lines)
 
 
-def ask_vision(frame, recent_history: str = "", objects: list = None) -> dict:
+def ask_vision(frame, recent_history: str = "", objects: list = None,
+                phase: str = None) -> dict:
     """
     Send frame to vision LLM. Returns parsed action dict.
     Falls back to Gemini if Claude fails, and vice versa.
+
+    `phase` (wood/stone/iron/diamond/nether/end), if given, selects the
+    phase-specific tactical checklist appended to GAME_CONTEXT.
     """
-    context = f"{config.GAME_CONTEXT}\n\n{_format_detections(objects or [])}"
+    base_context = config.game_context_for_phase(phase)
+    context = f"{base_context}\n\n{_format_detections(objects or [])}"
 
     provider = config.VISION_PROVIDER.lower()
     raw = _ask_gemini(frame, context, recent_history) \

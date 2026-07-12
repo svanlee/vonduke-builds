@@ -14,8 +14,9 @@ class RespawnBehavior:
     BLANK_TICKS_THRESHOLD = 5   # consecutive ticks with 0 objects before assuming death
     RESPAWN_COOLDOWN = 10.0     # seconds between respawn attempts
 
-    def __init__(self, executor):
+    def __init__(self, executor, goals=None):
         self._executor = executor
+        self._goals     = goals   # optional GoalStack — forced to return_to_base on respawn
         self._blank_ticks = 0
         self._last_respawn = 0.0
 
@@ -49,5 +50,13 @@ class RespawnBehavior:
                     'gamepad': {'lx': 0, 'ly': 0, 'rx': 0, 'ry': 0, 'lt': 0, 'rt': 0, 'buttons': 0},
                     'source': 'respawn',
                 })
+                if self._goals is not None:
+                    # Dropped items are wherever we died — clear whatever was
+                    # queued and head straight back to base/spawn to recover
+                    # tools/inventory drops, rather than resuming the old goal.
+                    self._goals.current = 'return_to_base'
+                    self._goals.stack.clear()
+                    self._goals.save()
+                    print('[RESPAWN] goal forced to return_to_base')
                 return True
         return False
