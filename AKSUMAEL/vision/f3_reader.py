@@ -102,13 +102,21 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         except ValueError:
             pass
 
-    # Block integer coords as fallback for Y
-    if result["y_level"] is None:
+    # Block integer coords as fallback for X/Y/Z when XYZ line OCR fails
+    if result["y_level"] is None or result["x"] is None:
         m = BLOCK_RE.search(text)
         if m:
             try:
-                result["y_level"] = int(m.group(2))
+                bx, by, bz = int(m.group(1)), int(m.group(2)), int(m.group(3))
                 result["f3_active"] = True
+                if result["y_level"] is None:
+                    result["y_level"] = by
+                if result["y"] is None:
+                    result["y"] = float(by)
+                if result["x"] is None:
+                    result["x"] = float(bx)
+                if result["z"] is None:
+                    result["z"] = float(bz)
             except ValueError:
                 pass
 
