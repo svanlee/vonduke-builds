@@ -5,13 +5,13 @@ data: data/yolo_dataset/data.yaml
 epochs: 30
 time: null
 patience: 100
-batch: 8
+batch: 16
 imgsz: 640
 save: true
 save_period: -1
 cache: false
-device: cpu
-workers: 2
+device: '0'
+workers: 4
 project: data/models
 name: aksumael_mc
 exist_ok: true
@@ -25,7 +25,7 @@ rect: false
 cos_lr: false
 close_mosaic: 10
 resume: false
-amp: false
+amp: true
 fraction: 1.0
 profile: false
 freeze: null
