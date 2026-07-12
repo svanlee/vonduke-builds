@@ -272,20 +272,14 @@ class SkillSystem:
 
         window = self._buffer[-self.SEQUENCE_LENGTH:]
 
-        # Trigger from objects at start of sequence
+        # Trigger from objects at start of sequence — strip HUD elements so
+        # they don't pollute skill names or trigger matching.
         trigger = list({
             _canonical(o.get('label', ''))
             for o in window[0]['objects']
-            if o.get('label')
+            if o.get('label') and _canonical(o.get('label', '')) not in HUD_ALWAYS_VISIBLE
         })
         if not trigger:
-            return None
-
-        # HUD elements (health/armor/hunger/xp bars, hotbar) are visible on
-        # every frame — a skill triggered solely by these would fire on
-        # every tick. Drop HUD-only triggers rather than mining a skill
-        # that can never stop looping.
-        if set(trigger) <= HUD_ALWAYS_VISIBLE:
             return None
 
         # Don't create skills for YOLO false-positive labels (e.g. emerald_ore
