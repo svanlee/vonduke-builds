@@ -269,7 +269,8 @@ def run():
             # when YOLO actually spotted a danger label.
             _replay_active_now = replayer.is_active()
             if (_prev_replay_active and not _replay_active_now
-                    and last_skill_name and last_skill_name.startswith('mine_')):
+                    and last_skill_name and (last_skill_name.startswith('mine_')
+                                             or last_skill_name.startswith('coal_ore'))):
                 print(f'[CAMERA] {last_skill_name} replay ended — '
                       f'resetting pitch toward horizon (dy={_MINE_PITCH_RESET_DY})')
                 executor.execute({'look': {'dx': 0, 'dy': _MINE_PITCH_RESET_DY},
