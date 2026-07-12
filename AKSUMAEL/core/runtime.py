@@ -448,8 +448,15 @@ def run():
             hunger_behavior.update(objects, world_mem=world_mem)
 
             # ── Crafting ─────────────────────────────────────────
-            # 3x3: trigger when pickaxe nearing end of life AND table visible
-            if (world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
+            # 3x3: trigger when (a) pickaxe nearing end of life, OR
+            #                   (b) craft_pickaxe is an active goal —
+            #      in either case only when a crafting table is visible.
+            _craft_goal_active = goals.has_goal('craft_pickaxe')
+            _craft_condition   = (
+                world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
+                or _craft_goal_active
+            )
+            if (_craft_condition
                     and not replayer.is_active()
                     and crafting_behavior.should_trigger(objects)):
                 crafting_behavior.run(objects=objects)
@@ -489,10 +496,17 @@ def run():
             rl.update(r, objects)
             prev_objects = objects
 
-            # ── RL policy bookkeeping ───────────────────────────
+            # ── RL policy bookkeeping + status summary ──────────
             if tick % 100 == 0:
                 rl.save()
-                print(f'[LLM] {_llm_call_count} calls so far this session')
+                _active_goal = goals.current_goal() or 'none'
+                _inv_snap    = inv_reader.read(force=False) if inv_reader._cache_ts > 0 else {}
+                _inv_str     = ', '.join(f'{k}:{v}' for k, v in list(_inv_snap.items())[:6]) or 'unknown'
+                _skill_count = len(skills.skills)
+                print(f'[STATUS] tick={tick} | goal={_active_goal} | '
+                      f'inv=[{_inv_str}] | skills={_skill_count} | '
+                      f'llm_calls={_llm_call_count} | pickaxe_uses={world_mem.pickaxe_uses} | '
+                      f'phase={progression.phase}')
             if tick % 200 == 0:
                 print(f'[RL] {rl.stats()}')
 

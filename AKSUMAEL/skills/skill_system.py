@@ -224,17 +224,36 @@ class SkillSystem:
     def _load_all(self):
         os.makedirs(self.dir, exist_ok=True)
         count = 0
+        purged = 0
         for fn in os.listdir(self.dir):
-            if fn.endswith('.json'):
-                try:
-                    with open(os.path.join(self.dir, fn)) as f:
-                        skill = Skill.from_dict(json.load(f))
-                    self.skills[skill.name] = skill
-                    count += 1
-                except Exception as e:
-                    print(f'[SKILL] load error {fn}: {e}')
-        if count:
-            print(f'[SKILL] loaded {count} skills from disk')
+            if not fn.endswith('.json'):
+                continue
+            path = os.path.join(self.dir, fn)
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                triggers = set(data.get('trigger_objects', []))
+                # Sanitise on load: delete any skill whose trigger is polluted
+                # with HUD labels or blocked false-positive labels.
+                # This catches stale junk files that survived earlier purges.
+                contaminated = (triggers & HUD_ALWAYS_VISIBLE) or (triggers & _BLOCKED_SKILL_TRIGGERS)
+                if contaminated:
+                    print(f'[SKILL] purging stale junk skill: {fn} (trigger={list(triggers)})')
+                    try:
+                        os.remove(path)
+                    except OSError as e:
+                        print(f'[SKILL] could not delete {fn}: {e}')
+                    purged += 1
+                    continue
+                skill = Skill.from_dict(data)
+                self.skills[skill.name] = skill
+                count += 1
+            except Exception as e:
+                print(f'[SKILL] load error {fn}: {e}')
+        msg = f'[SKILL] loaded {count} skills from disk'
+        if purged:
+            msg += f', purged {purged} junk skills'
+        print(msg)
 
     def save(self, skill: Skill):
         os.makedirs(self.dir, exist_ok=True)
