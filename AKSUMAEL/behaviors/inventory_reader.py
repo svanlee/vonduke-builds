@@ -119,21 +119,22 @@ class InventoryReader:
 
     def _do_read(self) -> dict:
         print('[INV] opening inventory')
-        self._tap('e', 600)          # open inventory
+        self._tap('e', 700)          # open inventory — longer wait for slow frames
 
-        # Give the UI a moment to render
-        time.sleep(0.4)
+        # Give the UI a moment to render fully
+        time.sleep(0.5)
 
         frame = self.capture()
         if frame is None:
             print('[INV] no frame — closing')
-            self._tap('e', 200)
+            self._tap('escape', 200)
             return {}
 
         items = self._ask_claude(frame)
         print(f'[INV] read: {items}')
 
-        self._tap('e', 200)          # close inventory
+        # Press Escape to close (safer than E which could toggle a different menu)
+        self._tap('escape', 300)
         return items
 
     def _ask_claude(self, frame) -> dict:
@@ -170,7 +171,13 @@ class InventoryReader:
                     None
                 )
                 if text_block is None:
-                    raise ValueError('no text block in Claude response')
+                    # Log stop_reason and content types to diagnose API issues
+                    stop   = data.get('stop_reason', 'unknown')
+                    ctypes = [b.get('type') for b in data.get('content', [])]
+                    raise ValueError(
+                        f'no text block in Claude response '
+                        f'(stop_reason={stop}, content_types={ctypes})'
+                    )
                 text = text_block['text'].strip()
                 if text.startswith('```'):
                     text = '\n'.join(text.split('\n')[1:-1])

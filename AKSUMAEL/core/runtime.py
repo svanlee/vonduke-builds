@@ -124,6 +124,10 @@ def run():
     SKILL_COOLDOWN_TICKS      = 20     # how long a spammed skill stays suppressed
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
+    # Anti-stuck: count consecutive low-reward ticks
+    _low_reward_streak  = 0
+    _LOW_REWARD_THRESH  = 0.05   # reward below this = unproductive
+    _STUCK_TICKS        = 150    # consecutive low-reward ticks before intervention
     f3_countdown         = 50    # ticks until next F3 OCR read (offset from startup)
     _f3_open             = False  # True while F3 overlay is open
     _menu_stuck_since    = 0      # tick when menu was first detected open
@@ -474,11 +478,20 @@ def run():
                                 })
                                 src_tag = 'VISION_OVERRIDE'
 
-                # Between LLM ticks in EXPLORE: carry last movement forward
-                # so AKSUMAEL keeps walking/acting instead of going idle for 14 ticks
+                # Between LLM ticks in EXPLORE: carry last action forward
+                # so AKSUMAEL keeps walking/acting instead of going idle for 14 ticks.
+                # Carry movement keys AND look deltas (but not one-shot actions like
+                # 'e', 'f3', or 'esc' which should only fire once).
                 else:
-                    if last_action.get('key') in ('w', 'a', 's', 'd'):
+                    _carry_key = last_action.get('key')
+                    _no_carry  = {'e', 'f3', 'esc', 'escape', 'f', 'q', None}
+                    if _carry_key not in _no_carry or last_action.get('look') or last_action.get('click'):
                         action_dict = {**last_action}
+                        # Dampen look delta on carry ticks to avoid spin
+                        if action_dict.get('look'):
+                            lk = action_dict['look']
+                            action_dict['look'] = {'dx': lk.get('dx', 0) // 2,
+                                                   'dy': lk.get('dy', 0) // 2}
                         src_tag = 'CARRY'
 
             # ── Death/respawn detection ─────────────────────────
@@ -537,6 +550,26 @@ def run():
             r = reward.compute({'objects': objects}, action_dict)
             rl.update(r, objects)
             prev_objects = objects
+
+            # ── Anti-stuck ────────────────────────────────────
+            # If reward has been near zero for too long, force a goal reset
+            # and cancel any active skill replay so AKSUMAEL tries something new.
+            if r < _LOW_REWARD_THRESH:
+                _low_reward_streak += 1
+            else:
+                _low_reward_streak = 0
+            if _low_reward_streak >= _STUCK_TICKS and not replayer.is_active():
+                print(f'[STUCK] {_low_reward_streak} ticks below {_LOW_REWARD_THRESH:.2f} '
+                      f'— resetting goal to explore and clearing skill cooldown')
+                goals.current = 'explore'
+                goals.save()
+                skill_cooldown_name       = None
+                skill_cooldown_until_tick = 0
+                last_skill_name           = None
+                same_skill_count          = 0
+                _low_reward_streak        = 0
+                # Give a random look to unstick the camera
+                executor.execute({'look': {'dx': 45, 'dy': 20}, 'source': 'unstuck'})
 
             # ── RL policy bookkeeping + status summary ──────────
             if tick % 100 == 0:

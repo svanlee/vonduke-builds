@@ -110,15 +110,25 @@ class GoalStack:
     def suggest_craft_goal(self, cached_inv: dict):
         """Auto-push craft_pickaxe if inventory has the materials and no
         pickaxe is already present.  Called from the runtime loop after
-        a successful inventory read (uses the {item:count} flat dict)."""
-        if self.has_goal('craft_pickaxe'):
-            return   # already queued
+        a successful inventory read (uses the {item:count} flat dict).
+        Hard-limits to one craft_pickaxe anywhere in the goal state."""
+        # Count how many times craft_pickaxe already appears (current + stack)
+        craft_count = (
+            (1 if self.current == 'craft_pickaxe' else 0)
+            + list(self.stack).count('craft_pickaxe')
+        )
+        if craft_count >= 1:
+            return   # already queued — don't stack duplicates
 
         has_pickaxe = any(cached_inv.get(k, 0) > 0 for k in (
             'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'diamond_pickaxe',
         ))
         if has_pickaxe:
             return   # already have one
+
+        # Don't push if inventory read returned nothing (failed scan)
+        if not cached_inv:
+            return
 
         # Enough for a stone pickaxe?
         if cached_inv.get('cobblestone', 0) >= 3 and cached_inv.get('stick', 0) >= 2:
