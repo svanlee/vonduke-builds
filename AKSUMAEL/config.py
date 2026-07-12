@@ -22,6 +22,13 @@ MINE_HOLD_MS = 450   # ms to hold left-click per mining tick (fills most of LOOP
 LLM_EVERY_N_TICKS  = 15    # call Claude every 15 ticks (~30s); only in EXPLORE/EAT
 LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
 
+# ── Scan / Identify / Pathfinder ──────────────────────────────
+LOOK_SCAN_STEP       = 80   # px per sweep position — wide arc, fast environmental scan
+LOOK_AIM_STEP        = 20   # px for fine threat zoom-in / targeting
+SCAN_COOLDOWN_TICKS  = 10   # min ticks between scan runs (~5s) — continuous watch while moving
+SCAN_MAX_THREATS     = 3    # max threats to zoom+identify per scan (keeps it fast)
+SCAN_LOG_DIR         = "data/scan_log"  # where identified threat frames are saved
+
 # If Claude's own observation/action text mentions "diamond" but YOLO's
 # detector produced no diamond_ore box that tick, force a mine action
 # instead of trusting the (missing) detection. Set False to disable.
