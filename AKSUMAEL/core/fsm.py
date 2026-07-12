@@ -99,6 +99,12 @@ HOSTILE_MOBS = {
 # Minimum YOLO confidence to act on a detection
 MIN_CONF = 0.50
 
+# Ore labels permanently excluded from targeting regardless of blacklist state.
+# emerald_ore only generates in mountain biomes — we're not in one, so every
+# YOLO detection of it is a false positive. Hard-blocked here (not just the
+# blacklist) so the FSM never re-targets it even after blacklist expiry.
+_UNSUPPORTED_ORE_LABELS = frozenset({'emerald_ore'})
+
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +162,7 @@ def _pick_best_ore(objects: list):
         o.get('label', '').lower(): o
         for o in objects
         if o.get('label', '').lower() in ORE_TARGETS
+        and o.get('label', '').lower() not in _UNSUPPORTED_ORE_LABELS
         and o.get('conf', 0.0) >= MIN_CONF
     }
     if not hits:
