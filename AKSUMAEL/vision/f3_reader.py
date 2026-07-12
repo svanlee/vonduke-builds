@@ -18,8 +18,9 @@ try:
 except ImportError:
     TESSERACT_OK = False
 
-# F3 data appears in top-left ~600px wide, ~400px tall (at 1920x1080)
-F3_CROP = (0, 0, 600, 400)  # x1, y1, x2, y2
+# F3 data appears in the top-left quadrant (1920x1080).
+# Expanded from 600x400 to cover larger GUI scales and different MC versions.
+F3_CROP = (0, 0, 960, 600)  # x1, y1, x2, y2
 
 XYZ_RE   = re.compile(r"XYZ:\s*[-\d.]+\s*/\s*([-\d.]+)\s*/\s*[-\d.]+", re.IGNORECASE)
 BIOME_RE = re.compile(r"Biome:\s*([\w:]+)", re.IGNORECASE)

@@ -143,7 +143,7 @@ PICKAXE_DURABILITY = 200   # uses before warning Claude to craft/switch tools
 F3_OCR_EVERY_N_TICKS = 30    # opportunistically OCR the F3 overlay this often
 F3_READ_EVERY_N_TICKS = 300  # periodically open/close F3 ourselves (~10 min);
                              # 0 disables the auto-toggle (opportunistic-only)
-F3_KEY_WAIT_TICKS = 2        # ticks to wait after pressing F3 before OCR
+F3_KEY_WAIT_TICKS = 12       # ticks to wait after pressing F3 before OCR (12 * 0.2 = 2.4s)
 
 # ── Paths ─────────────────────────────────────────────────────
 SKILLS_DIR = "data/skills"
