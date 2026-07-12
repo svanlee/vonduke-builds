@@ -115,7 +115,14 @@ Only output valid JSON, nothing else."""
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read())
-            text = data['content'][0]['text'].strip()
+            # Find the first text block (skip tool_use or other block types)
+            text_block = next(
+                (b for b in data.get('content', []) if b.get('type') == 'text'),
+                None
+            )
+            if text_block is None:
+                raise ValueError(f"no text block in response; types={[b.get('type') for b in data.get('content', [])]}")
+            text = text_block['text'].strip()
             if text.startswith('```'):
                 text = '\n'.join(text.split('\n')[1:-1])
             return text
