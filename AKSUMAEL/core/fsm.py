@@ -201,7 +201,9 @@ class GameFSM:
         self._state_ticks = 0   # ticks spent in the current state
 
         # MINE tracking
-        self._mine_ticks = 0
+        self._mine_ticks        = 0
+        self._mine_timeout_count = 0   # consecutive timeouts on current target
+        self._mine_timeout_label = None  # label being timed out on
 
         # COLLECT tracking
         self._collect_ticks = 0
@@ -391,7 +393,9 @@ class GameFSM:
         # Block disappeared — broken!  Walk forward to collect drops.
         if mine_obj is None:
             print(f'[FSM] MINE: target gone after {self._mine_ticks} ticks → COLLECT')
-            self._mine_ticks = 0
+            self._mine_ticks        = 0
+            self._mine_timeout_count = 0
+            self._mine_timeout_label = None
             return self._goto(State.COLLECT, self._begin_collect())
 
         box = mine_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
@@ -418,8 +422,24 @@ class GameFSM:
 
         # Timed out — block probably at a bad angle; go back and re-approach
         if self._mine_ticks >= MINE_MAX_TICKS:
-            print(f'[FSM] MINE: timed out after {MINE_MAX_TICKS} ticks, re-approaching')
+            curr_label = mine_obj.get('label', 'block') if mine_obj else 'block'
+            # Track consecutive timeouts on same target
+            if curr_label == self._mine_timeout_label:
+                self._mine_timeout_count += 1
+            else:
+                self._mine_timeout_count = 1
+                self._mine_timeout_label = curr_label
             self._mine_ticks = 0
+
+            if self._mine_timeout_count >= 3:
+                # Stuck 3+ times on same target — give up and explore
+                print(f'[FSM] MINE: {self._mine_timeout_count} timeouts on {curr_label}, giving up → EXPLORE')
+                self._mine_timeout_count = 0
+                self._mine_timeout_label = None
+                return self._goto(State.EXPLORE, _idle())
+
+            print(f'[FSM] MINE: timed out after {MINE_MAX_TICKS} ticks on {curr_label} '
+                  f'(attempt {self._mine_timeout_count}/3), re-approaching')
             return self._goto(State.APPROACH, _idle())
 
         return State.MINE, ad
