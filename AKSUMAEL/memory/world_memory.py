@@ -157,7 +157,24 @@ class WorldMemory:
             self.depth_estimate = self.y_level
         if f3_data.get('biome'):
             self.biome = f3_data['biome']
+        # Store extended F3 data
+        if f3_data.get('x') is not None:
+            self.pos_x = round(f3_data['x'], 1)
+        if f3_data.get('z') is not None:
+            self.pos_z = round(f3_data['z'], 1)
+        if f3_data.get('facing'):
+            self.facing = f3_data['facing']
+        if f3_data.get('fps') is not None:
+            self.fps = f3_data['fps']
+        if f3_data.get('chunk_x') is not None:
+            self.chunk_x = f3_data['chunk_x']
+        if f3_data.get('chunk_z') is not None:
+            self.chunk_z = f3_data['chunk_z']
         self._ticks_since_f3 = 0
+        print(f"[F3] pos=({getattr(self,'pos_x','?')},{self.y_level},{getattr(self,'pos_z','?')}) "
+              f"facing={getattr(self,'facing','?')} biome={self.biome} "
+              f"chunk=({getattr(self,'chunk_x','?')},{getattr(self,'chunk_z','?')}) "
+              f"fps={getattr(self,'fps','?')}")
 
     # Real F3 reads stay authoritative for this many ticks before the
     # keyword heuristic is trusted to take back over.
@@ -183,10 +200,14 @@ class WorldMemory:
         y_range = ('diamond range' if self.y_level < 16
                    else 'coal range' if self.y_level < 40
                    else 'surface')
+        pos_x   = getattr(self, 'pos_x',  None)
+        pos_z   = getattr(self, 'pos_z',  None)
+        facing  = getattr(self, 'facing', 'unknown')
+        pos_str = f'XZ=({pos_x},{pos_z})' if pos_x is not None else 'XZ=unknown'
         summary = (
             f'[MEMORY] Lifetime: {self.total_ticks} ticks, {self.deaths} deaths. '
             f'Most seen: {top_str}. Recent: {recent}. '
-            f'Y={self.y_level} biome={self.biome} ({y_range}). '
+            f'Pos: {pos_str} Y={self.y_level} facing={facing} biome={self.biome} ({y_range}). '
             f'{day_str} (tick {self.game_tick}/{config.MC_DAY_TICKS}). '
             f'Hunger: {self.hunger_level}/20.'
         )
