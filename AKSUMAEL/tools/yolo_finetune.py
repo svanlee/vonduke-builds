@@ -276,21 +276,28 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     print('        This will take a while on Pi 4. Run on a laptop for speed.')
     print()
 
+    import torch
+    _has_cuda = torch.cuda.is_available()
+    _device   = 0 if _has_cuda else 'cpu'
+    _amp      = _has_cuda           # AMP only with CUDA
+    _workers  = 4 if _has_cuda else 2
+    _batch    = 16 if _has_cuda else batch
+    print(f'[TRAIN] device={_device}  amp={_amp}  workers={_workers}  batch={_batch}')
+
     model = YOLO(base_weights)
     results = model.train(
         data=yaml_path,
         epochs=epochs,
         imgsz=imgsz,
-        batch=batch,
+        batch=_batch,
         project='data/models',
         name='aksumael_mc',
         exist_ok=True,
         verbose=True,
-        # Pi-friendly settings
-        workers=2,
+        workers=_workers,
         cache=False,
-        amp=False,       # no AMP on Pi (no CUDA)
-        device='cpu',
+        amp=_amp,
+        device=_device,
     )
 
     # Copy best weights to standard path. Use results.save_dir (the actual
