@@ -44,7 +44,7 @@ class RespawnBehavior:
                 print(f'[RESPAWN] death detected (blank={blank_screen}, claude={claude_sees_death}) — clicking respawn')
                 self._executor.execute({
                     'key': None,
-                    'click': [50.0, 60.0],   # Respawn button is roughly center-bottom
+                    'click': [50.0, 50.0],   # Respawn button is center of death screen (~50% y); 60% was hitting "Title Screen"
                     'button': 'left',
                     'gamepad': {'lx': 0, 'ly': 0, 'rx': 0, 'ry': 0, 'lt': 0, 'rt': 0, 'buttons': 0},
                     'source': 'respawn',

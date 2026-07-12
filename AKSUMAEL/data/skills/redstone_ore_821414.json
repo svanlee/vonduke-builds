@@ -1,0 +1,84 @@
+{
+  "name": "redstone_ore_821414",
+  "trigger_objects": [
+    "redstone_ore"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.475,
+  "uses": 1,
+  "created": 1783868410.6096227,
+  "last_used": 1783869853.373141
+}

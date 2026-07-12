@@ -1,0 +1,78 @@
+{
+  "name": "diamond_ore_lapis_ore_redsto_e9c220",
+  "trigger_objects": [
+    "redstone_ore",
+    "diamond_ore",
+    "lapis_ore"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": null,
+        "gamepad": null,
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.415,
+  "uses": 1,
+  "created": 1783869500.7876704,
+  "last_used": 1783869759.133132
+}

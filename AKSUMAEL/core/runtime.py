@@ -121,7 +121,7 @@ def run():
     SAME_SKILL_LIMIT = 3
     skill_cooldown_name       = None   # skill name currently suppressed
     skill_cooldown_until_tick = 0      # tick at which suppression lifts
-    SKILL_COOLDOWN_TICKS      = 20     # how long a spammed skill stays suppressed
+    SKILL_COOLDOWN_TICKS      = 30     # how long a spammed skill stays suppressed
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
     # Anti-stuck: count consecutive low-reward ticks
@@ -435,6 +435,16 @@ def run():
                                 history += ('\nIMPORTANT: goal is to craft a pickaxe. '
                                             'No crafting table in view. Explore (W/turn) '
                                             'to find one. Spawn is near X=-6 Z=-3.')
+                        elif _g == 'explore':
+                            _px, _pz = world_mem.pos_x, world_mem.pos_z
+                            if _px is not None and _pz is not None:
+                                _dist_from_spawn = ((_px - (-6)) ** 2 + (_pz - (-3)) ** 2) ** 0.5
+                                if _dist_from_spawn > 50:
+                                    history += (f'\nYou are far from your base at X=-6 Z=-3. '
+                                                f'Navigate back using w/a/d and look.')
+                            if 50 < _low_reward_streak < 150:
+                                history += ('\nYou seem stuck. Try turning sharply '
+                                            '(look dx=60) then sprint (ctrl+w).')
                         # Strategic tick: inject full phase mechanics + discoveries
                         # every 100 ticks or when Claude is uncertain
                         _is_strategic = (
