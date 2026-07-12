@@ -93,6 +93,7 @@ def run():
     from behaviors.hunger import HungerBehavior
     from behaviors.crafting import CraftingBehavior
     from behaviors.scan import EnvironmentScanner
+    from behaviors.launch_game import GameLauncher
     from core.fsm import GameFSM, State
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
@@ -101,6 +102,7 @@ def run():
     crafting_behavior = CraftingBehavior(executor)
     goal_interp = GoalInterpreter(goals, crafting_behavior)
     scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
+    launcher    = GameLauncher(executor, game='minecraft')
     fsm = GameFSM()
 
     # Start background threads
@@ -157,6 +159,14 @@ def run():
                     for d in _new:
                         print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
                 objects = merge_with_yolo(objects, _color_dets)
+
+            # ── Game launcher — runs before anything else ──────
+            # If no HUD detected, AKSUMAEL isn't in-game yet.
+            # Execute the launch sequence, then skip this tick.
+            if launcher.should_trigger(objects, tick):
+                print(f'[LAUNCH] HUD not detected at tick {tick} — triggering launch sequence')
+                launcher.run(tick)
+                continue
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
