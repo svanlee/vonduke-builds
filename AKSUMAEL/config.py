@@ -7,7 +7,7 @@
 # "gemini" = free tier, ~1500 req/day
 # "claude" = paid, one-line swap
 import os
-VISION_PROVIDER = "claude"
+VISION_PROVIDER = "gemini"
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
