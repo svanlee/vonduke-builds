@@ -402,7 +402,7 @@ if __name__ == '__main__':
     print('Labeling UI self-test (needs a display)')
     ui = LabelingUI(FakeYolo(), FakeRouter(), skills=FakeSkills())
     if not ui.enabled:
-        print('No display — UI runs on the Pi monitor.')
+        print('No display — UI runs on the Victus laptop screen.')
     else:
         frame = np.full((480, 720, 3), 40, dtype='uint8')
         objects = [

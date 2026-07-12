@@ -20,7 +20,7 @@ class ScreenCapture:
         if not self.cap.isOpened():
             print(f'[CAPTURE] ⚠ could not open /dev/video{idx}')
             print('  Checklist:')
-            print('  • Capture card USB plugged into the Pi?')
+            print('  • Capture card USB plugged into the laptop?')
             print('  • HDMI source connected and powered on?')
             print('  • Run: v4l2-ctl --list-devices')
             print('  • Permissions: sudo usermod -aG video $USER (re-login)')

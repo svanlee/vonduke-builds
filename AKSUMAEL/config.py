@@ -3,6 +3,7 @@
 # ╚══════════════════════════════════════════════════════╝
 
 # ── Vision Provider ───────────────────────────────────────────
+# Platform: HP Victus (RTX 4050 Laptop GPU) + Samsung T7 SSD, robocar-hub @ 192.168.1.156
 # "gemini" = free tier, ~1500 req/day
 # "claude" = paid, one-line swap
 import os
@@ -89,7 +90,7 @@ UART_BAUD = 115200
 PLATFORM_TARGET = "pc"
 
 # ── Controller Input ──────────────────────────────────────────
-ENABLE_EVDEV   = True    # real controller plugged into Pi
+ENABLE_EVDEV   = True    # real controller plugged into the laptop
 ENABLE_I2C_JOY = True    # mini I2C joystick fallback (0x5A)
 I2C_JOY_ADDR   = 0x5A
 I2C_BUS        = 1

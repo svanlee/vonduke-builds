@@ -100,9 +100,8 @@ def main():
         print(f'Could not open {config.UART_PORT}')
         print('Checklist:')
         print('  • KB2040 flashed with boot.py + code.py + adafruit_hid lib?')
-        print('  • Pi GPIO14(TX) → KB2040 D0?  GPIO15(RX) ← D1?  GND shared?')
-        print('  • raspi-config: serial shell OFF, UART hardware ON?')
-        print('  • ls -la /dev/serial0 → should point to ttyAMA0 (not ttyS0)')
+        print('  • FTDI TX → KB2040 D0?  FTDI RX ← D1?  GND shared?')
+        print('  • ls -la /dev/ttyUSB0')
         return
 
     cmd = sys.argv[1]

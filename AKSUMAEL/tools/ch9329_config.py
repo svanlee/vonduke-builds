@@ -34,11 +34,10 @@ def cmd_info(ser):
     info = ser.get_info()
     if not info:
         print('No response from chip. Checklist:')
-        print('  • TX/RX crossed?  Pi GPIO14→CH9329 RX, GPIO15←CH9329 TX')
-        print('  • GND shared between Pi and CH9329?')
-        print('  • CH9329 VCC on 5V (Pi pin 4), not 3.3V?')
-        print('  • UART freed?  raspi-config → Serial → login shell OFF')
-        print('  • serial0 → ttyAMA0 not ttyS0?  (ls -la /dev/serial0)')
+        print('  • TX/RX crossed?  FTDI TX→CH9329 RX, FTDI RX←CH9329 TX')
+        print('  • GND shared between the laptop and CH9329?')
+        print('  • CH9329 VCC on 5V, not 3.3V?')
+        print('  • Correct port?  (ls -la /dev/ttyUSB0)')
         return False
     print(f'  Firmware:   v{info["version"]}')
     print(f'  USB status: {"enumerated ✓" if info["usb_ready"] else "NOT enumerated ✗"}')

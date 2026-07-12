@@ -43,7 +43,7 @@ class ControllerState:
         self.keys = []
 
 
-# ── Evdev reader (real controller plugged into Pi) ────────────
+# ── Evdev reader (real controller plugged into the laptop) ─────
 class EvdevController:
     """
     Reads a real USB/Bluetooth controller via Linux evdev.
@@ -273,7 +273,7 @@ class ControllerRouter:
     Manages input priority chain and blend mode.
 
     Priority (highest → lowest):
-        1. evdev   — real controller plugged into Pi
+        1. evdev   — real controller plugged into the laptop
         2. i2c_joy — mini I2C joystick (if no real controller)
         3. aksumael  — pure AI decisions (always present)
 

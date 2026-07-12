@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — KB2040 UART Packer                 ║
-# ║  Pi-side packet builder for the KB2040 HID firmware  ║
+# ║  Host-side packet builder for the KB2040 HID firmware ║
 # ╚══════════════════════════════════════════════════════╝
 #
 # Packet format (matches rp2040/code.py parser):

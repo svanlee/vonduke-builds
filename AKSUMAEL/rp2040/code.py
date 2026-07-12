@@ -1,6 +1,7 @@
 # AKSUMAEL KB2040 — code.py
-# Receives AKSUMAEL UART packets from the Pi and sends them as
-# USB HID reports to the host PC or console.
+# Receives AKSUMAEL UART packets from the host laptop (via FTDI
+# USB-TTL adapter) and sends them as USB HID reports to the host
+# PC or console.
 #
 # Packet format:
 #   [0xAA] [0xBB] [TYPE] [LEN] [DATA...] [SUM]
@@ -29,10 +30,10 @@ kbd      = Keyboard(usb_hid.devices)
 mouse    = Mouse(usb_hid.devices)
 gamepad  = Gamepad(usb_hid.devices)
 
-# ── UART (Pi → KB2040) ────────────────────────────────────────
+# ── UART (FTDI USB-TTL adapter → KB2040) ────────────────────────
 # KB2040 UART0: TX=D0 (GP0), RX=D1 (GP1)
-# Wire: Pi GPIO14 (TX) → KB2040 D0 (RX)
-#       Pi GPIO15 (RX) ← KB2040 D1 (TX)
+# Wire: FTDI TX → KB2040 D0 (RX)
+#       FTDI RX ← KB2040 D1 (TX)
 uart = busio.UART(board.D0, board.D1, baudrate=115200, timeout=0)
 
 # ── Packet parser state ───────────────────────────────────────
@@ -42,7 +43,7 @@ LEN_MAP   = {0x01: 8, 0x02: 4, 0x03: 5, 0x04: 8, 0xFF: 0}
 buf       = bytearray()
 HEADER    = b'\xAA\xBB'
 
-# Mouse absolute range the Pi sends (0-32767)
+# Mouse absolute range the host laptop sends (0-32767)
 ABS_MAX   = 32767
 
 
@@ -103,7 +104,7 @@ def handle_mouse_rel(data):
 
 def handle_mouse_abs(data):
     # Absolute mouse: move to percentage of screen
-    # Pi sends x/y as 0-32767 (16-bit, big-endian)
+    # Host laptop sends x/y as 0-32767 (16-bit, big-endian)
     buttons = data[0]
     x = (data[1] << 8) | data[2]
     y = (data[3] << 8) | data[4]
