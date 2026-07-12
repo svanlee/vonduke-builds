@@ -2,6 +2,12 @@
   "auto_labeled_classes": {
     "duck": 44,
     "village_house": 45,
-    "birch_log": 46
+    "birch_log": 46,
+    "oak_planks": 47,
+    "cobblestone": 48,
+    "oak_door": 49,
+    "stone": 50,
+    "gravel": 51,
+    "sand": 52
   }
 }

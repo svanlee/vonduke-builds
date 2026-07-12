@@ -33,7 +33,8 @@
     "armor_bar_emerald_ore_health_4aebc3": 0.6222367637319467
   },
   "diamond_ore,emerald_ore,gold_ore": {
-    "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962
+    "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962,
+    "gold_ore_xp_bar_c9dc94": 0.44387126691336315
   },
   "armor_bar,coal_ore,emerald_ore": {
     "armor_bar_diamond_ore_emeral_72d3e5": 0.9310473553134462,
@@ -100,20 +101,99 @@
     "mine_redstone_ore": 0.27474275385580726
   },
   "coal_ore,hotbar,hunger_bar": {
-    "mine_coal_ore": 0.20453255463116532
+    "mine_coal_ore": 0.23659274128024202,
+    "coal_ore_hotbar_e3f079": 0.24610692075654025,
+    "coal_ore_hotbar_xp_bar_ff1514": 1.1591320437903567,
+    "coal_ore_hotbar_xp_bar_3a4c99": 0.47654605943040784
   },
   "gold_ore,hotbar,hunger_bar": {
-    "armor_bar_gold_ore_health_ba_c7d2a1": 0.13232334419936465
+    "armor_bar_gold_ore_health_ba_c7d2a1": 0.13232334419936465,
+    "gold_ore_hotbar_xp_bar_6ad78f": 0.3801787247519447
   },
-  "gold_ore,hotbar": {},
-  "gold_ore,hotbar,xp_bar": {},
+  "gold_ore,hotbar": {
+    "gold_ore_xp_bar_b72dac": 0.10733249408037634,
+    "gold_ore_hotbar_xp_bar_6ad78f": 0.4022292147269813
+  },
+  "gold_ore,hotbar,xp_bar": {
+    "gold_ore_hotbar_xp_bar_6ad78f": 0.6293403073895865,
+    "gold_ore_xp_bar_b72dac": 1.6906751314913817,
+    "gold_ore_xp_bar_c9dc94": 1.080483221913994
+  },
   "coal_ore,gold_ore,hotbar": {},
   "coal_ore,hotbar": {
-    "mine_coal_ore": 0.24913025951562093,
-    "coal_ore_hotbar_hunger_bar_d66b1a": 0.6829106296457217
+    "mine_coal_ore": 0.37404105801744525,
+    "coal_ore_hotbar_hunger_bar_d66b1a": 0.6829106296457217,
+    "coal_ore_hotbar_e3f079": 0.948993026569015
   },
   "hotbar": {},
   "coal_ore,hotbar,xp_bar": {
-    "mine_coal_ore": 0.2940589972895689
-  }
+    "mine_coal_ore": 0.25733487099656255,
+    "coal_ore_hotbar_e3f079": 0.8531752897881584,
+    "coal_ore_hotbar_xp_bar_3a4c99": 0.2836762074898034
+  },
+  "emerald_ore,gold_ore,hotbar": {
+    "gold_ore_xp_bar_b72dac": 0.6810049862491729,
+    "gold_ore_xp_bar_c9dc94": 0.4744732667407886,
+    "mine_emerald_ore": 1.1411962222646768
+  },
+  "gold_ore": {
+    "gold_ore_hotbar_xp_bar_6ad78f": 0.5072545026279913,
+    "gold_ore_xp_bar_b72dac": 0.6419126710467605
+  },
+  "gold_ore,lapis_ore,xp_bar": {},
+  "gold_ore,xp_bar": {
+    "gold_ore_xp_bar_b72dac": 1.7162360571634188
+  },
+  "gold_ore,hotbar,lapis_ore": {
+    "gold_ore_xp_bar_c9dc94": 0.5935647752874225,
+    "emerald_ore_gold_ore_hotbar__56d4a0": 0.39577182441125963
+  },
+  "empty": {},
+  "emerald_ore,gold_ore": {
+    "mine_emerald_ore": 1.2831242538680163
+  },
+  "gold_ore,lapis_ore": {},
+  "diamond_ore,gold_ore,hotbar": {
+    "mine_diamond_ore": 1.1804539446938642
+  },
+  "emerald_ore,gold_ore,xp_bar": {
+    "emerald_ore_gold_ore_hotbar__56d4a0": 1.0653734979911538
+  },
+  "emerald_ore,gold_ore,lapis_ore": {},
+  "emerald_ore,hotbar,xp_bar": {},
+  "gold_ore,hotbar,redstone_ore": {},
+  "emerald_ore": {},
+  "health_bar": {},
+  "emerald_ore,hotbar": {
+    "emerald_ore_hotbar_lapis_ore_ffe200": 0.09995745452944199
+  },
+  "emerald_ore,health_bar,hotbar": {},
+  "emerald_ore,gold_ore,health_bar": {},
+  "gold_ore,health_bar": {},
+  "hotbar,lapis_ore": {
+    "emerald_ore_hotbar_lapis_ore_27958f": 1.2539786436773515,
+    "emerald_ore_hotbar_lapis_ore_6cdc98": 0.9599748831501731,
+    "emerald_ore_hotbar_lapis_ore_028679": 0.6787480523970059
+  },
+  "health_bar,hotbar": {},
+  "emerald_ore,hotbar,lapis_ore": {
+    "emerald_ore_gold_ore_hotbar__56d4a0": 1.1644150757643243,
+    "emerald_ore_hotbar_lapis_ore_f59c24": 0.4488146631771449,
+    "mine_emerald_ore": 1.1531573855695934
+  },
+  "armor_bar,emerald_ore": {},
+  "armor_bar": {},
+  "diamond_ore,emerald_ore": {
+    "mine_emerald_ore": 0.1555689512320652
+  },
+  "coal_ore,emerald_ore,hotbar": {
+    "mine_emerald_ore": 0.4994502691028758
+  },
+  "hotbar,lapis_ore,xp_bar": {},
+  "coal_ore,hotbar,lapis_ore": {},
+  "hotbar,hunger_bar,lapis_ore": {},
+  "crosshair,hotbar,hunger_bar": {},
+  "coal_ore,crosshair,hotbar": {},
+  "diamond_ore,emerald_ore,hotbar": {},
+  "health_bar,hotbar,xp_bar": {}
 }

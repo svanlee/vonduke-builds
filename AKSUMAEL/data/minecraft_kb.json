@@ -115,6 +115,56 @@
       "text": "surrounded by dirt walls, likely underground tunnel, no wood source visible",
       "tick": 150,
       "ts": "2026-07-11 21:36:24"
+    },
+    {
+      "text": "surrounded by stone walls suggesting a cave passage suitable for shelter",
+      "tick": 345,
+      "ts": "2026-07-12 07:53:19"
+    },
+    {
+      "text": "no trees visible in immediate grassy area at night, may need to explore further",
+      "tick": 360,
+      "ts": "2026-07-12 07:53:48"
+    },
+    {
+      "text": "Surrounded by thick leaves/bushes at night, limiting visibility for shelter search",
+      "tick": 15,
+      "ts": "2026-07-12 08:13:38"
+    },
+    {
+      "text": "Birch trees present alongside oak trees in this forest biome",
+      "tick": 780,
+      "ts": "2026-07-12 08:26:43"
+    },
+    {
+      "text": "birch tree cluster near water's edge at night, no hostile mobs visible yet",
+      "tick": 885,
+      "ts": "2026-07-12 08:27:59"
+    },
+    {
+      "text": "No visible shelter structures nearby at night, risk of mob spawn increasing.",
+      "tick": 1065,
+      "ts": "2026-07-12 08:30:53"
+    },
+    {
+      "text": "pickaxe near breaking, need to craft stone pickaxe soon",
+      "tick": 1110,
+      "ts": "2026-07-12 08:31:35"
+    },
+    {
+      "text": "small dirt overhang could serve as emergency night shelter",
+      "tick": 1215,
+      "ts": "2026-07-12 08:33:08"
+    },
+    {
+      "text": "raining at night, visibility low, trees nearby for wood",
+      "tick": 15,
+      "ts": "2026-07-12 08:33:55"
+    },
+    {
+      "text": "surrounded by dense dark trees at night, need to find safe spot or continue punching wood",
+      "tick": 240,
+      "ts": "2026-07-12 08:37:35"
     }
   ]
 }
