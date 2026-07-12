@@ -48,6 +48,9 @@ XYZ_RE    = re.compile(
     r"[XxNn][Yy][Zz]\s*[:\;\.]\s*([-\d.]+)\s*/\s*([-\d.]+)\s*/\s*([-\d.]+)", re.IGNORECASE)
 # Block: 45 69 -11
 BLOCK_RE  = re.compile(r"Block:\s*([-\d]+)\s+([-\d]+)\s+([-\d]+)", re.IGNORECASE)
+# Triplet fallback: any "num / num / num" — XYZ line is the only one with this
+# format, so this catches it even when the "XYZ:" prefix is garbled by OCR.
+TRIPLET_RE = re.compile(r"([-]?\d+[\d.]*)\s*/\s*([-]?\d+[\d.]*)\s*/\s*([-]?\d+[\d.]*)")
 # Biome: minecraft:plains  or  Biome: plains
 # OCR often mangles 'Biome:' — tolerate i→l/1, :→;/.
 BIOME_RE  = re.compile(r"[Bb][il1oO0]me\s*[:\;\.]\s*([\w:]+)", re.IGNORECASE)
@@ -142,6 +145,20 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
                     result["x"] = float(bx)
                 if result["z"] is None:
                     result["z"] = float(bz)
+            except ValueError:
+                pass
+
+    # Triplet fallback: if still no XYZ, look for any "num / num / num" pattern
+    # The XYZ line is the only F3 line with this structure.
+    if result["x"] is None:
+        m = TRIPLET_RE.search(text)
+        if m:
+            try:
+                result["f3_active"] = True
+                result["x"] = float(m.group(1))
+                result["y"] = float(m.group(2))
+                result["z"] = float(m.group(3))
+                result["y_level"] = int(result["y"])
             except ValueError:
                 pass
 
