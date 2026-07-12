@@ -6,8 +6,8 @@
 # ╚══════════════════════════════════════════════════════╝
 #
 # Usage: python3 tools/joystick_harness.py
-# Hardware: I2C joystick on Pi GPIO, KB2040 on /dev/serial0,
-#           KB2040 USB-C plugged into the target PC.
+# Hardware: I2C joystick via USB I2C adapter, KB2040 via FTDI USB-TTL
+#           adapter, KB2040 USB-C plugged into the target PC.
 #
 # Open Notepad on the PC first — keypresses land wherever focus is.
 
@@ -48,7 +48,7 @@ def run_harness():
         return
     except Exception as e:
         print(f'[I2C] joystick not found: {e}')
-        print('      Wiring: SDA→Pin3, SCL→Pin5, VCC→Pin1 (3.3V), GND→Pin9')
+        print('      Wiring: SDA/SCL/VCC(3.3V)/GND to the USB I2C adapter')
         print('      Check:  i2cdetect -y 1   (should show 5a)')
         return
 
@@ -56,9 +56,8 @@ def run_harness():
     ser = KB2040Serial()
     if not ser.is_connected:
         print(f'[UART] could not open {config.UART_PORT}')
-        print('       Wiring: Pi GPIO14(TX)→KB2040 D0, GPIO15(RX)←D1, GND shared')
-        print('       Check:  raspi-config Serial (shell OFF, UART ON)')
-        print('       Check:  ls -la /dev/serial0  (should → ttyAMA0)')
+        print('       Wiring: FTDI TX→KB2040 D0, FTDI RX←D1, GND shared')
+        print('       Check:  ls -la /dev/ttyUSB0')
         return
 
     print()

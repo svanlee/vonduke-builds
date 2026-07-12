@@ -133,7 +133,7 @@ def run_inference():
 
     labeled_count   = 0
     empty_count     = 0
-    BATCH           = 16   # process in batches to avoid OOM on Pi
+    BATCH           = 16   # process in batches to avoid OOM
 
     img_paths = [str(f) for f in unlabeled]
 

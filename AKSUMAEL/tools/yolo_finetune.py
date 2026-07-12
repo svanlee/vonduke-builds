@@ -243,8 +243,7 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     """
     Fine-tune aksumael_mc.pt (or bootstrap from yolov8n.pt if it doesn't
     exist yet) on the labeled Minecraft dataset in data/yolo_dataset.
-    Pi 4 is slow — use epochs=10 for a quick first run.
-    For serious training, offload to a laptop/desktop with GPU.
+    Trains on the RTX 4050 GPU when available; falls back to CPU otherwise.
     """
     try:
         from ultralytics import YOLO
@@ -273,7 +272,6 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     base_weights = MODEL_OUT if os.path.exists(MODEL_OUT) else 'yolov8n.pt'
     print(f'[TRAIN] starting fine-tune from {base_weights}: '
           f'epochs={epochs} imgsz={imgsz} batch={batch}')
-    print('        This will take a while on Pi 4. Run on a laptop for speed.')
     print()
 
     import torch
