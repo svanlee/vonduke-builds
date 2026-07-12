@@ -1,0 +1,60 @@
+# AKSUMAEL environment config — driving (generic sim: BeamNG, Assetto Corsa, ...)
+
+env_name: driving
+adapter_class: environments.driving_env.DrivingEnv
+
+yolo_weights: data/models/aksumael_driving.pt   # not trained yet — falls back to config.YOLO_MODEL
+
+object_classes:
+  - road_center
+  - road_edge_left
+  - road_edge_right
+  - vehicle_ahead
+  - vehicle_oncoming
+  - traffic_light_red
+  - traffic_light_green
+  - traffic_light_yellow
+  - stop_sign
+  - speed_limit_sign
+  - barrier
+  - pedestrian
+  - finish_line
+  - checkpoint
+
+action_space:
+  - steer_left
+  - steer_right
+  - accelerate
+  - brake
+  - handbrake
+  - shift_up
+  - shift_down
+
+# WASD by default — same HID path as Minecraft/F76. Override per-title if
+# it expects arrow keys instead (e.g. left/right/up/down).
+key_map:
+  steer_left: a
+  steer_right: d
+  accelerate: w
+  brake: s
+  handbrake: space
+  shift_up: e
+  shift_down: q
+
+reward_weights:
+  accelerate_bonus: 0.15
+  lane_centering: 0.3
+  off_road_penalty: -0.25
+  collision_risk_penalty: -0.1
+  ran_red_light_penalty: -0.1
+  correct_brake_bonus: 0.1
+  checkpoint_bonus: 0.2
+
+stuck_detection:
+  low_reward_thresh: 0.05
+  stuck_ticks: 150
+
+goals:
+  - stay_on_road
+  - reach_checkpoint
+  - minimize_lap_time
