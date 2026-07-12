@@ -447,10 +447,16 @@ def run():
             # ── Hunger ───────────────────────────────────────────
             hunger_behavior.update(objects, world_mem=world_mem)
 
-            # ── Crafting (pickaxe nearing durability limit) ─────
+            # ── Crafting ─────────────────────────────────────────
+            # 3x3: trigger when pickaxe nearing end of life AND table visible
             if (world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
                     and not replayer.is_active()
                     and crafting_behavior.should_trigger(objects)):
+                crafting_behavior.run(objects=objects)
+            # 2x2: trigger proactively (no table needed) — e.g. turn logs→planks
+            # or planks→sticks so we're ready when a table appears.
+            elif (not replayer.is_active()
+                    and crafting_behavior.should_trigger_2x2()):
                 crafting_behavior.run(objects=objects)
 
             # ── Curiosity survey ────────────────────────────────

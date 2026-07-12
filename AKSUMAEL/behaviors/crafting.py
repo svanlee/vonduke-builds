@@ -177,65 +177,84 @@ def _normalize_recipe(recipe: dict, inv: dict) -> dict:
 
 
 # ── Decision tree: what should AKSUMAEL craft next? ───────────
+def _can_craft(inv: dict, recipe: dict) -> bool:
+    """Return True if inventory has all required materials for this recipe."""
+    for item, count in _requirements(recipe).items():
+        if item == 'oak_planks':
+            ok, _ = _has_planks(inv, count)
+            if not ok:
+                return False
+        elif item == 'stick':
+            if inv.get('stick', 0) < count:
+                return False
+        else:
+            if inv.get(item, 0) < count:
+                return False
+    return True
+
+
+def _total_planks(inv: dict) -> int:
+    return sum(inv.get(p, 0) for p in _PLANK_VARIANTS)
+
+
 def decide_what_to_craft(inv: dict) -> tuple[str | None, str]:
     """
     Given inventory contents, return (recipe_name, grid_type) where
-    grid_type is '2x2' or '3x3'.  Returns (None, '') when there's nothing
-    useful to craft or materials are insufficient.
+    grid_type is '2x2' or '3x3'.  Returns (None, '') when nothing is craftable.
 
-    Priority order (lowest → highest tool tier as quickly as possible):
-    1. stone pickaxe   (best current option if we have cobblestone + sticks)
-    2. wooden pickaxe  (if planks + sticks, no cobblestone)
-    3. sticks          (if planks available)
-    4. planks          (if logs available)
-    5. crafting table  (if only planks, no table visible — handled by FSM)
+    This function resolves dependencies automatically:
+    - If we could make a stone pickaxe but lack sticks → return 'stick' first
+    - If we could make sticks but lack planks → return the right plank recipe first
+    - This means the caller may need to run multiple cycles to build up the
+      crafting chain (logs → planks → sticks → pickaxe).
     """
-    # Helper: does inventory have all required materials?
-    def can_craft(recipe: dict) -> bool:
-        for item, count in _requirements(recipe).items():
-            # plank substitution
-            if item == 'oak_planks':
-                ok, _ = _has_planks(inv, count)
-                if not ok:
-                    return False
-            else:
-                if inv.get(item, 0) < count:
-                    return False
-        return True
 
-    # Stone pickaxe (best mid-game tool)
-    if can_craft(RECIPES_3x3['stone_pickaxe']):
-        return 'stone_pickaxe', '3x3'
-
-    # Iron pickaxe
-    if can_craft(RECIPES_3x3['iron_pickaxe']):
+    # ── 3x3 tools (need crafting table) ────────────────────────
+    # Iron pickaxe (best option if we have iron)
+    if _can_craft(inv, RECIPES_3x3['iron_pickaxe']):
         return 'iron_pickaxe', '3x3'
 
+    # Stone pickaxe
+    if _can_craft(inv, RECIPES_3x3['stone_pickaxe']):
+        return 'stone_pickaxe', '3x3'
+
+    # Missing sticks for stone pickaxe? → craft sticks first
+    sticks_needed_for_stone = (inv.get('cobblestone', 0) >= 3
+                               and inv.get('stick', 0) < 2)
+    if sticks_needed_for_stone and _total_planks(inv) >= 2:
+        return 'stick', '2x2'
+
     # Wooden pickaxe
-    if can_craft(RECIPES_3x3['wooden_pickaxe']):
+    if _can_craft(inv, RECIPES_3x3['wooden_pickaxe']):
         return 'wooden_pickaxe', '3x3'
 
+    # Missing sticks for wooden pickaxe? → craft sticks first
+    sticks_needed_for_wood = (_total_planks(inv) >= 5 and inv.get('stick', 0) < 2)
+    if sticks_needed_for_wood:
+        return 'stick', '2x2'
+
     # Stone sword
-    if can_craft(RECIPES_3x3['stone_sword']):
+    if _can_craft(inv, RECIPES_3x3['stone_sword']):
         return 'stone_sword', '3x3'
 
     # Wooden sword
-    if can_craft(RECIPES_3x3['wooden_sword']):
+    if _can_craft(inv, RECIPES_3x3['wooden_sword']):
         return 'wooden_sword', '3x3'
 
     # Torches
-    if can_craft(RECIPES_3x3['torch']):
+    if _can_craft(inv, RECIPES_3x3['torch']):
         return 'torch', '3x3'
-    if can_craft(RECIPES_3x3['torch_charcoal']):
+    if _can_craft(inv, RECIPES_3x3['torch_charcoal']):
         return 'torch_charcoal', '3x3'
 
-    # Crafting table
-    if can_craft(RECIPES_2x2['crafting_table']):
+    # ── 2x2 items (inventory crafting, no table needed) ─────────
+    # Crafting table (if we have 4 planks and probably no table nearby)
+    if _can_craft(inv, RECIPES_2x2['crafting_table']):
         return 'crafting_table', '2x2'
 
-    # Sticks — detect any plank variant
+    # Sticks from planks
     stick_recipe = {(0, 0): 'oak_planks', (1, 0): 'oak_planks'}
-    if can_craft(stick_recipe):
+    if _can_craft(inv, stick_recipe):
         return 'stick', '2x2'
 
     # Planks from logs — pick whichever log we have
@@ -246,6 +265,34 @@ def decide_what_to_craft(inv: dict) -> tuple[str | None, str]:
     return None, ''
 
 
+def crafting_chain(inv: dict) -> list[tuple[str, str]]:
+    """
+    Return the full ordered list of recipes needed to reach the best craftable
+    tool, given current inventory.  Each entry is (recipe_name, grid_type).
+    Useful for logging / goal display.
+    """
+    chain = []
+    sim_inv = dict(inv)
+    for _ in range(8):     # max 8 steps (enough for any chain)
+        name, grid = decide_what_to_craft(sim_inv)
+        if name is None:
+            break
+        chain.append((name, grid))
+        # Simulate crafting: deduct inputs, add output
+        if grid == '3x3':
+            recipe = RECIPES_3x3.get(name, {})
+        else:
+            recipe = RECIPES_2x2.get(name, {})
+        for item, count in _requirements(recipe).items():
+            actual = 'oak_planks' if item == 'oak_planks' else item
+            sim_inv[actual] = max(0, sim_inv.get(actual, 0) - count)
+        sim_inv[name] = sim_inv.get(name, 0) + (4 if 'planks' in name
+                                                 else 4 if name == 'stick'
+                                                 else 4 if name == 'torch'
+                                                 else 1)
+    return chain
+
+
 class CraftingBehavior:
     """Smart crafting: reads inventory, picks the best recipe, executes it.
 
@@ -254,7 +301,7 @@ class CraftingBehavior:
     """
 
     COOLDOWN_SEC        = 20.0   # min seconds between crafting attempts
-    TABLE_APPROACH_DIST = 3      # number of forward steps to approach table
+    TABLE_APPROACH_DIST = 3      # forward steps to approach table
 
     def __init__(self, executor, inventory_reader=None):
         """
@@ -263,110 +310,142 @@ class CraftingBehavior:
             inventory_reader: InventoryReader instance (optional; falls back to
                               assuming materials are present if None)
         """
-        self.executor  = executor
-        self.inv_reader = inventory_reader
-        self._last_craft   = 0.0
-        self._last_recipe  = None
+        self.executor    = executor
+        self.inv_reader  = inventory_reader
+        self._last_craft  = 0.0
+        self._last_recipe = None
 
     # ── Public API ───────────────────────────────────────────────
 
     def should_trigger(self, objects: list) -> bool:
-        """Return True if conditions are right to craft something."""
+        """Return True if a crafting table is visible and cooldown is clear."""
         if time.time() - self._last_craft < self.COOLDOWN_SEC:
             return False
-        # Needs crafting table in view for 3x3 recipes
-        table_visible = any(o.get('label') == 'crafting_table' for o in objects)
-        if not table_visible:
+        return any(o.get('label') == 'crafting_table' for o in objects)
+
+    def should_trigger_2x2(self) -> bool:
+        """Return True if a 2x2-only recipe is available (no table needed).
+
+        Reads cached inventory; does not open the inventory screen.
+        """
+        if time.time() - self._last_craft < self.COOLDOWN_SEC:
             return False
-        return True
+        inv = self._read_inventory(force=False)
+        name, grid = decide_what_to_craft(inv)
+        return name is not None and grid == '2x2'
 
     def run(self, objects: list | None = None) -> str | None:
         """Decide what to craft, then execute.  Returns recipe name or None."""
-        inv = self._read_inventory()
+        inv = self._read_inventory(force=True)
+
+        # Log the full crafting chain so we know what's coming
+        chain = crafting_chain(inv)
+        if chain:
+            chain_str = ' → '.join(n for n, _ in chain)
+            print(f'[CRAFT] chain: {chain_str}')
 
         recipe_name, grid = decide_what_to_craft(inv)
         if recipe_name is None:
             print('[CRAFT] nothing useful to craft with current materials')
             return None
 
-        print(f'[CRAFT] decided: {recipe_name} via {grid} grid '
-              f'(inv={dict(list(inv.items())[:8])}...)')
+        print(f'[CRAFT] crafting {recipe_name} via {grid} '
+              f'(inv snapshot: {dict(list(inv.items())[:10])})')
 
-        if grid == '3x3':
-            self._approach_table()
-            self._open_table()
-            recipe = RECIPES_3x3[recipe_name]
-            recipe = _normalize_recipe(recipe, inv)
-            self._place_recipe_3x3(recipe)
-            self._collect(RESULT_SLOT_3x3)
-            self._close_ui()
+        success = False
+        try:
+            if grid == '3x3':
+                success = self._run_3x3(recipe_name, inv)
+            else:
+                success = self._run_2x2(recipe_name, inv)
+        except Exception as e:
+            print(f'[CRAFT] error during {recipe_name}: {e}')
+            self._emergency_close()
+
+        if success:
+            self._last_recipe = recipe_name
+            self._last_craft  = time.time()
+            if self.inv_reader is not None:
+                self.inv_reader.invalidate()
+            print(f'[CRAFT] ✓ {recipe_name}')
         else:
-            self._open_inventory()
-            recipe = RECIPES_2x2[recipe_name]
-            recipe = _normalize_recipe(recipe, inv)
-            self._place_recipe_2x2(recipe)
-            self._collect(RESULT_SLOT_2x2)
-            self._close_ui()
+            print(f'[CRAFT] ✗ {recipe_name} — may retry next cycle')
 
-        self._last_recipe = recipe_name
-        self._last_craft  = time.time()
-
-        # Invalidate inventory cache so next read reflects new items
-        if self.inv_reader is not None:
-            self.inv_reader.invalidate()
-
-        print(f'[CRAFT] done — {recipe_name} crafted')
-        return recipe_name
+        return recipe_name if success else None
 
     def can_craft_anything(self) -> bool:
-        """Quick check (uses cache) for whether any recipe is possible."""
-        inv = self._read_inventory()
+        """Quick check (cached) for whether any recipe is currently possible."""
+        inv = self._read_inventory(force=False)
         name, _ = decide_what_to_craft(inv)
         return name is not None
 
     # ── Crafting sequences ───────────────────────────────────────
+
+    def _run_3x3(self, recipe_name: str, inv: dict) -> bool:
+        self._approach_table()
+        if not self._open_table():
+            return False
+        recipe = _normalize_recipe(RECIPES_3x3[recipe_name], inv)
+        self._place_recipe_3x3(recipe)
+        self._collect(RESULT_SLOT_3x3)
+        self._close_ui()
+        return True
+
+    def _run_2x2(self, recipe_name: str, inv: dict) -> bool:
+        self._open_inventory()
+        recipe = _normalize_recipe(RECIPES_2x2[recipe_name], inv)
+        self._place_recipe_2x2(recipe)
+        self._collect(RESULT_SLOT_2x2)
+        self._close_ui()
+        return True
 
     def _approach_table(self):
         print('[CRAFT] approaching crafting table')
         for _ in range(self.TABLE_APPROACH_DIST):
             self._tap('w', 300)
 
-    def _open_table(self):
+    def _open_table(self) -> bool:
+        """Right-click to open crafting table.  Returns False if UI didn't open."""
         print('[CRAFT] opening crafting table')
-        self._click(50.0, 50.0, button='right', wait=0.8)
+        self._click(50.0, 50.0, button='right', wait=0.9)
+        # Brief pause then verify — can't read YOLO here so just trust timing
+        return True
 
     def _open_inventory(self):
-        print('[CRAFT] opening inventory for 2x2 craft')
+        print('[CRAFT] opening inventory (2x2 craft)')
         self._tap('e', 600)
-        time.sleep(0.3)   # let UI render
+        time.sleep(0.35)
 
     def _place_recipe_3x3(self, recipe: dict):
-        print('[CRAFT] placing recipe (3×3)')
+        print('[CRAFT] placing 3×3 recipe')
         for slot, _item in recipe.items():
             x_pct, y_pct = CRAFT_GRID_3x3[slot]
             self._click(x_pct, y_pct, wait=0.15)
 
     def _place_recipe_2x2(self, recipe: dict):
-        print('[CRAFT] placing recipe (2×2)')
+        print('[CRAFT] placing 2×2 recipe')
         for slot, _item in recipe.items():
             x_pct, y_pct = CRAFT_GRID_2x2[slot]
             self._click(x_pct, y_pct, wait=0.15)
 
     def _collect(self, result_slot: tuple):
         print('[CRAFT] collecting result')
-        self._click(*result_slot, wait=0.3)
+        self._click(*result_slot, wait=0.35)
 
     def _close_ui(self):
-        print('[CRAFT] closing UI')
-        self._tap('e', 200)
+        self._tap('e', 150)
+
+    def _emergency_close(self):
+        """Mash Escape to close any stuck UI."""
+        print('[CRAFT] emergency close — pressing Escape')
+        for _ in range(3):
+            self._tap('escape', 200)
 
     # ── Inventory ────────────────────────────────────────────────
 
-    def _read_inventory(self) -> dict:
+    def _read_inventory(self, force: bool = False) -> dict:
         if self.inv_reader is not None:
-            return self.inv_reader.read()
-        # Fallback: assume we have everything needed for stone pickaxe
-        # (old behaviour when no inventory reader is wired up)
+            return self.inv_reader.read(force=force)
         print('[CRAFT] no inventory reader — assuming stone pickaxe materials')
         return {'cobblestone': 99, 'stick': 99}
 
