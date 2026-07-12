@@ -117,6 +117,9 @@ def run():
     last_skill_name  = None
     same_skill_count = 0
     SAME_SKILL_LIMIT = 3
+    skill_cooldown_name       = None   # skill name currently suppressed
+    skill_cooldown_until_tick = 0      # tick at which suppression lifts
+    SKILL_COOLDOWN_TICKS      = 20     # how long a spammed skill stays suppressed
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
     f3_countdown     = 50    # ticks until next F3 OCR read (offset from startup)
@@ -255,9 +258,20 @@ def run():
                 else:
                     skill, match = skills.find_best(objects)
 
-                if skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
+                # A skill already serving a cooldown stays suppressed until
+                # skill_cooldown_until_tick, regardless of last_skill_name —
+                # previously the cooldown reset last_skill_name to None on the
+                # very tick it fired, so the skill could (and did) re-fire on
+                # the next tick since the "== last_skill_name" check no longer
+                # matched. That made the cooldown last exactly one tick.
+                if skill and skill.name == skill_cooldown_name and tick < skill_cooldown_until_tick:
+                    skill = None
+                elif skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
                     # Same skill has fired too many times in a row — cool it down
-                    print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, skipping')
+                    print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, '
+                          f'suppressing for {SKILL_COOLDOWN_TICKS} ticks')
+                    skill_cooldown_name       = skill.name
+                    skill_cooldown_until_tick = tick + SKILL_COOLDOWN_TICKS
                     skill = None
                     last_skill_name  = None
                     same_skill_count = 0
