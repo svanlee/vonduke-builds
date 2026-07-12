@@ -204,6 +204,9 @@ class GameFSM:
         self._mine_ticks        = 0
         self._mine_timeout_count = 0   # consecutive timeouts on current target
         self._mine_timeout_label = None  # label being timed out on
+        # Ore blacklist: {label: expire_tick} — suppress re-targeting after give-up
+        self._ore_blacklist      = {}
+        self._total_ticks        = 0   # global tick counter for blacklist expiry
 
         # COLLECT tracking
         self._collect_ticks = 0
@@ -239,7 +242,14 @@ class GameFSM:
             (State, action_dict)
         """
         self._state_ticks += 1
+        self._total_ticks += 1
         fw, fh = _infer_frame_dims(objects)
+
+        # Expire blacklist entries
+        self._ore_blacklist = {
+            lbl: exp for lbl, exp in self._ore_blacklist.items()
+            if exp > self._total_ticks
+        }
 
         # ── Priority 1: hunger ────────────────────────────────────
         if hunger_frac < 0.40:
@@ -251,7 +261,12 @@ class GameFSM:
             return self._goto(State.COMBAT, self._combat_action(mob))
 
         # ── Gather candidate targets ───────────────────────────────
-        ore_obj      = _pick_best_ore(objects)
+        # Filter out blacklisted ore labels before picking
+        non_blacklisted = [
+            o for o in objects
+            if o.get('label', '') not in self._ore_blacklist
+        ]
+        ore_obj      = _pick_best_ore(non_blacklisted)
         tree_obj     = _pick_best(objects, TREE_TARGETS)
         mine_obj     = ore_obj or tree_obj or _pick_best(objects, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
@@ -432,8 +447,11 @@ class GameFSM:
             self._mine_ticks = 0
 
             if self._mine_timeout_count >= 3:
-                # Stuck 3+ times on same target — give up and explore
-                print(f'[FSM] MINE: {self._mine_timeout_count} timeouts on {curr_label}, giving up → EXPLORE')
+                # Stuck 3+ times on same target — blacklist + explore
+                BLACKLIST_TICKS = 60
+                self._ore_blacklist[curr_label] = self._total_ticks + BLACKLIST_TICKS
+                print(f'[FSM] MINE: {self._mine_timeout_count} timeouts on {curr_label}, '
+                      f'blacklisting for {BLACKLIST_TICKS} ticks → EXPLORE')
                 self._mine_timeout_count = 0
                 self._mine_timeout_label = None
                 return self._goto(State.EXPLORE, _idle())
