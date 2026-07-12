@@ -24,9 +24,16 @@ DANGER_LABELS = frozenset({
     'witch', 'pillager', 'vindicator',
 })
 
-# Five horizontal sweep positions (multiples of LOOK_SCAN_STEP)
-# -2 = hard left, -1 = left, 0 = center, 1 = right, 2 = hard right
-SWEEP_POSITIONS = [-2, -1, 0, 1, 2]
+# Sweep positions are multiples of LOOK_SCAN_STEP (px), relative to whatever
+# direction is currently "center" (0) when the sweep starts.
+
+# Forward sweep: ~270° centered on the current heading. Used while moving
+# forward — there's no need to check behind if we're walking away from it.
+SWEEP_POSITIONS_FORWARD = [-8, -6, -4, -2, 0, 2, 4, 6, 8]
+
+# Full sweep: ~360° all the way around. Used when standing still or stuck,
+# since a threat could be approaching from any direction.
+SWEEP_POSITIONS_FULL = [-11, -8, -5, -2, 0, 2, 5, 8, 11]
 
 
 class EnvironmentScanner:
@@ -46,16 +53,24 @@ class EnvironmentScanner:
     # Stage 1: Sweep
     # ──────────────────────────────────────────────────────────
 
-    def sweep(self) -> list:
+    def sweep(self, full_sweep: bool = False) -> list:
         """
-        Rotate through SWEEP_POSITIONS in large steps.
+        Rotate through sweep positions in large steps.
         Collect YOLO detections at each position.
+
+        full_sweep=False (default): ~270° arc centered on the current
+        heading — used while moving forward, since what's behind is
+        already receding.
+        full_sweep=True: ~360° all the way around — used when standing
+        still or stuck, since a threat could be approaching from any side.
+
         Returns list of raw threat hits: [{bearing, label, box, conf, frame}]
         """
+        positions = SWEEP_POSITIONS_FULL if full_sweep else SWEEP_POSITIONS_FORWARD
         threats = []
         current_bearing = 0  # track cumulative displacement
 
-        for bearing_mult in SWEEP_POSITIONS:
+        for bearing_mult in positions:
             # Move from current position to target bearing
             target_dx = bearing_mult * config.LOOK_SCAN_STEP
             delta_dx  = target_dx - current_bearing
@@ -219,16 +234,18 @@ class EnvironmentScanner:
     # Full pipeline
     # ──────────────────────────────────────────────────────────
 
-    def run(self, world_mem, target_bearing: int = 0) -> dict:
+    def run(self, world_mem, target_bearing: int = 0, full_sweep: bool = False) -> dict:
         """
         Run all 6 stages and store results in world_memory.
+        full_sweep: True for a ~360° sweep (standing still / stuck),
+        False for a ~270° forward-centered sweep (moving forward).
         Returns {'threats': [...], 'path': {...}}
         """
-        print('[SCAN] === environment scan starting ===')
+        print(f'[SCAN] === environment scan starting ({"360" if full_sweep else "270"}) ===')
         t0 = time.time()
 
         # 1. Sweep
-        raw_threats = self.sweep()
+        raw_threats = self.sweep(full_sweep=full_sweep)
 
         # 2-4. Zoom + Picture + Identify (up to SCAN_MAX_THREATS)
         to_identify = raw_threats[:config.SCAN_MAX_THREATS]
