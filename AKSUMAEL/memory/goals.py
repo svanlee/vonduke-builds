@@ -107,11 +107,23 @@ class GoalStack:
         """Return True if goal is the active goal or anywhere in the stack."""
         return self.current == goal or goal in self.stack
 
-    def suggest_craft_goal(self, cached_inv: dict):
-        """Auto-push craft_pickaxe if inventory has the materials and no
-        pickaxe is already present.  Called from the runtime loop after
-        a successful inventory read (uses the {item:count} flat dict).
-        Hard-limits to one craft_pickaxe anywhere in the goal state."""
+    def suggest_craft_goal(self, cached_inv: dict, chest_inv: dict | None = None):
+        """Auto-push craft_pickaxe if inventory (or the base chest) has the
+        materials and no pickaxe is already present.  Called from the runtime
+        loop after a successful inventory read (uses the {item:count} flat
+        dict).  chest_inv, if given, is a ChestManager-style
+        {item: {count, slot}} dict — its counts are added to cached_inv's
+        when checking totals.  Hard-limits to one craft_pickaxe anywhere in
+        the goal state."""
+        chest_inv = chest_inv or {}
+
+        def _chest_count(item: str) -> int:
+            v = chest_inv.get(item, 0)
+            return v.get('count', 0) if isinstance(v, dict) else v
+
+        def _total(item: str) -> int:
+            return cached_inv.get(item, 0) + _chest_count(item)
+
         # Count how many times craft_pickaxe already appears (current + stack)
         craft_count = (
             (1 if self.current == 'craft_pickaxe' else 0)
@@ -120,28 +132,28 @@ class GoalStack:
         if craft_count >= 1:
             return   # already queued — don't stack duplicates
 
-        has_pickaxe = any(cached_inv.get(k, 0) > 0 for k in (
+        has_pickaxe = any(_total(k) > 0 for k in (
             'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'diamond_pickaxe',
         ))
         if has_pickaxe:
-            return   # already have one
+            return   # already have one (in hand or in the chest)
 
         # Don't push if inventory read returned nothing (failed scan)
-        if not cached_inv:
+        if not cached_inv and not chest_inv:
             return
 
         # Enough for a stone pickaxe?
-        if cached_inv.get('cobblestone', 0) >= 3 and cached_inv.get('stick', 0) >= 2:
+        if _total('cobblestone') >= 3 and _total('stick') >= 2:
             print('[GOALS] auto-push craft_pickaxe (has cobblestone+sticks)')
             self.push('craft_pickaxe')
             return
 
         # Enough for a wooden pickaxe?
-        planks = sum(cached_inv.get(p, 0) for p in (
+        planks = sum(_total(p) for p in (
             'oak_planks', 'spruce_planks', 'birch_planks',
             'jungle_planks', 'acacia_planks', 'dark_oak_planks',
         ))
-        if planks >= 3 and cached_inv.get('stick', 0) >= 2:
+        if planks >= 3 and _total('stick') >= 2:
             print('[GOALS] auto-push craft_pickaxe (has planks+sticks)')
             self.push('craft_pickaxe')
 
