@@ -1,1 +1,7 @@
-{}
+{
+  "auto_labeled_classes": {
+    "duck": 44,
+    "village_house": 45,
+    "birch_log": 46
+  }
+}
