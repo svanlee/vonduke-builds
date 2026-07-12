@@ -13,6 +13,7 @@
 AKSUMAEL_DIR="$HOME/vonduke-builds/AKSUMAEL"
 VENV_PYTHON="$AKSUMAEL_DIR/venv/bin/python3"
 KEY_FILE="$HOME/.config/anthropic/key"
+GEMINI_KEY_FILE="$HOME/.config/google/key"
 CTL_FILE="$AKSUMAEL_DIR/.aksumael_ctl"
 LOG_FILE="/tmp/aksumael_live.log"
 
@@ -58,8 +59,22 @@ load_key() {
     return 1
 }
 
+load_gemini_key() {
+    if [[ -f "$GEMINI_KEY_FILE" ]]; then
+        GKEY=$(cat "$GEMINI_KEY_FILE" | tr -d '[:space:]')
+        if [[ -n "$GKEY" ]]; then
+            export GEMINI_API_KEY="$GKEY"
+            echo "[WRAPPER] Gemini API key loaded (${#GKEY} chars)"
+            return 0
+        fi
+    fi
+    echo "[WRAPPER] Gemini API key file empty or missing: $GEMINI_KEY_FILE (optional)"
+    return 1
+}
+
 start_aksumael() {
     load_key
+    load_gemini_key
     echo "[WRAPPER] Starting AKSUMAEL..."
     cd "$AKSUMAEL_DIR"
     "$VENV_PYTHON" -u main.py >> "$LOG_FILE" 2>&1 &
