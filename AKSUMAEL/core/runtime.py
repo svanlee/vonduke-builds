@@ -358,7 +358,14 @@ def run():
                     and not _menu_open
                     and not _f3_open
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
-                scanner.run(world_mem, target_bearing=0)
+                # Moving forward ('w' held) and not stuck → narrower 270°
+                # sweep centered on the heading. Standing still, moving in
+                # any other direction, or stuck (low-reward streak building)
+                # → full 360° sweep since a threat could close in from any side.
+                _moving_forward = last_action.get('key') == 'w'
+                _getting_stuck  = _low_reward_streak >= (_STUCK_TICKS // 2)
+                scanner.run(world_mem, target_bearing=0,
+                            full_sweep=not _moving_forward or _getting_stuck)
                 _last_scan_tick = tick
 
             # ── Decision ──────────────────────────────────────
