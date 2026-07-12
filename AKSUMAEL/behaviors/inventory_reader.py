@@ -26,21 +26,28 @@ def _frame_to_b64(frame) -> str:
 
 _INVENTORY_PROMPT = """This is a screenshot from Minecraft Java Edition.
 
-TASK: Read the player's inventory and return item counts as JSON.
+TASK: Read the player's inventory and return item slots as JSON.
 
-The inventory screen has:
-- A 3×9 main grid (27 slots in the middle area)
-- A bottom hotbar row (9 slots)
-- A small 2×2 crafting area + result slot in the top-right corner
-- Armour slots on the left
+The inventory screen (press E) has:
+- A 3×9 MAIN GRID (27 slots numbered 0-26, row-major, top-left = 0)
+- A HOTBAR row (9 slots numbered 27-35, left = 27)
+- A small 2×2 crafting area + result in the top-right (ignore these for slot numbering)
+- Armour slots on the left (ignore)
 
 INSTRUCTIONS:
-1. First check: is the inventory screen actually open? If you see the game world
-   with no inventory panel, return {"inventory_closed": true}.
-2. If open, read every non-empty slot in the main grid AND the hotbar.
-3. Each slot shows a small item icon + a number in the corner (the stack count).
-   If no number is visible, the count is 1.
-4. Use Minecraft snake_case item IDs. Common ones:
+1. First check: is an inventory/crafting screen actually open?
+   If you see only the game world with no UI panel, return: {"inventory_closed": true}
+2. Number the slots left-to-right, top-to-bottom:
+   Row 0: slots 0-8  (top row of main grid)
+   Row 1: slots 9-17 (middle row)
+   Row 2: slots 18-26 (bottom row)
+   Hotbar: slots 27-35 (bottom strip)
+3. For each non-empty slot, record:
+   - "count": stack size (integer shown in slot corner; 1 if no number visible)
+   - "slot": slot index (0-35)
+4. If the same item appears in multiple slots, sum the counts but report the
+   FIRST slot index (lowest number) where it appears.
+5. Use Minecraft snake_case IDs. Common ones:
    oak_log, spruce_log, birch_log, dark_oak_log, jungle_log, acacia_log,
    oak_planks, spruce_planks, birch_planks, cobblestone, stone, dirt, gravel,
    stick, coal, charcoal, iron_ore, iron_ingot, gold_ore, gold_ingot,
@@ -48,10 +55,9 @@ INSTRUCTIONS:
    wooden_pickaxe, stone_pickaxe, iron_pickaxe, wooden_axe, stone_axe,
    wooden_sword, stone_sword, bread, apple, raw_beef, cooked_beef,
    torch, crafting_table, furnace, chest, bow, arrow, shield
-5. Skip empty slots. If a count is illegible, estimate from the icon density.
 
 Respond with ONLY a valid JSON object — no markdown fences, no commentary:
-{"cobblestone": 23, "stick": 8, "oak_log": 4, "stone_pickaxe": 1}"""
+{"cobblestone": {"count": 23, "slot": 5}, "stick": {"count": 8, "slot": 14}, "oak_log": {"count": 4, "slot": 0}}"""
 
 
 class InventoryReader:
@@ -72,13 +78,32 @@ class InventoryReader:
     # ── Public API ───────────────────────────────────────────────
 
     def read(self, force: bool = False) -> dict:
-        """Return {item: count} from inventory.  Uses cache unless force=True."""
+        """Return {item: count} — simple form for crafting decision logic."""
+        return {k: v['count'] for k, v in self._read_raw(force=force).items()}
+
+    def read_with_slots(self, force: bool = False) -> dict:
+        """Return {item: {'count': N, 'slot': S}} — full form for pick-and-place."""
+        return dict(self._read_raw(force=force))
+
+    def slot_of(self, item: str) -> int:
+        """Return inventory slot index for item, or -1 if not found."""
+        return self._cache.get(item, {}).get('slot', -1)
+
+    def has(self, item: str, min_count: int = 1) -> bool:
+        """Check if inventory (cached) has at least min_count of item."""
+        return self._cache.get(item, {}).get('count', 0) >= min_count
+
+    def invalidate(self):
+        """Force next read() to re-query."""
+        self._cache_ts = 0.0
+
+    def _read_raw(self, force: bool = False) -> dict:
+        """Return raw {item: {count, slot}} dict, refreshing cache if needed."""
         now = time.time()
         if not force and now - self._cache_ts < _CACHE_TTL_SEC:
             return dict(self._cache)
-
         if self._reading:
-            return dict(self._cache)   # avoid re-entry during crafting
+            return dict(self._cache)
 
         self._reading = True
         try:
@@ -89,14 +114,6 @@ class InventoryReader:
         self._cache    = result
         self._cache_ts = time.time()
         return dict(result)
-
-    def has(self, item: str, min_count: int = 1) -> bool:
-        """Check if inventory (cached) has at least min_count of item."""
-        return self._cache.get(item, 0) >= min_count
-
-    def invalidate(self):
-        """Force next read() to re-query."""
-        self._cache_ts = 0.0
 
     # ── Internals ────────────────────────────────────────────────
 
@@ -162,13 +179,22 @@ class InventoryReader:
                 if items.get('inventory_closed'):
                     print('[INV] Claude says inventory was not open')
                     return {}
-                # Sanitise: ensure all values are ints, filter junk keys
-                return {
-                    k.lower().replace(' ', '_'): max(0, int(v))
-                    for k, v in items.items()
-                    if isinstance(k, str) and isinstance(v, (int, float))
-                        and k != 'inventory_closed'
-                }
+                # Support both old {item: count} and new {item: {count, slot}} formats
+                result = {}
+                for k, v in items.items():
+                    if not isinstance(k, str) or k == 'inventory_closed':
+                        continue
+                    key = k.lower().replace(' ', '_')
+                    if isinstance(v, dict):
+                        count = max(0, int(v.get('count', 1)))
+                        slot  = int(v.get('slot', -1))
+                    elif isinstance(v, (int, float)):
+                        count = max(0, int(v))
+                        slot  = -1
+                    else:
+                        continue
+                    result[key] = {'count': count, 'slot': slot}
+                return result
             except urllib.error.HTTPError as e:
                 print(f'[INV] Claude HTTP {e.code} on attempt {attempt+1}')
                 if e.code not in (429, 500, 502, 503, 529):

@@ -25,6 +25,27 @@ CRAFT_GRID_2x2 = {
 }
 RESULT_SLOT_2x2 = (56.9, 39.8)
 
+# ── Inventory grid slot → screen % (crafting table UI) ─────────
+# Slots 0-26: 3×9 main inventory.  Slots 27-35: hotbar.
+# Row/col spacing: ~4.5% x, ~8% y.  Origin at top-left of main grid.
+_INV_GRID_X0  = 31.5   # left edge of column 0 (%)
+_INV_GRID_DX  = 4.5    # column pitch (%)
+_INV_GRID_Y0  = 59.5   # top edge of row 0 (%)
+_INV_GRID_DY  = 8.0    # row pitch (%)
+_INV_HOTBAR_Y = 84.5   # hotbar row Y (%)
+
+
+def _inv_slot_pct(slot: int) -> tuple[float, float]:
+    """Convert inventory slot index (0-35) to (x_pct, y_pct) in crafting table UI."""
+    if slot < 0:
+        return (50.0, 90.0)   # safe fallback off the crafting grid
+    if slot >= 27:             # hotbar
+        col = slot - 27
+        return _INV_GRID_X0 + col * _INV_GRID_DX, _INV_HOTBAR_Y
+    row = slot // 9
+    col = slot % 9
+    return _INV_GRID_X0 + col * _INV_GRID_DX, _INV_GRID_Y0 + row * _INV_GRID_DY
+
 # ── Recipes ───────────────────────────────────────────────────
 # Keys are (row, col); values are item IDs matching inventory_reader output.
 # 2x2 recipes — crafted directly from inventory (no crafting table needed)
@@ -352,10 +373,16 @@ class CraftingBehavior:
         print(f'[CRAFT] crafting {recipe_name} via {grid} '
               f'(inv snapshot: {dict(list(inv.items())[:10])})')
 
+        # Get slot positions for pick-and-place (if reader supports it)
+        inv_slots = {}
+        if self.inv_reader is not None:
+            raw = self.inv_reader.read_with_slots(force=False)
+            inv_slots = {k: v.get('slot', -1) for k, v in raw.items()}
+
         success = False
         try:
             if grid == '3x3':
-                success = self._run_3x3(recipe_name, inv)
+                success = self._run_3x3(recipe_name, inv, inv_slots)
             else:
                 success = self._run_2x2(recipe_name, inv)
         except Exception as e:
@@ -381,12 +408,12 @@ class CraftingBehavior:
 
     # ── Crafting sequences ───────────────────────────────────────
 
-    def _run_3x3(self, recipe_name: str, inv: dict) -> bool:
+    def _run_3x3(self, recipe_name: str, inv: dict, inv_slots: dict) -> bool:
         self._approach_table()
         if not self._open_table():
             return False
         recipe = _normalize_recipe(RECIPES_3x3[recipe_name], inv)
-        self._place_recipe_3x3(recipe)
+        self._place_recipe_3x3(recipe, inv_slots)
         self._collect(RESULT_SLOT_3x3)
         self._close_ui()
         return True
@@ -416,11 +443,40 @@ class CraftingBehavior:
         self._tap('e', 600)
         time.sleep(0.35)
 
-    def _place_recipe_3x3(self, recipe: dict):
-        print('[CRAFT] placing 3×3 recipe')
-        for slot, _item in recipe.items():
-            x_pct, y_pct = CRAFT_GRID_3x3[slot]
-            self._click(x_pct, y_pct, wait=0.15)
+    def _place_recipe_3x3(self, recipe: dict, inv_slots: dict):
+        """Pick each material from inventory, deposit into crafting grid slots.
+
+        Groups slots by material so we only do one pick-up per unique item:
+          1. Left-click inventory slot → picks up whole stack onto cursor
+          2. Left-click each crafting grid slot that needs that item → deposits one
+          3. Left-click the same inventory slot again → returns remainder
+        """
+        print('[CRAFT] placing 3×3 recipe (pick-and-place)')
+
+        # Group crafting grid slots by material
+        from collections import defaultdict
+        slots_for_item: dict[str, list] = defaultdict(list)
+        for grid_slot, item in recipe.items():
+            slots_for_item[item].append(grid_slot)
+
+        for item, grid_slots in slots_for_item.items():
+            inv_slot = inv_slots.get(item, -1)
+            if inv_slot < 0:
+                print(f'[CRAFT] WARNING: no slot found for {item} — skipping')
+                continue
+
+            inv_x, inv_y = _inv_slot_pct(inv_slot)
+
+            # Pick up stack from inventory
+            self._click(inv_x, inv_y, wait=0.2)
+
+            # Deposit one into each required crafting grid slot
+            for grid_slot in grid_slots:
+                cx, cy = CRAFT_GRID_3x3[grid_slot]
+                self._click(cx, cy, wait=0.15)
+
+            # Return remainder to inventory (click same slot)
+            self._click(inv_x, inv_y, wait=0.2)
 
     def _place_recipe_2x2(self, recipe: dict):
         print('[CRAFT] placing 2×2 recipe')
@@ -429,8 +485,14 @@ class CraftingBehavior:
             self._click(x_pct, y_pct, wait=0.15)
 
     def _collect(self, result_slot: tuple):
-        print('[CRAFT] collecting result')
-        self._click(*result_slot, wait=0.35)
+        """Shift-click result slot to collect entire stack at once."""
+        print('[CRAFT] collecting result (shift-click)')
+        action = {
+            'key': 'shift', 'click': list(result_slot),
+            'gamepad': None, 'source': 'crafting',
+        }
+        self.executor.execute(action)
+        time.sleep(0.35)
 
     def _close_ui(self):
         self._tap('e', 150)

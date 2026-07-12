@@ -102,12 +102,12 @@
     "mine_redstone_ore": 0.27474275385580726
   },
   "coal_ore,hotbar,hunger_bar": {
-    "mine_coal_ore": 0.12151028445714432,
+    "mine_coal_ore": 0.3744068754367109,
     "coal_ore_hotbar_e3f079": 0.24610692075654025,
     "coal_ore_hotbar_xp_bar_ff1514": 1.1591320437903567,
     "coal_ore_hotbar_xp_bar_3a4c99": 0.47654605943040784,
-    "coal_ore_hotbar_hunger_bar_x_472927": 0.5010710319393282,
-    "coal_ore_hotbar_hunger_bar_x_023718": 0.5258087268880441,
+    "coal_ore_hotbar_hunger_bar_x_472927": 1.1098167799643526,
+    "coal_ore_hotbar_hunger_bar_x_023718": 0.3782054492788747,
     "coal_ore_hotbar_hunger_bar_x_aeddc5": 0.636605743153858
   },
   "gold_ore,hotbar,hunger_bar": {
@@ -134,7 +134,7 @@
     "mine_coal_ore": 0.832837787651783,
     "coal_ore_hotbar_e3f079": 0.8531752897881584,
     "coal_ore_hotbar_xp_bar_3a4c99": 0.2836762074898034,
-    "coal_ore_hotbar_hunger_bar_x_472927": 0.5216839100862967
+    "coal_ore_hotbar_hunger_bar_x_472927": 0.5221141109452427
   },
   "emerald_ore,gold_ore,hotbar": {
     "gold_ore_xp_bar_b72dac": 0.6810049862491729,
@@ -194,7 +194,7 @@
   },
   "coal_ore,emerald_ore,hotbar": {
     "mine_emerald_ore": 0.35889320368933525,
-    "coal_ore_hotbar_hunger_bar_x_472927": 0.5721409847936584
+    "coal_ore_hotbar_hunger_bar_x_472927": 1.0383822934543983
   },
   "hotbar,lapis_ore,xp_bar": {},
   "coal_ore,hotbar,lapis_ore": {},
