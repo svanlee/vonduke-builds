@@ -93,6 +93,7 @@ def run():
     from behaviors.hunger import HungerBehavior
     from behaviors.crafting import CraftingBehavior
     from behaviors.inventory_reader import InventoryReader
+    from behaviors.chest_manager import ChestManager
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
     from core.fsm import GameFSM, State
@@ -102,6 +103,7 @@ def run():
     hunger_behavior = HungerBehavior(executor)
     inv_reader = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
     crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
+    chest_mgr = ChestManager()
     goal_interp = GoalInterpreter(goals, crafting_behavior)
     scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
     launcher    = GameLauncher(executor, game='minecraft')
@@ -136,6 +138,9 @@ def run():
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
+    _last_chest_tick    = -1000   # tick of last chest interaction
+    CHEST_COOLDOWN_TICKS = 200    # min ticks between chest opens (avoid spamming Claude)
+    BASE_X, BASE_Z        = -6, -3   # spawn / base coordinates
     _prev_replay_active = False  # replayer.is_active() as of last tick
     # Mining skills replay recorded look deltas that tend to walk the camera
     # pitch upward over a full replay. Once the skill ends, nudge the pitch
@@ -149,6 +154,7 @@ def run():
     world_mem.fps     = getattr(world_mem, 'fps',     None)
     world_mem.chunk_x = getattr(world_mem, 'chunk_x', None)
     world_mem.chunk_z = getattr(world_mem, 'chunk_z', None)
+    world_mem.chest_inv = getattr(world_mem, 'chest_inv', {})
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -216,9 +222,16 @@ def run():
             goals.auto_update(world_mem, inventory)
             progression.auto_update(inventory, world_mem, tick)
 
+            # ── Proximity to base (used by chest interaction + LLM context) ─
+            _near_base = (
+                world_mem.pos_x is not None and world_mem.pos_z is not None
+                and ((world_mem.pos_x - BASE_X) ** 2
+                     + (world_mem.pos_z - BASE_Z) ** 2) ** 0.5 <= 20
+            )
+
             # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
             if tick % 60 == 0 and inv_reader._cache_ts > 0:
-                goals.suggest_craft_goal(inv_reader.read(force=False))
+                goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
 
             if tick % 50 == 0:
                 inventory.save()
@@ -423,6 +436,15 @@ def run():
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))
 
+                        # Chest contents at base — cheap, keeps Claude aware
+                        # of stored materials without re-opening the chest.
+                        if _near_base and world_mem.chest_inv:
+                            _chest_summary = ', '.join(
+                                f"{k}:{(v.get('count', 0) if isinstance(v, dict) else v)}"
+                                for k, v in list(world_mem.chest_inv.items())[:8]
+                            )
+                            history += f'\nChest at base contains: {_chest_summary}'
+
                         # Goal-specific navigation hint injected into prompt
                         _g = goals.current_goal()
                         if _g in ('craft_pickaxe', 'craft_tool', 'crafting'):
@@ -531,6 +553,22 @@ def run():
             elif (not replayer.is_active()
                     and crafting_behavior.should_trigger_2x2()):
                 crafting_behavior.run(objects=objects)
+
+            # ── Chest interaction at base ────────────────────────
+            # Only in EXPLORE, only near base, only when a chest is actually
+            # visible — reading it costs a Claude call, so cooldown-gate it.
+            _chest_visible = any(o.get('label') == 'chest' for o in objects)
+            if (fsm_state == State.EXPLORE and _chest_visible and _near_base
+                    and not replayer.is_active() and not _menu_open
+                    and (tick - _last_chest_tick) >= CHEST_COOLDOWN_TICKS):
+                print('[CHEST] chest detected near base — interacting')
+                chest_frame = chest_mgr.open(executor, capture_fn=lambda: pipeline.latest_raw_frame)
+                chest_items = chest_mgr.read_contents(chest_frame, force=True)
+                if chest_items:
+                    world_mem.chest_inv = {**world_mem.chest_inv, **chest_items}
+                    print(f'[CHEST] merged contents: {chest_items}')
+                chest_mgr.close(executor)
+                _last_chest_tick = tick
 
             # ── Curiosity survey ────────────────────────────────
             # Only survey in EXPLORE/EAT — never interrupt MINE, COMBAT, FISH, etc.
