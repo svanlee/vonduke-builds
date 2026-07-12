@@ -1,59 +1,19 @@
 {
   "seen_objects": {
-    "hotbar": 10173,
-    "xp_bar": 8268,
-    "health_bar": 7779,
-    "armor_bar": 7866,
-    "hunger_bar": 4162,
-    "coal_ore": 902,
-    "diamond_ore": 532,
-    "emerald_ore": 4350,
-    "redstone_ore": 391,
+    "hotbar": 18766,
+    "xp_bar": 21641,
+    "health_bar": 9235,
+    "armor_bar": 9424,
+    "hunger_bar": 15635,
+    "coal_ore": 993,
+    "diamond_ore": 808,
+    "emerald_ore": 13236,
+    "redstone_ore": 16114,
     "lapis_ore": 8775,
-    "gold_ore": 2131,
-    "bed": 1
+    "gold_ore": 2557,
+    "bed": 2
   },
   "recent_events": [
-    {
-      "t": "15:33:43",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:33:36",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:36:03",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:46:21",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:47:00",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:48:05",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:51:11",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:51:38",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:53:02",
-      "event": "survey sweep"
-    },
-    {
-      "t": "16:53:46",
-      "event": "survey sweep"
-    },
     {
       "t": "16:53:57",
       "event": "survey sweep"
@@ -93,21 +53,61 @@
     {
       "t": "17:12:35",
       "event": "survey sweep"
+    },
+    {
+      "t": "17:42:22",
+      "event": "survey sweep"
+    },
+    {
+      "t": "17:42:30",
+      "event": "survey sweep"
+    },
+    {
+      "t": "17:42:38",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:19:11",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:19:19",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:19:27",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:19:36",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:20:11",
+      "event": "survey sweep"
+    },
+    {
+      "t": "19:20:23",
+      "event": "survey sweep"
+    },
+    {
+      "t": "20:07:07",
+      "event": "survey sweep"
     }
   ],
-  "total_ticks": 7850,
+  "total_ticks": 15900,
   "deaths": 0,
-  "surveys": 54,
-  "depth_estimate": 0,
-  "hunger_level": 18,
-  "game_tick": 6850,
-  "pickaxe_uses": 64,
+  "surveys": 64,
+  "depth_estimate": 64,
+  "hunger_level": 14,
+  "game_tick": 14900,
+  "pickaxe_uses": 183,
   "y_level": 64,
   "biome": "unknown",
   "wood_count": 0,
   "food_items": [],
   "animals_seen": {},
   "near_water": false,
-  "llm_calls": 19,
-  "last_saved": "2026-07-11 17:28:07"
+  "llm_calls": 62,
+  "last_saved": "2026-07-11 20:19:19"
 }

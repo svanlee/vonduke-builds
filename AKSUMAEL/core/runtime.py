@@ -18,6 +18,8 @@ from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
 from memory.goals            import GoalStack
 from memory.goal_interpreter import GoalInterpreter
+from memory.progression      import ProgressionTracker
+from memory.minecraft_kb     import MinecraftKB
 from memory.rl_policy        import RLPolicy
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
@@ -53,8 +55,10 @@ def run():
     world     = WorldModel()
     world_mem = WorldMemory()
     inventory = InventoryTracker()
-    goals     = GoalStack()
-    cognitive = CognitiveArchitecture()
+    goals       = GoalStack()
+    progression = ProgressionTracker()
+    mc_kb       = MinecraftKB()
+    cognitive   = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
     router    = ControllerRouter()
@@ -153,6 +157,7 @@ def run():
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
+            progression.auto_update(inventory, world_mem, tick)
 
             if tick % 50 == 0:
                 inventory.save()
@@ -282,10 +287,21 @@ def run():
 
                     if _scene_changed:
                         _last_llm_frame = frame.copy() if frame is not None else None
-                        history = (world_mem.context_summary() + '\n'
+                        # Base history — always injected (cheap, 3-4 lines)
+                        history = (progression.context_summary() + '\n'
+                                   + world_mem.context_summary() + '\n'
                                    + inventory.context_summary() + '\n'
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))
+                        # Strategic tick: inject full phase mechanics + discoveries
+                        # every 100 ticks or when Claude is uncertain
+                        _is_strategic = (
+                            tick % (config.LLM_EVERY_N_TICKS * 6) == 0
+                            or last_action.get('confidence', 1.0) < 0.35
+                        )
+                        if _is_strategic:
+                            history = (mc_kb.strategic_context(progression.phase)
+                                       + '\n\n' + history)
                         if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
                             history = world.cross_session_summary() + '\n' + history
                         action_dict = ask_vision(frame, history, objects)
@@ -297,6 +313,8 @@ def run():
                             behavior = goal_interp.interpret(action_dict['goal'], objects)
                             if behavior:
                                 goal_interp.execute_behavior(behavior, executor, objects)
+                        if action_dict.get('discovery'):
+                            mc_kb.add_discovery(action_dict['discovery'], tick)
                         if tick % (config.LLM_EVERY_N_TICKS * 5) == 0:
                             tts.say_observation(
                                 action_dict.get('observation', ''),
@@ -426,6 +444,7 @@ def run():
         world_mem.save()
         inventory.save()
         goals.save()
+        progression.save()
         time.sleep(1.5)
         executor.close()
         router.stop()

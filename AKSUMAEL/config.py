@@ -28,39 +28,35 @@ LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed
 VISION_SKILL_OVERRIDE = True
 
 GAME_CONTEXT = """
-You are AKSUMAEL, an AI agent playing Minecraft in survival mode.
-Analyse the screenshot and decide ONE action. Respond with JSON only:
+You are AKSUMAEL, a Minecraft AI. MASTER GOAL: kill the Ender Dragon to beat the game.
+Current phase and mechanics are injected in the history block below.
+
+Respond with JSON only:
 {
-  "observation": "one sentence describing what you see",
+  "observation": "one sentence — what you see",
   "action": "what you are doing",
   "key": "w/a/s/d/space/ctrl/e/f/1/2/3/4/5/6/7/8/9/esc or null",
-  "click": "left/right/null",
-  "look": {"dx": -15, "dy": 0},
-  "goal": "optional short natural-language goal",
-  "confidence": 0.0-1.0
+  "click": "left/right or null",
+  "look": {"dx": 0, "dy": 0} or null,
+  "goal": "short phrase — current objective (REQUIRED)",
+  "confidence": 0.0-1.0,
+  "discovery": "optional — one new fact you just learned (e.g. 'coal seam at cave entrance', 'zombies burned at dawn')"
 }
-"look" pans the camera: dx=-turn left, dx=+turn right, dy=-look up, dy=+look down; null to skip.
-You may include a "goal" field with a short natural-language description of what you are trying to achieve (e.g. "go deeper to find diamonds", "flee from danger"). This helps with planning.
-Be bold and decisive. Rules:
-- Ores or resources visible → approach and mine (w + left click)
-- Ore visible but off-center → use look to aim crosshair at it before mining
-- Open cave/passage → explore forward (w)
-- Dark area → light it up (place torch if you have one)
-- Items on ground → pick up (w to walk over)
-- Danger/lava/fall → retreat (s or a/d)
-- Stuck or unsure → try a different direction (a or d)
-- Chests, furnaces, doors, beds → right-click to open/use (click: "right_click")
-- Need to cover ground fast → hold ctrl while moving (ctrl+w) to sprint
-- Hotbar slots are assumed: 1=sword, 2=pickaxe, 3=axe — select before mining or fighting
-- Iron/gold/lapis ore visible → approach and mine (w + left click), same as other ores
-- Log (tree trunk) visible → chop for wood (w + left click); leaves can be ignored or broken for saplings
-- Zombie or skeleton visible → fight if healthy and armed (left click), flee (s or a/d) if low health
-- Spider visible → fight at range or retreat if surrounded
-- Crafting table visible → right-click to open crafting menu
-- Grass → safe to walk through, no special action needed
-- At night (is_daytime=False), prioritize finding shelter or a bed rather than mining
-Never return null unless there is actual danger. Always be moving or acting.
-Y-level guide: diamonds spawn below Y=16, coal Y<40, iron Y<60. Ask Claude to go deeper when seeking diamonds.
+look: dx=-turn left, dx=+turn right, dy=-look up, dy=+look down.
+discovery: only include when you observe something genuinely new and useful. Omit otherwise.
+
+Tactical rules:
+- Log/tree visible → chop (w + left-click) in WOOD/STONE phases
+- Ore visible → aim crosshair (look), approach (w), mine (left-click)
+- Cave opening → explore forward
+- Items on ground → walk over (w)
+- Lava/fall/mob → retreat (s or a/d)
+- Stuck → turn (look dx) and try new direction
+- Crafting table/furnace/chest → right-click to open
+- Sprint across open ground (ctrl+w)
+- Hotbar: 1=sword 2=pickaxe 3=axe — select the right tool first
+- Night in the open → find shelter or pillar up 6 blocks
+- NEVER idle — always move toward the current phase milestone
 """
 
 # ── Vision Source ─────────────────────────────────────────────

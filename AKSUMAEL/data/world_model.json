@@ -1,539 +1,431 @@
 {
-  "session_num": 13,
-  "last_saved": 1783801868.5598786,
+  "session_num": 14,
+  "last_saved": 1783814838.1326835,
   "history": [
     {
-      "tick": 156,
-      "session": 13,
-      "ts": 1783801826.9167066,
+      "tick": 5478,
+      "session": 14,
+      "ts": 1783814828.1205418,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.84
+          "conf": 0.99
         },
         {
           "label": "xp_bar",
-          "conf": 0.83
+          "conf": 0.82
         },
         {
           "label": "hunger_bar",
-          "conf": 0.68
+          "conf": 0.76
         },
         {
-          "label": "armor_bar",
-          "conf": 0.54
+          "label": "redstone_ore",
+          "conf": 0.16
+        },
+        {
+          "label": "redstone_ore",
+          "conf": 0.332
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 157,
-      "session": 13,
-      "ts": 1783801828.9106286,
+      "tick": 5479,
+      "session": 14,
+      "ts": 1783814828.621981,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.84
+          "conf": 0.99
         },
         {
           "label": "xp_bar",
-          "conf": 0.83
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.78
+        },
+        {
+          "label": "redstone_ore",
+          "conf": 0.16
+        },
+        {
+          "label": "redstone_ore",
+          "conf": 0.204
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5480,
+      "session": 14,
+      "ts": 1783814829.1238823,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.73
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5481,
+      "session": 14,
+      "ts": 1783814829.6238441,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.79
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5482,
+      "session": 14,
+      "ts": 1783814830.1242697,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.74
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5483,
+      "session": 14,
+      "ts": 1783814830.6249757,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "coal_ore",
+          "conf": 0.3
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5484,
+      "session": 14,
+      "ts": 1783814831.1243646,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "coal_ore",
+          "conf": 0.29
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5485,
+      "session": 14,
+      "ts": 1783814831.6242454,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "coal_ore",
+          "conf": 0.29
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5486,
+      "session": 14,
+      "ts": 1783814832.1244206,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
         },
         {
           "label": "hunger_bar",
           "conf": 0.71
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.54
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 158,
-      "session": 13,
-      "ts": 1783801830.918207,
+      "tick": 5487,
+      "session": 14,
+      "ts": 1783814832.620876,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.97
+          "conf": 0.99
         },
         {
           "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.49
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.42
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.27
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 159,
-      "session": 13,
-      "ts": 1783801832.9115863,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.67
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.54
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 160,
-      "session": 13,
-      "ts": 1783801834.9121053,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.66
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.5
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 161,
-      "session": 13,
-      "ts": 1783801840.5412557,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.68
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.52
-        }
-      ],
-      "action": "w"
-    },
-    {
-      "tick": 162,
-      "session": 13,
-      "ts": 1783801840.557967,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.96
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.87
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.54
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.5
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 163,
-      "session": 13,
-      "ts": 1783801842.5538754,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.96
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.52
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 164,
-      "session": 13,
-      "ts": 1783801844.5527902,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.98
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.93
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.54
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.51
-        },
-        {
-          "label": "hotbar",
-          "conf": 0.34
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 165,
-      "session": 13,
-      "ts": 1783801846.5569758,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.87
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.48
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 166,
-      "session": 13,
-      "ts": 1783801848.552038,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.88
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.52
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 167,
-      "session": 13,
-      "ts": 1783801850.5592003,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.87
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.55
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 168,
-      "session": 13,
-      "ts": 1783801852.5589,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.96
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.56
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 169,
-      "session": 13,
-      "ts": 1783801854.559286,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.58
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 170,
-      "session": 13,
-      "ts": 1783801856.559963,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.96
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.54
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 171,
-      "session": 13,
-      "ts": 1783801858.560695,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.95
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.94
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.42
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.35
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 172,
-      "session": 13,
-      "ts": 1783801860.5560627,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.95
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.74
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.55
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.31
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 173,
-      "session": 13,
-      "ts": 1783801862.5546007,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.95
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.6
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.41
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.33
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 174,
-      "session": 13,
-      "ts": 1783801864.5561078,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.97
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.95
-        },
-        {
-          "label": "armor_bar",
           "conf": 0.79
         },
         {
-          "label": "health_bar",
-          "conf": 0.59
-        },
-        {
           "label": "hunger_bar",
-          "conf": 0.32
+          "conf": 0.74
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 175,
-      "session": 13,
-      "ts": 1783801866.555951,
+      "tick": 5488,
+      "session": 14,
+      "ts": 1783814833.1213548,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.97
+          "conf": 0.99
         },
         {
           "label": "xp_bar",
-          "conf": 0.95
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.73
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.54
+          "conf": 0.82
         },
         {
           "label": "hunger_bar",
-          "conf": 0.32
+          "conf": 0.73
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5489,
+      "session": 14,
+      "ts": 1783814833.623346,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.73
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5490,
+      "session": 14,
+      "ts": 1783814834.1218765,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.73
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5491,
+      "session": 14,
+      "ts": 1783814834.6254637,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5492,
+      "session": 14,
+      "ts": 1783814835.1215916,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.74
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5493,
+      "session": 14,
+      "ts": 1783814835.6222067,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5494,
+      "session": 14,
+      "ts": 1783814836.12183,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.7
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5495,
+      "session": 14,
+      "ts": 1783814836.62215,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.71
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5496,
+      "session": 14,
+      "ts": 1783814837.1338089,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.78
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.73
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 5497,
+      "session": 14,
+      "ts": 1783814837.6231813,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.99
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.72
         }
       ],
       "action": "wait"
