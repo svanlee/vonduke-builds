@@ -2,6 +2,7 @@
 # ║  AKSUMAEL v1.0.0 — Main Runtime Loop                  ║
 # ╚══════════════════════════════════════════════════════╝
 
+import random
 import time
 import cv2
 import config
@@ -91,6 +92,8 @@ def run():
     from behaviors.auto_trainer import AutoTrainer
     from behaviors.respawn import RespawnBehavior
     from behaviors.hunger import HungerBehavior
+    from behaviors.night_survival import NightSurvivalBehavior
+    from behaviors.torch_placement import TorchBehavior
     from behaviors.crafting import CraftingBehavior
     from behaviors.inventory_reader import InventoryReader
     from behaviors.chest_manager import ChestManager
@@ -99,8 +102,10 @@ def run():
     from core.fsm import GameFSM, State
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
-    respawner = RespawnBehavior(executor)
-    hunger_behavior = HungerBehavior(executor)
+    respawner = RespawnBehavior(executor, goals)
+    hunger_behavior = HungerBehavior(executor, goals)
+    night_survival  = NightSurvivalBehavior(executor, goals)
+    torch_behavior  = TorchBehavior(executor)
     inv_reader = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
     crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
     chest_mgr = ChestManager()
@@ -130,6 +135,14 @@ def run():
     _low_reward_streak  = 0
     _LOW_REWARD_THRESH  = 0.05   # reward below this = unproductive
     _STUCK_TICKS        = 150    # consecutive low-reward ticks before intervention
+    # Secondary anti-stuck: catches cases the reward signal misses (e.g.
+    # wandering with near-zero-but-not-quite-zero reward) by watching for a
+    # long stretch where inventory contents AND the active goal never change.
+    _INVENTORY_STUCK_TICKS  = 300
+    _last_inv_snapshot      = None   # {item: count} as of _last_inv_change_tick
+    _last_inv_change_tick   = 0
+    _last_goal_for_stuck    = None
+    _last_goal_change_tick  = 0
     f3_countdown         = 50    # ticks until next F3 OCR read (offset from startup)
     _f3_open             = False  # True while F3 overlay is open
     _menu_stuck_since    = 0      # tick when menu was first detected open
@@ -145,7 +158,16 @@ def run():
     # Mining skills replay recorded look deltas that tend to walk the camera
     # pitch upward over a full replay. Once the skill ends, nudge the pitch
     # back down toward the horizon so EXPLORE/APPROACH aren't scanning sky.
-    _MINE_PITCH_RESET_DY = config.LOOK_SENSITIVITY * 8   # ~120px — down, not to the ground
+    _MINE_PITCH_RESET_DY    = config.LOOK_SENSITIVITY * 8   # ~120px — down, not to the ground
+    _PITCH_RESET_TICKS      = 3   # spread the correction over N ticks instead of one big jerk
+    _pitch_reset_ticks_left = 0
+    _pitch_reset_dy_step    = 0
+
+    # Soft clamp on cumulative look-pitch drift accumulated over the session —
+    # prevents slow camera walk (up or down) that individual per-skill resets
+    # don't fully correct from compounding into a permanently skewed pitch.
+    _PITCH_CLAMP_LIMIT = 200
+    _PITCH_CLAMP_NUDGE = config.LOOK_SENSITIVITY * 4
 
     # Init extended F3 fields on world_mem so context_summary() can use them
     world_mem.pos_x   = getattr(world_mem, 'pos_x',   None)
@@ -234,6 +256,12 @@ def run():
                      + (world_mem.pos_z - BASE_Z) ** 2) ** 0.5 <= 20
             )
 
+            # Made it back after a respawn — resume normal exploration.
+            if _near_base and goals.current_goal() == 'return_to_base':
+                print('[GOALS] reached base — clearing return_to_base')
+                goals.current = 'explore'
+                goals.save()
+
             # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
             if tick % 60 == 0 and inv_reader._cache_ts > 0:
                 goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
@@ -291,19 +319,37 @@ def run():
 
             fsm_state, fsm_action = fsm.tick(objects, world_mem, _hunger_frac)
 
+            # Mining/chopping is driven per-tick by the FSM (continuous aim
+            # correction) so the LLM doesn't need to think as often there —
+            # check in every LLM_EVERY_N_TICKS_MINE ticks instead of the
+            # faster EXPLORE/EAT cadence. Saves API cost and keeps mining
+            # ticks fast (no LLM round-trip most ticks).
+            _llm_interval = (config.LLM_EVERY_N_TICKS_MINE if fsm_state == State.MINE
+                              else config.LLM_EVERY_N_TICKS)
+
             # ── Scan / identify / pathfinder ──────────────────
             # Continuous watch: runs every SCAN_COOLDOWN_TICKS whenever not
             # mid-skill-replay. Sweep is fast (~4s); zoom+identify only fires
             # when YOLO actually spotted a danger label.
             _replay_active_now = replayer.is_active()
             if (_prev_replay_active and not _replay_active_now
-                    and last_skill_name and (last_skill_name.startswith('mine_')
-                                             or last_skill_name.startswith('coal_ore'))):
+                    and _is_mining_skill(last_skill_name)):
                 print(f'[CAMERA] {last_skill_name} replay ended — '
-                      f'resetting pitch toward horizon (dy={_MINE_PITCH_RESET_DY})')
-                executor.execute({'look': {'dx': 0, 'dy': _MINE_PITCH_RESET_DY},
-                                   'source': 'pitch_reset'})
+                      f'resetting pitch toward horizon over {_PITCH_RESET_TICKS} ticks '
+                      f'(total dy={_MINE_PITCH_RESET_DY})')
+                _pitch_reset_ticks_left = _PITCH_RESET_TICKS
+                _pitch_reset_dy_step    = _MINE_PITCH_RESET_DY // _PITCH_RESET_TICKS
             _prev_replay_active = _replay_active_now
+
+            # Spread the post-mining pitch correction over several ticks
+            # instead of one big jerk that overshoots past the horizon.
+            if _pitch_reset_ticks_left > 0 and not replayer.is_active():
+                executor.execute({'look': {'dx': 0, 'dy': _pitch_reset_dy_step},
+                                   'source': 'pitch_reset'})
+                world_mem.cumulative_pitch_dy = (
+                    getattr(world_mem, 'cumulative_pitch_dy', 0) + _pitch_reset_dy_step
+                )
+                _pitch_reset_ticks_left -= 1
 
             if (not replayer.is_active()
                     and not _menu_open
@@ -326,6 +372,16 @@ def run():
                 # the UI. Stay idle until the menu is closed.
                 src_tag = 'MENU'
 
+            elif (_night_ad := night_survival.update(
+                    world_mem,
+                    inv_reader.read(force=False) if inv_reader._cache_ts > 0 else {},
+                    tick)) is not None:
+                # Dusk/night handling (pillar up / dig in / wait for dawn /
+                # descend) pre-empts skills/FSM/LLM entirely — it already
+                # dispatched its own key/click actions directly.
+                action_dict = _night_ad
+                src_tag = f'NIGHT:{night_survival._state}'
+
             else:
                 # Try a learned skill first — if multiple candidates match,
                 # let the RL policy pick among them instead of the naive best.
@@ -336,8 +392,7 @@ def run():
                 # and pure-movement skills so AKSUMAEL doesn't keep digging
                 # instead of seeking a crafting table.
                 _cur_goal = goals.current_goal()
-                _crafting_goal = _cur_goal in ('craft_pickaxe', 'craft_tool',
-                                               'crafting', 'find_crafting_table')
+                _crafting_goal = goals.is_craft_goal(_cur_goal) or _cur_goal == 'find_crafting_table'
                 if _crafting_goal and candidates:
                     _pre = len(candidates)
                     candidates = [
@@ -390,14 +445,21 @@ def run():
                     last_skill_name  = skill.name
                     # Find the box of the trigger object so the aim phase
                     # can centre the crosshair on it before action steps run.
+                    # When several detections match the trigger labels (e.g. an
+                    # ore box plus a lower-confidence duplicate), prefer the
+                    # highest-confidence one so the skill actually aims at the
+                    # real ore instead of whichever box happened to come first.
                     aim_box = None
-                    for obj in objects:
-                        olabel = obj.get('label', '').lower()
-                        if any(olabel == t.lower() or
-                               olabel in t.lower() or t.lower() in olabel
-                               for t in skill.trigger_objects):
-                            aim_box = obj.get('box')
-                            break
+                    _aim_candidates = [
+                        obj for obj in objects
+                        if any(obj.get('label', '').lower() == t.lower() or
+                               obj.get('label', '').lower() in t.lower() or
+                               t.lower() in obj.get('label', '').lower()
+                               for t in skill.trigger_objects)
+                    ]
+                    if _aim_candidates:
+                        aim_box = max(_aim_candidates,
+                                      key=lambda o: o.get('conf', 0.0)).get('box')
                     replayer.start(skill, aim_box=aim_box, aim_ctrl=aim_ctrl)
                     skills.mark_used(skill)
                     inventory.on_skill_fired(skill.name)
@@ -412,15 +474,22 @@ def run():
                     })
 
                 # FSM takes over when no skill matched and FSM is actively
-                # targeting something (APPROACH / MINE / COMBAT / COLLECT /
-                # INTERACT).  In pure EXPLORE or EAT we fall through to the
-                # LLM so it can direct higher-level decisions.
-                elif fsm_state not in (State.EXPLORE, State.EAT):
+                # targeting something (APPROACH / COMBAT / COLLECT / INTERACT /
+                # FISH / HUNT / FARM) — these need continuous per-tick control
+                # and never consult the LLM. MINE also gets continuous FSM
+                # control (per-tick aim+click) EXCEPT on the slower
+                # LLM_EVERY_N_TICKS_MINE cadence, when it falls through to the
+                # LLM as an occasional strategic check-in. In pure EXPLORE or
+                # EAT we fall through to the LLM every LLM_EVERY_N_TICKS so it
+                # can direct higher-level decisions.
+                elif fsm_state not in (State.EXPLORE, State.EAT) and (
+                        fsm_state != State.MINE or tick % _llm_interval != 0):
                     action_dict = fsm_action
                     src_tag = f'FSM:{fsm_state.value}'
 
-                # Fall back to LLM — only in EXPLORE/EAT, only every N ticks
-                elif tick % config.LLM_EVERY_N_TICKS == 0:
+                # Fall back to LLM — EXPLORE/EAT every LLM_EVERY_N_TICKS, or
+                # MINE every LLM_EVERY_N_TICKS_MINE (see _llm_interval above)
+                elif tick % _llm_interval == 0:
                     # Frame-diff gate: skip call if scene hasn't changed enough
                     _scene_changed = True
                     if (_last_llm_frame is not None and frame is not None
@@ -452,7 +521,7 @@ def run():
 
                         # Goal-specific navigation hint injected into prompt
                         _g = goals.current_goal()
-                        if _g in ('craft_pickaxe', 'craft_tool', 'crafting'):
+                        if goals.is_craft_goal(_g):
                             _table_visible = any(
                                 o.get('label') == 'crafting_table' for o in objects)
                             if _table_visible:
@@ -479,18 +548,32 @@ def run():
                             if 50 < _low_reward_streak < 150:
                                 history += ('\nYou seem stuck. Try turning sharply '
                                             '(look dx=60) then sprint (ctrl+w).')
+                        elif _g == 'return_to_base':
+                            # Just respawned — dropped items are back where we died,
+                            # but base (chest/crafting table/known resources) is the
+                            # safest place to re-equip before heading out again.
+                            if world_mem.pos_x is not None and world_mem.pos_z is not None:
+                                history += (
+                                    f'\nIMPORTANT: you just respawned. Return to base: '
+                                    f'you are at X={world_mem.pos_x:.0f} Z={world_mem.pos_z:.0f}, '
+                                    f'base is at X=-6 Z=-3. Face the direction that decreases '
+                                    f'your distance and walk (w). Press F3 if position is stale.')
+                            else:
+                                history += ('\nIMPORTANT: you just respawned and must return to '
+                                            'base at X=-6 Z=-3. Press F3 briefly to get '
+                                            'coordinates, then navigate there.')
                         # Strategic tick: inject full phase mechanics + discoveries
                         # every 100 ticks or when Claude is uncertain
                         _is_strategic = (
-                            tick % (config.LLM_EVERY_N_TICKS * 6) == 0
+                            tick % (_llm_interval * 6) == 0
                             or last_action.get('confidence', 1.0) < 0.35
                         )
                         if _is_strategic:
                             history = (mc_kb.strategic_context(progression.phase)
                                        + '\n\n' + history)
-                        if tick % (config.LLM_EVERY_N_TICKS * 10) == 0:
+                        if tick % (_llm_interval * 10) == 0:
                             history = world.cross_session_summary() + '\n' + history
-                        action_dict = ask_vision(frame, history, objects)
+                        action_dict = ask_vision(frame, history, objects, phase=progression.phase)
                         _llm_call_count += 1
                         world_mem.record_llm_call()
                         src_tag = 'LLM'
@@ -554,9 +637,9 @@ def run():
 
             # ── Crafting ─────────────────────────────────────────
             # 3x3: trigger when (a) pickaxe nearing end of life, OR
-            #                   (b) craft_pickaxe is an active goal —
+            #                   (b) a craft_* goal is active —
             #      in either case only when a crafting table is visible.
-            _craft_goal_active = goals.has_goal('craft_pickaxe')
+            _craft_goal_active = goals.has_craft_goal()
             _craft_condition   = (
                 world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
                 or _craft_goal_active
@@ -587,6 +670,15 @@ def run():
                 chest_mgr.close(executor)
                 _last_chest_tick = tick
 
+            # ── Torch placement ──────────────────────────────────
+            # Dark area (night or below TORCH_DARK_Y_LEVEL) — place a torch
+            # every TORCH_COOLDOWN_SEC to keep mobs from spawning nearby.
+            # Only in EXPLORE, never mid-skill-replay or while sheltering.
+            if (fsm_state == State.EXPLORE and not replayer.is_active()
+                    and not _menu_open and not night_survival.is_active()
+                    and torch_behavior.should_trigger(world_mem)):
+                torch_behavior.place()
+
             # ── Curiosity survey ────────────────────────────────
             # Only survey in EXPLORE/EAT — never interrupt MINE, COMBAT, FISH, etc.
             if surveyor and fsm_state in (State.EXPLORE, State.EAT, None):
@@ -604,6 +696,26 @@ def run():
                 router.update_aksumael(action_dict)
                 final = action_dict
                 final['source'] = src_tag
+
+            # ── Pitch drift clamp ──────────────────────────────
+            # Track every look-dy actually dispatched this tick (FSM aim,
+            # skill-fire, LLM, carry) so slow pitch walk over a long session
+            # gets nudged back before it compounds into a stuck-looking-at-sky
+            # or stuck-looking-at-feet camera that per-skill resets alone miss.
+            _final_look = final.get('look') if isinstance(final, dict) else None
+            if _final_look and _final_look.get('dy'):
+                world_mem.cumulative_pitch_dy = (
+                    getattr(world_mem, 'cumulative_pitch_dy', 0) + _final_look['dy']
+                )
+            _cum_pitch_dy = getattr(world_mem, 'cumulative_pitch_dy', 0)
+            if abs(_cum_pitch_dy) > _PITCH_CLAMP_LIMIT and not replayer.is_active():
+                _pitch_correction = -_PITCH_CLAMP_NUDGE if _cum_pitch_dy > 0 else _PITCH_CLAMP_NUDGE
+                print(f'[CAMERA] cumulative pitch dy={_cum_pitch_dy} past clamp '
+                      f'±{_PITCH_CLAMP_LIMIT} — nudging back toward centre '
+                      f'({_pitch_correction})')
+                executor.execute({'look': {'dx': 0, 'dy': _pitch_correction},
+                                   'source': 'pitch_clamp'})
+                world_mem.cumulative_pitch_dy = _cum_pitch_dy + _pitch_correction
 
             # ── World model ────────────────────────────────────
             world.update({
@@ -636,6 +748,51 @@ def run():
                 _low_reward_streak        = 0
                 # Give a random look to unstick the camera
                 executor.execute({'look': {'dx': 45, 'dy': 20}, 'source': 'unstuck'})
+
+            # ── Secondary anti-stuck: inventory + goal frozen ───────────
+            # The reward-streak check above can miss slow-grind loops (e.g.
+            # bumping into the same wall) that still generate occasional
+            # positive reward ticks. This catches those by watching cached
+            # inventory contents (no extra I/O — reads the existing cache,
+            # never forces a fresh inventory-open) and the active goal: if
+            # neither has changed in _INVENTORY_STUCK_TICKS, something is
+            # wrong even though reward looked fine.
+            _cur_inv_snapshot = {
+                k: (v.get('count', 0) if isinstance(v, dict) else v)
+                for k, v in inv_reader._cache.items()
+            }
+            if _last_inv_snapshot is None or _cur_inv_snapshot != _last_inv_snapshot:
+                _last_inv_snapshot    = _cur_inv_snapshot
+                _last_inv_change_tick = tick
+
+            _cur_goal_for_stuck = goals.current_goal()
+            if _last_goal_for_stuck is None or _cur_goal_for_stuck != _last_goal_for_stuck:
+                _last_goal_for_stuck   = _cur_goal_for_stuck
+                _last_goal_change_tick = tick
+
+            if (tick - _last_inv_change_tick >= _INVENTORY_STUCK_TICKS
+                    and tick - _last_goal_change_tick >= _INVENTORY_STUCK_TICKS
+                    and not replayer.is_active()):
+                print(f'[STUCK] inventory+goal unchanged for '
+                      f'{_INVENTORY_STUCK_TICKS}+ ticks (goal={_cur_goal_for_stuck}) '
+                      f'— forcing direction change + goal reassessment')
+                _turn_dir = random.choice((-1, 1))
+                executor.execute({
+                    'key': random.choice(('a', 'd')),
+                    'look': {'dx': _turn_dir * random.randint(60, 120), 'dy': 0},
+                    'source': 'inventory_unstuck',
+                })
+                goals.current = 'explore'
+                goals.save()
+                skill_cooldown_name       = None
+                skill_cooldown_until_tick = 0
+                last_skill_name           = None
+                same_skill_count          = 0
+                _low_reward_streak        = 0
+                # Reset the trackers so this doesn't re-fire every tick
+                # until real progress (or a real goal change) happens again.
+                _last_inv_change_tick  = tick
+                _last_goal_change_tick = tick
 
             # ── RL policy bookkeeping + status summary ──────────
             if tick % 100 == 0:
@@ -733,6 +890,20 @@ def _idle() -> dict:
     return {'observation': '', 'action': 'wait',
             'key': None, 'click': None,
             'gamepad': None, 'confidence': 0.0}
+
+
+# Learned skill names are built from their trigger objects (see
+# skills/skill_system.py _mine_recent), e.g. "diamond_ore_3da5b4",
+# "oak_log_9f2c11", "cobblestone_88ab41" — never a "mine_" or "coal_ore_"
+# prefix. Match on the trigger-label substrings mining/chopping actually use.
+_MINE_SKILL_MARKERS = (
+    'ore', 'log', 'wood', 'tree', 'stone', 'cobblestone', 'gravel', 'debris',
+)
+
+
+def _is_mining_skill(name: str) -> bool:
+    """True if a learned skill name looks like it mines/chops a block."""
+    return bool(name) and any(marker in name for marker in _MINE_SKILL_MARKERS)
 
 
 def _hud_reward(objects: list, prev_objects: list) -> float:

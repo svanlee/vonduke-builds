@@ -25,13 +25,14 @@ WIDTH_EPS = 1.0   # px — treat width delta below this as "unchanged"
 
 
 class HungerBehavior:
-    EAT_THRESHOLD_FRAC = 0.40   # eat when bar width < 40% of widest seen
+    EAT_THRESHOLD_FRAC = 0.30   # eat when bar width < 30% of widest seen (~6/20 shanks)
     EAT_COOLDOWN = 15.0         # seconds between eat attempts
     FOOD_SLOT = '9'             # hotbar slot assumed to hold food
     MAX_FAILED_EATS = 3         # consecutive no-effect eats before flagging slot 9 empty
 
-    def __init__(self, executor):
+    def __init__(self, executor, goals=None):
         self._executor  = executor
+        self._goals     = goals   # optional GoalStack — pushes/pops 'find_food'
         self._max_width = 0.0
         self._last_eat  = 0.0
 
@@ -108,7 +109,11 @@ class HungerBehavior:
         else:
             # Bar width moved — eat succeeded, assume slot 9 has food.
             self._failed_eats = 0
+            was_empty = self.slot9_empty
             self.slot9_empty = False
+            if was_empty and self._goals is not None and self._goals.current_goal() == 'find_food':
+                print('[HUNGER] eat succeeded — clearing find_food goal')
+                self._goals.pop()
 
     def _flag_slot9_empty(self, world_mem=None):
         self.slot9_empty = True
@@ -116,6 +121,8 @@ class HungerBehavior:
         print(f'[HUNGER] {msg}')
         if world_mem is not None:
             world_mem.update([], event=msg)
+        if self._goals is not None and not self._goals.has_goal('find_food'):
+            self._goals.push('find_food')
         self._run_grab_food_skill()
 
     def _run_grab_food_skill(self):

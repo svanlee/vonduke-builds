@@ -99,6 +99,15 @@ HOSTILE_MOBS = {
 # Minimum YOLO confidence to act on a detection
 MIN_CONF = 0.50
 
+# Once already MINEing an ore, accept a much lower confidence before giving
+# up on it — a partially-broken block's texture confuses YOLO and its conf
+# score drops well below MIN_CONF even though the ore is still there.
+MINE_HOLD_CONF = 0.30
+
+# Ore must be fully undetected (not just low-confidence) for this many
+# consecutive ticks before we treat it as broken and move to COLLECT.
+MINE_ABSENT_TICKS_TO_BREAK = 3
+
 # Ore labels permanently excluded from targeting regardless of blacklist state.
 # emerald_ore only generates in mountain biomes — we're not in one, so every
 # YOLO detection of it is a false positive. Hard-blocked here (not just the
@@ -141,17 +150,17 @@ def _idle() -> dict:
     }
 
 
-def _pick_best(objects: list, label_set: set):
+def _pick_best(objects: list, label_set: set, min_conf: float = MIN_CONF):
     """Return the highest-confidence detection whose label is in label_set."""
     hits = [
         o for o in objects
         if o.get('label', '').lower() in label_set
-        and o.get('conf', 0.0) >= MIN_CONF
+        and o.get('conf', 0.0) >= min_conf
     ]
     return max(hits, key=lambda o: o.get('conf', 0.0)) if hits else None
 
 
-def _pick_best_ore(objects: list):
+def _pick_best_ore(objects: list, min_conf: float = MIN_CONF):
     """
     Pick the highest-priority ore detection.
     Uses ORE_PRIORITY order so diamond always beats emerald even if
@@ -163,7 +172,7 @@ def _pick_best_ore(objects: list):
         for o in objects
         if o.get('label', '').lower() in ORE_TARGETS
         and o.get('label', '').lower() not in _UNSUPPORTED_ORE_LABELS
-        and o.get('conf', 0.0) >= MIN_CONF
+        and o.get('conf', 0.0) >= min_conf
     }
     if not hits:
         return None
@@ -211,6 +220,8 @@ class GameFSM:
         self._mine_ticks        = 0
         self._mine_timeout_count = 0   # consecutive timeouts on current target
         self._mine_timeout_label = None  # label being timed out on
+        self._mine_absent_ticks = 0    # consecutive ticks with NO detection at all
+        self._mine_last_box     = None  # last known box, held onto through low-conf flicker
         # Ore blacklist: {label: expire_tick} — suppress re-targeting after give-up
         self._ore_blacklist      = {}
         self._ore_blacklist_strikes = {}   # {label: times blacklisted} — for exponential backoff
@@ -274,7 +285,11 @@ class GameFSM:
             o for o in objects
             if o.get('label', '') not in self._ore_blacklist
         ]
-        ore_obj      = _pick_best_ore(non_blacklisted)
+        # While already MINEing, accept much lower-confidence ore detections —
+        # a partially-broken block's changed texture tanks YOLO's confidence
+        # well below MIN_CONF even though the ore is still there to finish off.
+        _ore_conf_floor = MINE_HOLD_CONF if self.state == State.MINE else MIN_CONF
+        ore_obj      = _pick_best_ore(non_blacklisted, min_conf=_ore_conf_floor)
         tree_obj     = _pick_best(objects, TREE_TARGETS)
         mine_obj     = ore_obj or tree_obj or _pick_best(objects, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
@@ -380,7 +395,15 @@ class GameFSM:
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         ad = _idle()
-        ad['key']         = 'w'
+        # Ore → select the pickaxe on the very first approach tick (hotbar
+        # selection persists in-game, so one press is enough) instead of
+        # waiting for MINE to begin. Every other tick keeps walking ('w'
+        # and '2' can't be sent in the same tick — see kb2040_packer combo
+        # parsing, which only supports modifier+key, not two regular keys).
+        if target.get('label', '').lower() in ORE_TARGETS and self._state_ticks == 1:
+            ad['key'] = '2'
+        else:
+            ad['key'] = 'w'
         ad['look']        = {'dx': dx, 'dy': dy}
         ad['action']      = f'approach:{target.get("label","target")}'
         ad['observation'] = (f'Approaching {target.get("label","target")} '
@@ -395,7 +418,9 @@ class GameFSM:
 
     def _begin_mine(self, target: dict, fw: int, fh: int) -> dict:
         """Build the initial action_dict for entering MINE state (aim only, no click yet)."""
-        self._mine_ticks = 0
+        self._mine_ticks        = 0
+        self._mine_absent_ticks = 0
+        self._mine_last_box     = target.get('box')
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         ad = _idle()
@@ -413,13 +438,38 @@ class GameFSM:
         """
         self._mine_ticks += 1
 
-        # Block disappeared — broken!  Walk forward to collect drops.
         if mine_obj is None:
+            self._mine_absent_ticks += 1
+            # Ore not detected this tick, but it's only been a flicker so far
+            # (occlusion / motion blur / a conf dip below even MINE_HOLD_CONF).
+            # Keep mining toward its last known position instead of bailing.
+            if (self._mine_absent_ticks < MINE_ABSENT_TICKS_TO_BREAK
+                    and self._mine_last_box is not None):
+                box = self._mine_last_box
+                dx, dy = bbox_to_mouse_delta(box, fw, fh)
+                ad = _idle()
+                ad['key']         = '2'
+                ad['look']        = {'dx': dx, 'dy': dy}
+                ad['click']       = [50.0, 50.0]
+                ad['delay_ms']    = config.MINE_HOLD_MS
+                ad['action']      = 'mining:holding_through_flicker'
+                ad['observation'] = (f'Mining — ore undetected '
+                                     f'({self._mine_absent_ticks}/{MINE_ABSENT_TICKS_TO_BREAK}), '
+                                     f'holding aim')
+                ad['confidence']  = 0.5
+                return State.MINE, ad
+
+            # Gone for MINE_ABSENT_TICKS_TO_BREAK+ ticks in a row — broken!
             print(f'[FSM] MINE: target gone after {self._mine_ticks} ticks → COLLECT')
             self._mine_ticks        = 0
             self._mine_timeout_count = 0
             self._mine_timeout_label = None
+            self._mine_absent_ticks  = 0
+            self._mine_last_box      = None
             return self._goto(State.COLLECT, self._begin_collect())
+
+        self._mine_absent_ticks = 0
+        self._mine_last_box     = mine_obj.get('box', self._mine_last_box)
 
         box = mine_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)

@@ -9,6 +9,7 @@ GOAL_PRIORITIES = {
     "survive_night": 10,
     "eat": 9,
     "flee_danger": 8,
+    "return_to_base": 8,
     "find_shelter": 7,
     "mine_diamonds": 5,
     "mine_coal": 4,
@@ -107,14 +108,29 @@ class GoalStack:
         """Return True if goal is the active goal or anywhere in the stack."""
         return self.current == goal or goal in self.stack
 
+    # Any goal name starting with 'craft_', plus these legacy aliases, counts
+    # as "we are in the middle of crafting something" for gating purposes.
+    _CRAFT_ALIASES = {'craft_tool', 'crafting'}
+
+    def is_craft_goal(self, goal: str | None = None) -> bool:
+        """True if `goal` (default: current goal) is any crafting-related goal."""
+        g = self.current if goal is None else goal
+        return g.startswith('craft_') or g in self._CRAFT_ALIASES
+
+    def has_craft_goal(self) -> bool:
+        """True if a crafting goal is active or queued anywhere in the stack."""
+        return self.is_craft_goal(self.current) or any(self.is_craft_goal(g) for g in self.stack)
+
     def suggest_craft_goal(self, cached_inv: dict, chest_inv: dict | None = None):
-        """Auto-push craft_pickaxe if inventory (or the base chest) has the
-        materials and no pickaxe is already present.  Called from the runtime
-        loop after a successful inventory read (uses the {item:count} flat
-        dict).  chest_inv, if given, is a ChestManager-style
-        {item: {count, slot}} dict — its counts are added to cached_inv's
-        when checking totals.  Hard-limits to one craft_pickaxe anywhere in
-        the goal state."""
+        """Auto-push the highest-tier craft_*_pickaxe goal the instant inventory
+        (or the base chest) has enough materials — replaces waiting for the LLM
+        to notice and decide.  Escalates wood -> stone -> iron -> diamond,
+        skipping any tier whose pickaxe (or better) is already owned.  Called
+        from the runtime loop after a successful inventory read (uses the
+        {item:count} flat dict).  chest_inv, if given, is a ChestManager-style
+        {item: {count, slot}} dict — its counts are added to cached_inv's when
+        checking totals.  Hard-limits to one craft_* goal anywhere in the goal
+        state at a time."""
         chest_inv = chest_inv or {}
 
         def _chest_count(item: str) -> int:
@@ -124,38 +140,45 @@ class GoalStack:
         def _total(item: str) -> int:
             return cached_inv.get(item, 0) + _chest_count(item)
 
-        # Count how many times craft_pickaxe already appears (current + stack)
-        craft_count = (
-            (1 if self.current == 'craft_pickaxe' else 0)
-            + list(self.stack).count('craft_pickaxe')
-        )
-        if craft_count >= 1:
-            return   # already queued — don't stack duplicates
-
-        has_pickaxe = any(_total(k) > 0 for k in (
-            'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'diamond_pickaxe',
-        ))
-        if has_pickaxe:
-            return   # already have one (in hand or in the chest)
-
         # Don't push if inventory read returned nothing (failed scan)
         if not cached_inv and not chest_inv:
             return
 
-        # Enough for a stone pickaxe?
-        if _total('cobblestone') >= 3 and _total('stick') >= 2:
-            print('[GOALS] auto-push craft_pickaxe (has cobblestone+sticks)')
-            self.push('craft_pickaxe')
+        if self.has_craft_goal():
+            return   # already queued — don't stack duplicates
+
+        TIERS = ('wooden', 'stone', 'iron', 'diamond')
+        best_owned = -1
+        for i, tier in enumerate(TIERS):
+            if _total(f'{tier}_pickaxe') > 0:
+                best_owned = i
+
+        # Diamond pickaxe: 3 diamond + 2 stick
+        if best_owned < 3 and _total('diamond') >= 3 and _total('stick') >= 2:
+            print('[GOALS] auto-push craft_diamond_pickaxe (has diamond+sticks)')
+            self.push('craft_diamond_pickaxe')
             return
 
-        # Enough for a wooden pickaxe?
+        # Iron pickaxe: 3 iron_ingot + 2 stick
+        if best_owned < 2 and _total('iron_ingot') >= 3 and _total('stick') >= 2:
+            print('[GOALS] auto-push craft_iron_pickaxe (has iron+sticks)')
+            self.push('craft_iron_pickaxe')
+            return
+
+        # Stone pickaxe: 3 cobblestone + 2 stick
+        if best_owned < 1 and _total('cobblestone') >= 3 and _total('stick') >= 2:
+            print('[GOALS] auto-push craft_stone_pickaxe (has cobblestone+sticks)')
+            self.push('craft_stone_pickaxe')
+            return
+
+        # Wooden pickaxe: 3 planks + 2 stick
         planks = sum(_total(p) for p in (
             'oak_planks', 'spruce_planks', 'birch_planks',
             'jungle_planks', 'acacia_planks', 'dark_oak_planks',
         ))
-        if planks >= 3 and _total('stick') >= 2:
-            print('[GOALS] auto-push craft_pickaxe (has planks+sticks)')
-            self.push('craft_pickaxe')
+        if best_owned < 0 and planks >= 3 and _total('stick') >= 2:
+            print('[GOALS] auto-push craft_wood_pickaxe (has planks+sticks)')
+            self.push('craft_wood_pickaxe')
 
     def context_summary(self) -> str:
         return f"Current goal: {self.current}" + (f" (queued: {', '.join(list(self.stack)[-2:])})" if self.stack else "")

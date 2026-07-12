@@ -7,7 +7,7 @@
 # "gemini" = free tier, ~1500 req/day
 # "claude" = paid, one-line swap
 import os
-VISION_PROVIDER   = "claude"
+VISION_PROVIDER   = "gemini"
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -21,7 +21,10 @@ YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
 KEY_HOLD_MS  = 500   # ms to hold each key press (was hardcoded 20ms)
 MINE_HOLD_MS = 450   # ms to hold left-click per mining tick (fills most of LOOP_INTERVAL)
 
-LLM_EVERY_N_TICKS  = 30    # call LLM every 30 ticks (~15s); only in EXPLORE/EAT
+LLM_EVERY_N_TICKS      = 30    # call LLM every 30 ticks (~15s) while in EXPLORE/EAT
+LLM_EVERY_N_TICKS_MINE = 60    # slower cadence while actively MINE-ing/chopping —
+                                # the FSM already drives per-tick aim+click, so the
+                                # LLM only needs to check in occasionally (cheaper, faster loop)
 LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
 
 # ── Scan / Identify / Pathfinder ──────────────────────────────
@@ -67,6 +70,73 @@ Tactical rules:
 - Night in the open → find shelter or pillar up 6 blocks
 - NEVER idle — always move toward the current phase milestone
 """
+
+# ── Phase-Specific Tactical Guidance ────────────────────────────
+# Explicit, imperative per-phase instructions appended to GAME_CONTEXT on
+# every LLM call (via config.game_context_for_phase). Written as a numbered
+# checklist, not open-ended choices, so the LLM isn't left to improvise —
+# and each one ends with an urgency line to stop it from lingering/exploring
+# aimlessly once the phase objective is achievable.
+PHASE_TACTICS = {
+    "wood": (
+        "PHASE TACTICS (WOOD):\n"
+        "1. Find the nearest tree. Chop it until you have 12+ logs.\n"
+        "2. Craft: logs -> planks -> crafting table -> sticks -> wooden pickaxe.\n"
+        "3. The instant you have a pickaxe, find stone and mine it immediately.\n"
+        "URGENCY: complete this phase's objective in under 50 moves. Do not wander or idle."
+    ),
+    "stone": (
+        "PHASE TACTICS (STONE):\n"
+        "1. Mine 20+ cobblestone with your pickaxe.\n"
+        "2. Craft stone pickaxe, stone sword, and a furnace.\n"
+        "3. Dig/tunnel down to find iron ore (Y=15-50). Mine 8+ iron ore.\n"
+        "4. Smelt the iron ore the moment you have a furnace and fuel (coal/charcoal).\n"
+        "URGENCY: complete this phase's objective in under 50 moves. Do not linger on the surface."
+    ),
+    "iron": (
+        "PHASE TACTICS (IRON):\n"
+        "1. Smelt iron ore into iron ingots (furnace + fuel).\n"
+        "2. Craft iron pickaxe, iron sword, iron armor.\n"
+        "3. With the iron pickaxe equipped, dig below Y=16 toward diamond-bearing strata.\n"
+        "4. The moment you see diamond_ore, mine it — do not walk past it.\n"
+        "URGENCY: complete this phase's objective in under 50 moves. Prioritize depth over exploration."
+    ),
+    "diamond": (
+        "PHASE TACTICS (DIAMOND):\n"
+        "1. Mine diamonds until you have 3+, then craft a diamond pickaxe immediately.\n"
+        "2. Mine 10+ obsidian near lava using the diamond pickaxe.\n"
+        "3. Craft flint and steel.\n"
+        "4. Build a 4-wide x 5-tall obsidian portal frame and light it.\n"
+        "URGENCY: complete this phase's objective in under 50 moves. Do not stockpile — build the portal."
+    ),
+    "nether": (
+        "PHASE TACTICS (NETHER):\n"
+        "1. Move cautiously — avoid lava, ghast fireballs, and open ledges.\n"
+        "2. Find a Nether Fortress. Kill blazes for 6+ blaze rods.\n"
+        "3. Kill Endermen for 12+ ender pearls.\n"
+        "4. Craft Eyes of Ender, then return to the Overworld portal.\n"
+        "URGENCY: complete this phase's objective in under 50 moves. Retreat from danger, don't fight everything."
+    ),
+    "end": (
+        "PHASE TACTICS (END):\n"
+        "1. Throw Eyes of Ender repeatedly to triangulate and reach the stronghold.\n"
+        "2. Find the End Portal room, fill all 12 frame blocks with Eyes of Ender.\n"
+        "3. Step through the portal. Destroy End Crystals on obsidian pillars first (attack from range).\n"
+        "4. Attack the Ender Dragon whenever it perches or hovers over the portal.\n"
+        "URGENCY: this is the final phase. Do not retreat. Kill the Ender Dragon to beat the game."
+    ),
+}
+
+
+def game_context_for_phase(phase: str | None) -> str:
+    """GAME_CONTEXT with the current phase's tactical checklist appended.
+
+    Falls back to plain GAME_CONTEXT when phase is unknown/None (e.g. the
+    threat-scan LLM call, which doesn't need phase tactics)."""
+    tactics = PHASE_TACTICS.get(phase)
+    if not tactics:
+        return GAME_CONTEXT
+    return f"{GAME_CONTEXT}\n{tactics}"
 
 # ── Vision Source ─────────────────────────────────────────────
 # Rybozen HDMI capture card via USB (the only vision source)
@@ -140,6 +210,17 @@ REWARD_DECAY = 0.95
 #    video, this just gives Claude a sense of time passing) ────
 MC_DAY_TICKS       = 24000   # Minecraft day cycle
 DAYTIME_SAFE_RANGE = (0, 13000)   # ticks 0-13000 are daylight
+
+# ── Night Survival ────────────────────────────────────────────
+NIGHT_APPROACH_TICK  = 11000   # start sheltering once game_tick passes this (dusk warning)
+PILLAR_HEIGHT        = 6       # blocks to pillar up when caught in the open at night
+BLOCK_SLOT           = '4'     # hotbar slot assumed to hold building blocks (cobblestone/dirt)
+NIGHT_MAX_WAIT_TICKS = 3000    # safety cap on waiting out the night (~12.5 min at 0.25s/tick)
+
+# ── Torch Placement ───────────────────────────────────────────
+TORCH_SLOT         = '7'    # hotbar slot assumed to hold torches
+TORCH_DARK_Y_LEVEL = 50     # below this Y-level, treat surroundings as cave/dark
+TORCH_COOLDOWN_SEC = 30.0   # min seconds between automatic torch placements
 
 # ── Tool Durability ───────────────────────────────────────────
 PICKAXE_DURABILITY = 200   # uses before warning Claude to craft/switch tools
