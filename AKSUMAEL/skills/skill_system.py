@@ -31,7 +31,12 @@ LABEL_SYNONYMS = {
 
 # HUD elements that are permanently on screen — never valid as a skill's
 # *only* trigger, since a skill triggered solely by these fires every tick.
-HUD_ALWAYS_VISIBLE = {'health_bar', 'armor_bar', 'hunger_bar', 'xp_bar', 'hotbar'}
+HUD_ALWAYS_VISIBLE = {'health_bar', 'armor_bar', 'hunger_bar', 'xp_bar', 'hotbar',
+                      'crosshair'}
+
+# Labels that are YOLO false positives in the current environment — don't
+# create skills triggered by these (emerald_ore only spawns in mountain biomes).
+_BLOCKED_SKILL_TRIGGERS = frozenset({'emerald_ore'})
 
 def _canonical(label: str) -> str:
     """Map any label to its canonical group name, or itself."""
@@ -281,6 +286,11 @@ class SkillSystem:
         # every tick. Drop HUD-only triggers rather than mining a skill
         # that can never stop looping.
         if set(trigger) <= HUD_ALWAYS_VISIBLE:
+            return None
+
+        # Don't create skills for YOLO false-positive labels (e.g. emerald_ore
+        # outside mountain biomes) — they produce junk skills that loop forever.
+        if set(trigger) & _BLOCKED_SKILL_TRIGGERS:
             return None
 
         # Build timed steps — infer delay from actual tick timestamps
