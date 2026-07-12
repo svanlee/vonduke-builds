@@ -17,9 +17,33 @@ CTL_FILE="$AKSUMAEL_DIR/.aksumael_ctl"
 LOG_FILE="/tmp/aksumael_live.log"
 
 AKSUMAEL_PID=""
+CAPTURE_DEVICE="${CAPTURE_DEVICE:-/dev/video2}"
+STARTUP_WAIT_SEC=120   # max seconds to wait for hardware before giving up
+CRASH_RESTART_SEC=30   # seconds to wait after a crash before restarting
 
 # Clear stale control file on startup
 rm -f "$CTL_FILE"
+
+wait_for_hardware() {
+    echo "[WRAPPER] Waiting for capture card ($CAPTURE_DEVICE) and serial port (/dev/ttyUSB0)..."
+    local waited=0
+    while true; do
+        local missing=()
+        [[ ! -e "$CAPTURE_DEVICE" ]] && missing+=("$CAPTURE_DEVICE")
+        [[ ! -e "/dev/ttyUSB0" ]]    && missing+=("/dev/ttyUSB0")
+        if [[ ${#missing[@]} -eq 0 ]]; then
+            echo "[WRAPPER] Hardware ready — capture card and serial port detected."
+            return 0
+        fi
+        if (( waited >= STARTUP_WAIT_SEC )); then
+            echo "[WRAPPER] WARNING: timed out waiting for: ${missing[*]}. Starting anyway."
+            return 1
+        fi
+        echo "[WRAPPER] Still waiting for: ${missing[*]}  (${waited}s / ${STARTUP_WAIT_SEC}s)"
+        sleep 5
+        (( waited += 5 ))
+    done
+}
 
 load_key() {
     if [[ -f "$KEY_FILE" ]]; then
@@ -52,6 +76,7 @@ stop_aksumael() {
     AKSUMAEL_PID=""
 }
 
+wait_for_hardware
 start_aksumael
 
 while true; do
@@ -87,9 +112,10 @@ while true; do
 
     # Restart if crashed (and not intentionally stopped)
     if [[ -n "$AKSUMAEL_PID" ]] && ! kill -0 "$AKSUMAEL_PID" 2>/dev/null; then
-        echo "[WRAPPER] AKSUMAEL crashed (PID $AKSUMAEL_PID). Restarting in 5s..."
+        echo "[WRAPPER] AKSUMAEL crashed (PID $AKSUMAEL_PID). Waiting ${CRASH_RESTART_SEC}s then checking hardware..."
         AKSUMAEL_PID=""
-        sleep 5
+        sleep "$CRASH_RESTART_SEC"
+        wait_for_hardware
         start_aksumael
     fi
 done
