@@ -18,9 +18,13 @@ class YOLODetector:
 
     def _load_model(self):
         try:
+            import torch
             from ultralytics import YOLO
+            self._device = 0 if torch.cuda.is_available() else 'cpu'
             self.model = YOLO(config.YOLO_MODEL)
-            print(f'[YOLO] loaded {config.YOLO_MODEL}')
+            self.model.to(self._device)
+            _dev_name = torch.cuda.get_device_name(0) if self._device == 0 else 'CPU'
+            print(f'[YOLO] loaded {config.YOLO_MODEL} → {_dev_name}')
         except Exception as e:
             print(f'[YOLO] failed to load: {e} — running without YOLO')
 
