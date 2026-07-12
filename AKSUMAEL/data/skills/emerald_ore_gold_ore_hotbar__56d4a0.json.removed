@@ -1,13 +1,16 @@
 {
-  "name": "coal_ore_hotbar_e3f079",
+  "name": "emerald_ore_gold_ore_hotbar__56d4a0",
   "trigger_objects": [
+    "emerald_ore",
+    "gold_ore",
     "hotbar",
-    "coal_ore"
+    "lapis_ore",
+    "xp_bar"
   ],
   "steps": [
     {
       "action": {
-        "key": null,
+        "key": "2",
         "click": null,
         "look": null,
         "gamepad": {
@@ -61,7 +64,7 @@
     },
     {
       "action": {
-        "key": "esc",
+        "key": "2",
         "click": null,
         "look": null,
         "gamepad": {
@@ -78,8 +81,8 @@
       "delay_after_ms": 150
     }
   ],
-  "avg_reward": 0.238,
+  "avg_reward": 0.466,
   "uses": 1,
-  "created": 1783820669.579266,
-  "last_used": null
+  "created": 1783854066.686579,
+  "last_used": 1783856478.2307491
 }

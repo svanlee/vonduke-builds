@@ -122,8 +122,10 @@ def run():
     SKILL_COOLDOWN_TICKS      = 20     # how long a spammed skill stays suppressed
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
-    f3_countdown     = 50    # ticks until next F3 OCR read (offset from startup)
-    _f3_open         = False  # True while F3 overlay is open (we pressed it, waiting to close)
+    f3_countdown         = 50    # ticks until next F3 OCR read (offset from startup)
+    _f3_open             = False  # True while F3 overlay is open
+    _menu_stuck_since    = 0      # tick when menu was first detected open
+    MENU_STUCK_TICKS     = 20     # close menu after this many ticks with no action
     fsm_state        = None  # updated each tick for console logging
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
@@ -174,10 +176,22 @@ def run():
 
             # ── HUD / menu state ────────────────────────────────
             # Used to gate anything that would corrupt an open menu screen
-            # (F3 debug overlay toggle, scan/pathfinder sweeps).
+            # (F3 debug overlay toggle, scan/pathfinder sweeps, skill execution).
             _hud_labels  = {o.get('label') for o in objects}
             _menu_open   = bool(_hud_labels & {'inventory', 'crafting_table', 'chest_row', 'furnace'})
             _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
+
+            # ── Escape stuck menu ────────────────────────────────
+            # If a menu has been open for too long with no escape, close it.
+            if _menu_open:
+                if _menu_stuck_since == 0:
+                    _menu_stuck_since = tick
+                elif (tick - _menu_stuck_since) >= MENU_STUCK_TICKS:
+                    print(f'[MENU] stuck for {tick - _menu_stuck_since} ticks — pressing Escape')
+                    executor.execute({'key': 'esc'})
+                    _menu_stuck_since = 0
+            else:
+                _menu_stuck_since = 0
 
             # ── Game launcher — runs before anything else ──────
             # If no HUD detected, AKSUMAEL isn't in-game yet.
@@ -290,14 +304,18 @@ def run():
                 if skill and skill.name == skill_cooldown_name and tick < skill_cooldown_until_tick:
                     skill = None
                 elif skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
-                    # Same skill has fired too many times in a row — cool it down
-                    print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, '
-                          f'suppressing for {SKILL_COOLDOWN_TICKS} ticks')
-                    skill_cooldown_name       = skill.name
-                    skill_cooldown_until_tick = tick + SKILL_COOLDOWN_TICKS
-                    skill = None
-                    last_skill_name  = None
-                    same_skill_count = 0
+                    # Mining skills get a higher repeat limit — ore takes many clicks to break.
+                    # Non-mining skills cool down after SAME_SKILL_LIMIT fires.
+                    _is_mining = skill.name.startswith('mine_')
+                    _limit = 12 if _is_mining else SAME_SKILL_LIMIT
+                    if same_skill_count >= _limit:
+                        print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, '
+                              f'suppressing for {SKILL_COOLDOWN_TICKS} ticks')
+                        skill_cooldown_name       = skill.name
+                        skill_cooldown_until_tick = tick + SKILL_COOLDOWN_TICKS
+                        skill = None
+                        last_skill_name  = None
+                        same_skill_count = 0
 
                 if skill and match >= skills.MIN_MATCH_SCORE:
                     same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
@@ -473,7 +491,9 @@ def run():
             # Track _f3_open so we never send inputs while it's up.
             f3_countdown -= 1
             if f3_countdown <= 0 and _hud_present and not _menu_open and not _f3_open:
-                f3_countdown = config.F3_READ_EVERY_N_TICKS
+                # Always reset to full interval first — prevents fast retry loop
+                # even if OCR fails to read anything
+                f3_countdown = max(config.F3_READ_EVERY_N_TICKS, 60)
                 if frame is not None:
                     _f3_open = True
                     executor.execute({'key': 'f3'})                    # open
@@ -485,10 +505,10 @@ def run():
                     if f3_data['f3_active']:
                         world_mem.update_f3(f3_data)
                     else:
-                        print('[F3] overlay opened but OCR found no XYZ — closed')
+                        print('[F3] OCR found no XYZ — closed, will retry in 60 ticks')
             elif f3_countdown <= 0:
-                # Menu open, no HUD, or f3 already open — defer, try again soon
-                f3_countdown = 30
+                # Not safe (menu open / no HUD) — wait at least 60 ticks before next try
+                f3_countdown = 60
 
             # ── Console log ────────────────────────────────────
             elapsed = round(time.time() - t0, 2)
