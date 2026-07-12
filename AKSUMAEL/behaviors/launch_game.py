@@ -4,7 +4,7 @@
 # ║  Generic "get into the game" behavior. Works for any  ║
 # ║  game AKSUMAEL is plugged into via KB2040.            ║
 # ║                                                       ║
-# ║  Sequences defined in data/skills/launch_sequences.json ║
+# ║  Sequences defined in data/config/launch_sequences.json ║
 # ║  Add a new game there — no Python changes needed.    ║
 # ╚══════════════════════════════════════════════════════╝
 
@@ -12,7 +12,7 @@ import json
 import os
 import time
 
-SEQUENCES_FILE = 'data/skills/launch_sequences.json'
+SEQUENCES_FILE = 'data/config/launch_sequences.json'
 
 # YOLO labels that indicate the game is NOT running / needs launching
 NOT_IN_GAME_LABELS = frozenset({
