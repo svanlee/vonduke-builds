@@ -77,6 +77,10 @@ start_aksumael() {
     load_gemini_key
     echo "[WRAPPER] Starting AKSUMAEL..."
     cd "$AKSUMAEL_DIR"
+    export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
+    if [[ "$QT_QPA_PLATFORM" != "offscreen" ]]; then
+        export QT_QPA_PLATFORM=offscreen
+    fi
     "$VENV_PYTHON" -u main.py >> "$LOG_FILE" 2>&1 &
     AKSUMAEL_PID=$!
     echo "[WRAPPER] AKSUMAEL PID: $AKSUMAEL_PID"

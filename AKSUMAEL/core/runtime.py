@@ -240,7 +240,10 @@ def run():
             # ── Game launcher — runs before anything else ──────
             # If no HUD detected, AKSUMAEL isn't in-game yet.
             # Execute the launch sequence, then skip this tick.
-            if launcher.should_trigger(objects, tick):
+            # Grace period: skip launch checks for the first 30 ticks so
+            # YOLO and capture have time to warm up (otherwise HUD detection
+            # fails on every restart and triggers a spurious launch).
+            if tick >= 30 and launcher.should_trigger(objects, tick):
                 print(f'[LAUNCH] HUD not detected at tick {tick} — triggering launch sequence')
                 launcher.run(tick)
                 continue
