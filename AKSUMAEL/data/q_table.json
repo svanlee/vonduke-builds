@@ -33,7 +33,7 @@
     "armor_bar_emerald_ore_health_4aebc3": 0.6222367637319467
   },
   "diamond_ore,emerald_ore,gold_ore": {
-    "armor_bar_diamond_ore_emeral_72d3e5": 0.055808167029341896
+    "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962
   },
   "armor_bar,coal_ore,emerald_ore": {
     "armor_bar_diamond_ore_emeral_72d3e5": 0.9310473553134462,
@@ -46,7 +46,8 @@
     "diamond_ore_emerald_ore_gold_53233d": 0.9278206468436855
   },
   "armor_bar,coal_ore,gold_ore": {
-    "armor_bar_emerald_ore_health_4aebc3": 0.4952756729282448
+    "armor_bar_emerald_ore_health_4aebc3": 0.4952756729282448,
+    "armor_bar_gold_ore_health_ba_59e436": 1.4071436172554295
   },
   "armor_bar,gold_ore,health_bar": {
     "armor_bar_health_bar_hotbar__6e8e3d": 1.2097223653571239,
@@ -65,15 +66,43 @@
     "armor_bar_health_bar_hotbar__843f39": 0.9940773568726409,
     "armor_bar_emerald_ore_health_6177b9": 1.066255880141391,
     "armor_bar_emerald_ore_health_4aebc3": 1.0254146886485858,
-    "armor_bar_gold_ore_health_ba_c7d2a1": 1.4566432183407167,
+    "armor_bar_gold_ore_health_ba_c7d2a1": 1.063690207465788,
     "armor_bar_gold_ore_health_ba_59e436": 1.016380566191448,
     "armor_bar_gold_ore_health_ba_0cbd8e": 1.1351976062596212
   },
   "armor_bar,emerald_ore,hotbar": {},
-  "armor_bar,gold_ore,hotbar": {},
+  "armor_bar,gold_ore,hotbar": {
+    "armor_bar_gold_ore_health_ba_59e436": 0.9247109432545927
+  },
   "armor_bar,bed,gold_ore": {},
   "gold_ore,health_bar,hotbar": {
     "armor_bar_health_bar_hotbar__843f39": 0.8781984904699255,
     "diamond_ore_emerald_ore_gold_53233d": 0.09653786414229329
-  }
+  },
+  "armor_bar,hotbar,hunger_bar": {},
+  "armor_bar,hotbar,redstone_ore": {},
+  "armor_bar,diamond_ore,hotbar": {},
+  "armor_bar,hotbar,xp_bar": {},
+  "emerald_ore,hotbar,hunger_bar": {
+    "mine_emerald_ore": 1.2705801547413231,
+    "mine_redstone_ore": 1.3080826758230382,
+    "emerald_ore_hotbar_hunger_ba_105633": 1.3163377636624332
+  },
+  "hotbar,hunger_bar,xp_bar": {},
+  "hotbar,xp_bar": {},
+  "bed,hotbar,xp_bar": {},
+  "hotbar,hunger_bar": {},
+  "emerald_ore,hotbar,redstone_ore": {
+    "mine_redstone_ore": 0.2956620774486245
+  },
+  "hotbar,hunger_bar,redstone_ore": {
+    "emerald_ore_hotbar_hunger_ba_105633": 0.9150792859575094,
+    "mine_redstone_ore": 0.27474275385580726
+  },
+  "coal_ore,hotbar,hunger_bar": {},
+  "gold_ore,hotbar,hunger_bar": {
+    "armor_bar_gold_ore_health_ba_c7d2a1": 0.1503734935412496
+  },
+  "gold_ore,hotbar": {},
+  "gold_ore,hotbar,xp_bar": {}
 }
