@@ -1,0 +1,86 @@
+{
+  "name": "gold_ore_hotbar_xp_bar_6ad78f",
+  "trigger_objects": [
+    "gold_ore",
+    "hotbar",
+    "xp_bar"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.458,
+  "uses": 1,
+  "created": 1783853736.5025735,
+  "last_used": 1783855876.1749206
+}
