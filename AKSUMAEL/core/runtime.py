@@ -163,6 +163,13 @@ def run():
                         print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
                 objects = merge_with_yolo(objects, _color_dets)
 
+            # ── HUD / menu state ────────────────────────────────
+            # Used to gate anything that would corrupt an open menu screen
+            # (F3 debug overlay toggle, scan/pathfinder sweeps).
+            _hud_labels  = {o.get('label') for o in objects}
+            _menu_open   = bool(_hud_labels & {'inventory', 'crafting_table', 'chest_row', 'furnace'})
+            _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
+
             # ── Game launcher — runs before anything else ──────
             # If no HUD detected, AKSUMAEL isn't in-game yet.
             # Execute the launch sequence, then skip this tick.
@@ -233,6 +240,7 @@ def run():
             # mid-skill-replay. Sweep is fast (~4s); zoom+identify only fires
             # when YOLO actually spotted a danger label.
             if (not replayer.is_active()
+                    and not _menu_open
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
                 scanner.run(world_mem, target_bearing=0)
                 _last_scan_tick = tick
@@ -446,7 +454,9 @@ def run():
 
             # ── F3 debug overlay OCR ─────────────────────────────
             f3_countdown -= 1
-            if f3_countdown <= 0:
+            # Guard: only read F3 when we're clearly in-game with HUD visible
+            # and NOT inside a menu/inventory (which would corrupt the UI)
+            if f3_countdown <= 0 and _hud_present and not _menu_open:
                 f3_countdown = config.F3_READ_EVERY_N_TICKS
                 if frame is not None:
                     executor.execute({'key': 'f3'})
@@ -457,6 +467,10 @@ def run():
                     if f3_data['f3_active']:
                         world_mem.update_f3(f3_data)
                         print(f"[F3] Y={f3_data['y_level']} biome={f3_data['biome']}")
+            elif f3_countdown <= 0:
+                # Not safe to read F3 right now (menu open or no HUD) —
+                # reset countdown and try again shortly instead of stalling.
+                f3_countdown = 30
 
             # ── Console log ────────────────────────────────────
             elapsed = round(time.time() - t0, 2)
