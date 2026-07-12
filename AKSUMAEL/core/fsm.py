@@ -206,6 +206,7 @@ class GameFSM:
         self._mine_timeout_label = None  # label being timed out on
         # Ore blacklist: {label: expire_tick} — suppress re-targeting after give-up
         self._ore_blacklist      = {}
+        self._ore_blacklist_strikes = {}   # {label: times blacklisted} — for exponential backoff
         self._total_ticks        = 0   # global tick counter for blacklist expiry
 
         # COLLECT tracking
@@ -447,11 +448,17 @@ class GameFSM:
             self._mine_ticks = 0
 
             if self._mine_timeout_count >= 3:
-                # Stuck 3+ times on same target — blacklist + explore
+                # Stuck 3+ times on same target — blacklist + explore.
+                # Duration doubles each time a label gets blacklisted (capped at
+                # 480 ticks) so a permanently-unreachable block doesn't just get
+                # re-targeted the instant a fixed-length blacklist expires.
                 BLACKLIST_TICKS = 60
-                self._ore_blacklist[curr_label] = self._total_ticks + BLACKLIST_TICKS
+                strikes = self._ore_blacklist_strikes.get(curr_label, 0)
+                blacklist_duration = min(BLACKLIST_TICKS * (2 ** strikes), 480)
+                self._ore_blacklist[curr_label] = self._total_ticks + blacklist_duration
+                self._ore_blacklist_strikes[curr_label] = strikes + 1
                 print(f'[FSM] MINE: {self._mine_timeout_count} timeouts on {curr_label}, '
-                      f'blacklisting for {BLACKLIST_TICKS} ticks → EXPLORE')
+                      f'blacklisting for {blacklist_duration} ticks (strike {strikes + 1}) → EXPLORE')
                 self._mine_timeout_count = 0
                 self._mine_timeout_label = None
                 return self._goto(State.EXPLORE, _idle())
