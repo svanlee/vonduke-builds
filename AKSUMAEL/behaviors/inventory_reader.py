@@ -24,17 +24,34 @@ def _frame_to_b64(frame) -> str:
     return base64.b64encode(buf.tobytes()).decode('utf-8')
 
 
-_INVENTORY_PROMPT = """This is a Minecraft Java Edition inventory screen.
-List every item stack you can identify in the main inventory grid (3 rows × 9 cols)
-and the hotbar (bottom row of 9 slots). Include the crafting 2x2 area only if
-items are already placed there.
+_INVENTORY_PROMPT = """This is a screenshot from Minecraft Java Edition.
 
-Respond with ONLY a JSON object mapping item names to counts, e.g.:
-{"cobblestone": 23, "stick": 8, "oak_log": 4, "oak_planks": 0, "stone_pickaxe": 1}
+TASK: Read the player's inventory and return item counts as JSON.
 
-Use Minecraft snake_case item IDs (oak_log, oak_planks, cobblestone, stick, etc.).
-If a slot is empty, skip it. If a count is unclear, estimate conservatively.
-Output ONLY the JSON object, nothing else."""
+The inventory screen has:
+- A 3×9 main grid (27 slots in the middle area)
+- A bottom hotbar row (9 slots)
+- A small 2×2 crafting area + result slot in the top-right corner
+- Armour slots on the left
+
+INSTRUCTIONS:
+1. First check: is the inventory screen actually open? If you see the game world
+   with no inventory panel, return {"inventory_closed": true}.
+2. If open, read every non-empty slot in the main grid AND the hotbar.
+3. Each slot shows a small item icon + a number in the corner (the stack count).
+   If no number is visible, the count is 1.
+4. Use Minecraft snake_case item IDs. Common ones:
+   oak_log, spruce_log, birch_log, dark_oak_log, jungle_log, acacia_log,
+   oak_planks, spruce_planks, birch_planks, cobblestone, stone, dirt, gravel,
+   stick, coal, charcoal, iron_ore, iron_ingot, gold_ore, gold_ingot,
+   diamond, diamond_ore, redstone, lapis_lazuli, emerald,
+   wooden_pickaxe, stone_pickaxe, iron_pickaxe, wooden_axe, stone_axe,
+   wooden_sword, stone_sword, bread, apple, raw_beef, cooked_beef,
+   torch, crafting_table, furnace, chest, bow, arrow, shield
+5. Skip empty slots. If a count is illegible, estimate from the icon density.
+
+Respond with ONLY a valid JSON object — no markdown fences, no commentary:
+{"cobblestone": 23, "stick": 8, "oak_log": 4, "stone_pickaxe": 1}"""
 
 
 class InventoryReader:
@@ -141,11 +158,16 @@ class InventoryReader:
                 if text.startswith('```'):
                     text = '\n'.join(text.split('\n')[1:-1])
                 items = json.loads(text)
+                # Inventory wasn't open — return empty rather than crash
+                if items.get('inventory_closed'):
+                    print('[INV] Claude says inventory was not open')
+                    return {}
                 # Sanitise: ensure all values are ints, filter junk keys
                 return {
                     k.lower().replace(' ', '_'): max(0, int(v))
                     for k, v in items.items()
                     if isinstance(k, str) and isinstance(v, (int, float))
+                        and k != 'inventory_closed'
                 }
             except urllib.error.HTTPError as e:
                 print(f'[INV] Claude HTTP {e.code} on attempt {attempt+1}')
