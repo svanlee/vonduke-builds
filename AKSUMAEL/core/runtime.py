@@ -212,6 +212,10 @@ def run():
             goals.auto_update(world_mem, inventory)
             progression.auto_update(inventory, world_mem, tick)
 
+            # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
+            if tick % 60 == 0 and inv_reader._cache_ts > 0:
+                goals.suggest_craft_goal(inv_reader.read(force=False))
+
             if tick % 50 == 0:
                 inventory.save()
                 goals.save()
@@ -304,13 +308,38 @@ def run():
                 # Try a learned skill first — if multiple candidates match,
                 # let the RL policy pick among them instead of the naive best.
                 candidates = skills.find_candidates(objects)
+
+                # ── Goal-aware skill gating ───────────────────────
+                # When the active goal is crafting-related, suppress mining
+                # and pure-movement skills so AKSUMAEL doesn't keep digging
+                # instead of seeking a crafting table.
+                _cur_goal = goals.current_goal()
+                _crafting_goal = _cur_goal in ('craft_pickaxe', 'craft_tool',
+                                               'crafting', 'find_crafting_table')
+                if _crafting_goal and candidates:
+                    _pre = len(candidates)
+                    candidates = [
+                        (sk, m) for sk, m in candidates
+                        if not (sk.name.startswith('mine_')
+                                or sk.name.startswith('coal_ore')
+                                or sk.name.startswith('iron_ore'))
+                    ]
+                    if len(candidates) < _pre:
+                        print(f'[SKILL] goal={_cur_goal}: suppressed '
+                              f'{_pre - len(candidates)} mining skill(s)')
+
                 if len(candidates) > 1:
                     names = [sk.name for sk, _ in candidates]
                     chosen_name = rl.choose_skill(names, objects)
                     by_name = {sk.name: (sk, m) for sk, m in candidates}
                     skill, match = by_name.get(chosen_name, (None, 0.0))
-                else:
+                elif candidates:
+                    skill, match = candidates[0]
+                elif not _crafting_goal:
+                    # No candidates after goal filter — fall through to FSM/LLM
                     skill, match = skills.find_best(objects)
+                else:
+                    skill, match = None, 0.0
 
                 # A skill already serving a cooldown stays suppressed until
                 # skill_cooldown_until_tick, regardless of last_skill_name —
@@ -388,6 +417,19 @@ def run():
                                    + inventory.context_summary() + '\n'
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))
+
+                        # Goal-specific navigation hint injected into prompt
+                        _g = goals.current_goal()
+                        if _g in ('craft_pickaxe', 'craft_tool', 'crafting'):
+                            _table_visible = any(
+                                o.get('label') == 'crafting_table' for o in objects)
+                            if _table_visible:
+                                history += ('\nIMPORTANT: crafting table is visible — '
+                                            'walk up to it (W) and right-click to open it.')
+                            else:
+                                history += ('\nIMPORTANT: goal is to craft a pickaxe. '
+                                            'No crafting table in view. Explore (W/turn) '
+                                            'to find one. Spawn is near X=-6 Z=-3.')
                         # Strategic tick: inject full phase mechanics + discoveries
                         # every 100 ticks or when Claude is uncertain
                         _is_strategic = (

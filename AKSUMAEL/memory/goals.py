@@ -107,5 +107,33 @@ class GoalStack:
         """Return True if goal is the active goal or anywhere in the stack."""
         return self.current == goal or goal in self.stack
 
+    def suggest_craft_goal(self, cached_inv: dict):
+        """Auto-push craft_pickaxe if inventory has the materials and no
+        pickaxe is already present.  Called from the runtime loop after
+        a successful inventory read (uses the {item:count} flat dict)."""
+        if self.has_goal('craft_pickaxe'):
+            return   # already queued
+
+        has_pickaxe = any(cached_inv.get(k, 0) > 0 for k in (
+            'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'diamond_pickaxe',
+        ))
+        if has_pickaxe:
+            return   # already have one
+
+        # Enough for a stone pickaxe?
+        if cached_inv.get('cobblestone', 0) >= 3 and cached_inv.get('stick', 0) >= 2:
+            print('[GOALS] auto-push craft_pickaxe (has cobblestone+sticks)')
+            self.push('craft_pickaxe')
+            return
+
+        # Enough for a wooden pickaxe?
+        planks = sum(cached_inv.get(p, 0) for p in (
+            'oak_planks', 'spruce_planks', 'birch_planks',
+            'jungle_planks', 'acacia_planks', 'dark_oak_planks',
+        ))
+        if planks >= 3 and cached_inv.get('stick', 0) >= 2:
+            print('[GOALS] auto-push craft_pickaxe (has planks+sticks)')
+            self.push('craft_pickaxe')
+
     def context_summary(self) -> str:
         return f"Current goal: {self.current}" + (f" (queued: {', '.join(list(self.stack)[-2:])})" if self.stack else "")
