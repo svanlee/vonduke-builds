@@ -216,9 +216,10 @@ def run():
             fsm_state, fsm_action = fsm.tick(objects, world_mem, _hunger_frac)
 
             # ── Scan / identify / pathfinder ──────────────────
-            # Runs every SCAN_COOLDOWN_TICKS in EXPLORE, blocks ~3-5s total.
-            if (fsm_state == State.EXPLORE
-                    and not replayer.is_active()
+            # Continuous watch: runs every SCAN_COOLDOWN_TICKS whenever not
+            # mid-skill-replay. Sweep is fast (~4s); zoom+identify only fires
+            # when YOLO actually spotted a danger label.
+            if (not replayer.is_active()
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
                 scanner.run(world_mem, target_bearing=0)
                 _last_scan_tick = tick
