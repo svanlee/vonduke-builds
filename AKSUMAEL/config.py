@@ -15,6 +15,17 @@ CLAUDE_MODEL        = "claude-haiku-4-5-20251001"   # inventory/chest reads (che
 CLAUDE_VISION_MODEL = "claude-haiku-4-5-20251001"             # main gameplay decisions (smarter)
 
 
+# ── Active Environment ──────────────────────────────────────────
+# Selects which core/environment.py adapter core/env_registry.py hands back.
+# Changing this has NO effect on core/runtime.py, which still drives
+# Minecraft directly against ActionExecutor/YOLODetector/etc. — it only
+# matters to code that goes through core/env_registry.create_adapter().
+# Per-environment class list / action space / reward weights live in
+# data/envs/<name>.yaml so they can be tuned without touching code.
+ACTIVE_ENV     = "minecraft"
+AVAILABLE_ENVS = ["minecraft", "fallout76", "driving", "robocar"]
+
+
 # ── Agent Loop ────────────────────────────────────────────────
 LOOP_INTERVAL_SEC  = 0.25  # seconds between ticks — faster loop for responsive mining
 YOLO_EVERY_N_TICKS = 1     # run YOLO every tick

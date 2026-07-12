@@ -1,0 +1,53 @@
+# AKSUMAEL environment config — robocar (physical robot, ~/robocar_ws)
+#
+# ROS2 Jazzy workspace. As of this writing robocar_ws/src/robocar declares
+# motor_node/camera_node/brain_node console_scripts but none are
+# implemented (robocar/robocar/ is an empty package) — RobocarEnv acts as
+# the brain node itself: subscribes to the camera topic, publishes Twist
+# to cmd_vel (the same topic nav2's collision_monitor chain outputs to).
+# Requires `source /opt/ros/jazzy/setup.bash` — rclpy is not in this
+# project's venv.
+
+env_name: robocar
+adapter_class: environments.robocar_env.RobocarEnv
+
+yolo_weights: data/models/aksumael_robocar.pt   # not trained yet — falls back to config.YOLO_MODEL
+
+ros:
+  camera_topic: /camera/image_raw
+  cmd_vel_topic: /cmd_vel
+  linear_speed_mps: 0.2
+  angular_speed_radps: 0.6
+
+object_classes:
+  - lane_left
+  - lane_right
+  - obstacle
+  - stop_sign
+  - person
+  - traffic_cone
+  - open_path
+
+action_space:
+  - forward
+  - backward
+  - turn_left
+  - turn_right
+  - stop
+
+reward_weights:
+  forward_progress: 0.2
+  lane_centering: 0.3
+  no_lane_markers_penalty: -0.2
+  blocking_object_penalty: -0.3
+  correct_stop_bonus: 0.1
+
+stuck_detection:
+  low_reward_thresh: 0.05
+  stuck_ticks: 150
+
+goals:
+  - follow_lane
+  - avoid_obstacle
+  - stop_at_sign
+  - reach_waypoint

@@ -1,0 +1,53 @@
+# AKSUMAEL environment config — minecraft
+# Not yet read by code (MinecraftEnv currently pulls settings straight from
+# config.py to guarantee zero behavior change); kept here for parity with
+# the other environments and as the eventual home for these values once
+# core/runtime.py migrates onto the adapter layer.
+
+env_name: minecraft
+adapter_class: environments.minecraft_env.MinecraftEnv
+
+yolo_weights: data/models/aksumael_mc.pt
+
+# Object classes are taught at runtime via the YOLO label DB rather than
+# fixed here — see ui/labeling.py.
+object_classes: []
+
+action_space:
+  - w
+  - a
+  - s
+  - d
+  - space
+  - ctrl
+  - shift
+  - e
+  - f
+  - q
+  - esc
+  - "1"
+  - "2"
+  - "3"
+  - "4"
+  - "5"
+  - "6"
+  - "7"
+  - "8"
+  - "9"
+  - click_left
+  - click_right
+  - look
+
+reward_weights:
+  objects_visible: 0.2
+  confidence: 0.5
+  wait_penalty: -0.1
+  move_forward_bonus: 0.02
+
+goals:
+  - mine_stone
+  - mine_iron
+  - smelt_iron
+  - craft_iron_pickaxe
+  - mine_diamonds
+  - explore

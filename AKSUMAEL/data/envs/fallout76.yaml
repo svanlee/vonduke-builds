@@ -1,0 +1,89 @@
+# AKSUMAEL environment config — fallout76
+
+env_name: fallout76
+adapter_class: environments.fallout76_env.Fallout76Env
+
+yolo_weights: data/models/aksumael_f76.pt   # not trained yet — falls back to config.YOLO_MODEL
+
+object_classes:
+  - player_hud
+  - health_bar
+  - ap_bar
+  - caps_count
+  - weight_indicator
+  - enemy_human
+  - enemy_creature
+  - enemy_robot
+  - loot_bag
+  - door
+  - terminal
+  - workbench
+  - waypoint_marker
+  - fast_travel_icon
+  - pip_boy_closed
+  - pip_boy_open
+  - ammo_pickup
+  - item_pickup
+  - radiation_zone
+
+action_space:
+  - move_forward
+  - move_back
+  - strafe_left
+  - strafe_right
+  - look
+  - interact
+  - reload
+  - pip_boy
+  - pip_boy_alt
+  - weapon_1
+  - weapon_2
+  - weapon_3
+  - weapon_4
+  - weapon_5
+  - weapon_6
+  - sprint
+  - crouch
+  - jump
+  - vats
+
+key_map:
+  move_forward: w
+  move_back: s
+  strafe_left: a
+  strafe_right: d
+  interact: e
+  reload: r
+  pip_boy: f
+  pip_boy_alt: tab
+  weapon_1: "1"
+  weapon_2: "2"
+  weapon_3: "3"
+  weapon_4: "4"
+  weapon_5: "5"
+  weapon_6: "6"
+  sprint: shift
+  crouch: ctrl
+  jump: space
+  vats: v
+
+reward_weights:
+  objects_visible: 0.15
+  loot_visible: 0.1
+  enemy_visible: -0.05
+  radiation_zone: -0.2
+  waypoint_visible: 0.05
+  confidence: 0.3
+  move_forward_bonus: 0.02
+
+stuck_detection:
+  low_reward_thresh: 0.05
+  stuck_ticks: 150
+
+goals:
+  - explore_area
+  - loot_container
+  - follow_waypoint
+  - kill_enemy
+  - craft_item
+  - fast_travel
