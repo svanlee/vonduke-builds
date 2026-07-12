@@ -31,6 +31,10 @@ class WorldMemory:
         self.y_level       = 64    # real Y-level from F3 OCR, surface default
         self.biome         = 'unknown'   # real biome from F3 OCR
         self._ticks_since_f3 = 9999   # ticks since last successful F3 read
+        # ── Spawn location (set once at session start from F3 photo) ──
+        self.spawn_x    = -6.0
+        self.spawn_y    = 67.0
+        self.spawn_z    = -3.0
         # ── Extended tracking (v1.1) ──────────────────────────────
         self.wood_count    = 0          # logs chopped this session
         self.food_items    = []         # food item names in inventory
@@ -204,10 +208,12 @@ class WorldMemory:
         pos_z   = getattr(self, 'pos_z',  None)
         facing  = getattr(self, 'facing', 'unknown')
         pos_str = f'XZ=({pos_x},{pos_z})' if pos_x is not None else 'XZ=unknown'
+        spawn_str = f'Spawn=({self.spawn_x},{self.spawn_y},{self.spawn_z})'
         summary = (
             f'[MEMORY] Lifetime: {self.total_ticks} ticks, {self.deaths} deaths. '
             f'Most seen: {top_str}. Recent: {recent}. '
             f'Pos: {pos_str} Y={self.y_level} facing={facing} biome={self.biome} ({y_range}). '
+            f'{spawn_str}. '
             f'{day_str} (tick {self.game_tick}/{config.MC_DAY_TICKS}). '
             f'Hunger: {self.hunger_level}/20.'
         )
