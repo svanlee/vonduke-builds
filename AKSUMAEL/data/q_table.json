@@ -106,8 +106,8 @@
     "coal_ore_hotbar_e3f079": 0.24610692075654025,
     "coal_ore_hotbar_xp_bar_ff1514": 1.1591320437903567,
     "coal_ore_hotbar_xp_bar_3a4c99": 0.47654605943040784,
-    "coal_ore_hotbar_hunger_bar_x_472927": 0.43194506972234903,
-    "coal_ore_hotbar_hunger_bar_x_023718": 0.9361057814479267,
+    "coal_ore_hotbar_hunger_bar_x_472927": 0.5010710319393282,
+    "coal_ore_hotbar_hunger_bar_x_023718": 1.0604971729053045,
     "coal_ore_hotbar_hunger_bar_x_aeddc5": 0.636605743153858
   },
   "gold_ore,hotbar,hunger_bar": {
@@ -131,7 +131,7 @@
   },
   "hotbar": {},
   "coal_ore,hotbar,xp_bar": {
-    "mine_coal_ore": 0.66418598824081,
+    "mine_coal_ore": 0.832837787651783,
     "coal_ore_hotbar_e3f079": 0.8531752897881584,
     "coal_ore_hotbar_xp_bar_3a4c99": 0.2836762074898034
   },
@@ -204,11 +204,12 @@
   },
   "health_bar,hotbar,xp_bar": {},
   "coal_ore,diamond_ore,hotbar": {
-    "coal_ore_hotbar_hunger_bar_x_472927": 1.052288303212632
+    "coal_ore_hotbar_hunger_bar_x_472927": 0.7164225063201366
   },
   "diamond_ore,hotbar,hunger_bar": {},
   "coal_ore,health_bar,hotbar": {
-    "coal_ore_hotbar_hunger_bar_x_aeddc5": 0.6239370190836787
+    "coal_ore_hotbar_hunger_bar_x_aeddc5": 0.6239370190836787,
+    "coal_ore_hotbar_hunger_bar_x_023718": 0.622425116156723
   },
   "crosshair,health_bar,hotbar": {},
   "bed,hotbar,hunger_bar": {},

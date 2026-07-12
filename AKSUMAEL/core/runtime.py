@@ -92,6 +92,7 @@ def run():
     from behaviors.respawn import RespawnBehavior
     from behaviors.hunger import HungerBehavior
     from behaviors.crafting import CraftingBehavior
+    from behaviors.inventory_reader import InventoryReader
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
     from core.fsm import GameFSM, State
@@ -99,7 +100,8 @@ def run():
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor)
     hunger_behavior = HungerBehavior(executor)
-    crafting_behavior = CraftingBehavior(executor)
+    inv_reader = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
+    crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
     goal_interp = GoalInterpreter(goals, crafting_behavior)
     scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
     launcher    = GameLauncher(executor, game='minecraft')
@@ -449,7 +451,7 @@ def run():
             if (world_mem.pickaxe_uses > config.PICKAXE_DURABILITY * 0.8
                     and not replayer.is_active()
                     and crafting_behavior.should_trigger(objects)):
-                crafting_behavior.run()
+                crafting_behavior.run(objects=objects)
 
             # ── Curiosity survey ────────────────────────────────
             # Only survey in EXPLORE/EAT — never interrupt MINE, COMBAT, FISH, etc.
