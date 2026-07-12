@@ -15,6 +15,7 @@
 #   chunk_x/z        — chunk coordinates
 #   f3_active        — True if F3 overlay is confirmed open
 
+import difflib
 import re
 
 import cv2
@@ -42,7 +43,16 @@ BIOME_RE  = re.compile(r"[Bb][il1oO0]me\s*[:\;\.]\s*([\w:]+)", re.IGNORECASE)
 # Fallback: match minecraft:xxx directly (biome IDs always carry this prefix)
 BIOME_MC_RE = re.compile(r"minecraft:(\w+)")
 # Facing: north (Towards -Z) ...
-FACING_RE = re.compile(r"Facing:\s*(north|south|east|west)", re.IGNORECASE)
+# OCR often mangles F→P/E, so tolerate common substitutions.
+FACING_RE = re.compile(r"[FPE][Aa][Cc][Ii1lL][Nn][Gg]\s*[:\;\.]\s*(north|south|east|west)", re.IGNORECASE)
+# Broader prefix capture for fuzzy direction matching when exact direction word is garbled.
+FACE_PREFIX_RE = re.compile(r"[FPE][Aa][Cc][Ii1lL][Nn][Gg]\s*[:\;\.]\s*(\w+)", re.IGNORECASE)
+
+
+def _fuzzy_direction(word: str) -> str | None:
+    """Fuzzy-match an OCR'd word to a cardinal direction (e.g. 'Beuth' → 'south')."""
+    matches = difflib.get_close_matches(word.lower(), ["north", "south", "east", "west"], n=1, cutoff=0.4)
+    return matches[0] if matches else None
 # 40 fps  or  T: 40 vsync
 FPS_RE    = re.compile(r"(\d+)\s*fps", re.IGNORECASE)
 # Chunk: 2 4 -1 in r:0 -1   → first three numbers are chunk xz+section
@@ -59,7 +69,8 @@ def _preprocess(frame_bgr: np.ndarray) -> np.ndarray:
     crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     # Threshold: MC F3 text is white/yellow on dark semi-transparent background
-    _, thresh = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY)
+    # THRESH_BINARY_INV → dark text on white background (Tesseract-preferred)
+    _, thresh = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY_INV)
     return thresh
 
 
@@ -134,10 +145,14 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         if m:
             result["biome"] = m.group(1)
 
-    # Facing direction
+    # Facing direction — exact match first, fuzzy fallback for garbled OCR words
     m = FACING_RE.search(text)
     if m:
         result["facing"] = m.group(1).lower()
+    if result["facing"] is None:
+        m = FACE_PREFIX_RE.search(text)
+        if m:
+            result["facing"] = _fuzzy_direction(m.group(1))
 
     # FPS
     m = FPS_RE.search(text)
