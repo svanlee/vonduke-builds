@@ -42,7 +42,7 @@ Only output valid JSON, nothing else."""
                 {"text": prompt}
             ]
         }],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 256}
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 400}
     }).encode('utf-8')
 
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -53,7 +53,15 @@ Only output valid JSON, nothing else."""
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-        text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+        candidates = data.get('candidates') or []
+        if not candidates:
+            block_reason = data.get('promptFeedback', {}).get('blockReason', 'unknown')
+            raise ValueError(f"no candidates in Gemini response; blockReason={block_reason}")
+        parts = candidates[0].get('content', {}).get('parts') or []
+        if not parts or 'text' not in parts[0]:
+            finish_reason = candidates[0].get('finishReason', 'unknown')
+            raise ValueError(f"no text part in Gemini response; finishReason={finish_reason}")
+        text = parts[0]['text'].strip()
         # strip markdown fences if present
         if text.startswith('```'):
             text = '\n'.join(text.split('\n')[1:-1])

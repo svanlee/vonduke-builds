@@ -195,6 +195,46 @@
       "text": "current pickaxe near breaking, need stone soon",
       "tick": 510,
       "ts": "2026-07-12 10:06:07"
+    },
+    {
+      "text": "coal ore vein spotted at surface-level cave wall",
+      "tick": 60,
+      "ts": "2026-07-12 10:19:08"
+    },
+    {
+      "text": "large water body blocking path, need to navigate around it",
+      "tick": 345,
+      "ts": "2026-07-12 10:26:27"
+    },
+    {
+      "text": "large body of water blocking path west",
+      "tick": 645,
+      "ts": "2026-07-12 10:35:31"
+    },
+    {
+      "text": "surroundings appear to be deep water at night, need to surface and find shore",
+      "tick": 675,
+      "ts": "2026-07-12 10:36:39"
+    },
+    {
+      "text": "birch tree visible near cave-like dark area",
+      "tick": 60,
+      "ts": "2026-07-12 10:41:05"
+    },
+    {
+      "text": "birch trees nearby suitable for quick wood gathering",
+      "tick": 150,
+      "ts": "2026-07-12 10:44:32"
+    },
+    {
+      "text": "terrain is a hilly ravine biome with exposed dirt walls, no trees in immediate view",
+      "tick": 165,
+      "ts": "2026-07-12 10:45:08"
+    },
+    {
+      "text": "repeated drowning deaths suggest water hazard nearby to avoid",
+      "tick": 765,
+      "ts": "2026-07-12 11:12:03"
     }
   ]
 }

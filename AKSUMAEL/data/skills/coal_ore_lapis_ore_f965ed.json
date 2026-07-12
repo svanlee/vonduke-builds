@@ -1,0 +1,85 @@
+{
+  "name": "coal_ore_lapis_ore_f965ed",
+  "trigger_objects": [
+    "lapis_ore",
+    "coal_ore"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.535,
+  "uses": 6,
+  "created": 1783869537.2729938,
+  "last_used": 1783869836.2395406
+}

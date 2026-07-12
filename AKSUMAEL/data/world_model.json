@@ -1,434 +1,406 @@
 {
-  "session_num": 14,
-  "last_saved": 1783814838.1326835,
+  "session_num": 15,
+  "last_saved": 1783865852.7953544,
   "history": [
     {
-      "tick": 5478,
-      "session": 14,
-      "ts": 1783814828.1205418,
+      "tick": 1401,
+      "session": 15,
+      "ts": 1783865836.2211277,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
+          "conf": 0.92
         },
         {
           "label": "hunger_bar",
           "conf": 0.76
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.16
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.332
+          "label": "xp_bar",
+          "conf": 0.68
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 5479,
-      "session": 14,
-      "ts": 1783814828.621981,
+      "tick": 1402,
+      "session": 15,
+      "ts": 1783865836.719334,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.99
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1403,
+      "session": 15,
+      "ts": 1783865837.2113662,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1404,
+      "session": 15,
+      "ts": 1783865837.7183597,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.94
         },
         {
           "label": "xp_bar",
           "conf": 0.8
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1405,
+      "session": 15,
+      "ts": 1783865838.2137475,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.91
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.66
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1406,
+      "session": 15,
+      "ts": 1783865838.7113245,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.67
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1407,
+      "session": 15,
+      "ts": 1783865839.22942,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
         },
         {
           "label": "hunger_bar",
           "conf": 0.78
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.16
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.204
+          "label": "xp_bar",
+          "conf": 0.66
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 5480,
-      "session": 14,
-      "ts": 1783814829.1238823,
+      "tick": 1408,
+      "session": 15,
+      "ts": 1783865839.7087793,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
+          "conf": 0.92
         },
         {
           "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1409,
+      "session": 15,
+      "ts": 1783865840.2113228,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1410,
+      "session": 15,
+      "ts": 1783865840.7165337,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.91
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.77
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.66
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1411,
+      "session": 15,
+      "ts": 1783865841.2143075,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1412,
+      "session": 15,
+      "ts": 1783865841.7150753,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1413,
+      "session": 15,
+      "ts": 1783865842.2130048,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.91
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.77
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.66
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1414,
+      "session": 15,
+      "ts": 1783865842.730394,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1415,
+      "session": 15,
+      "ts": 1783865843.2387323,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1416,
+      "session": 15,
+      "ts": 1783865843.7175806,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.91
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.66
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1417,
+      "session": 15,
+      "ts": 1783865844.2132158,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 1418,
+      "session": 15,
+      "ts": 1783865850.6688635,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.76
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.68
+        }
+      ],
+      "action": "w"
+    },
+    {
+      "tick": 1419,
+      "session": 15,
+      "ts": 1783865851.7116559,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.92
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
           "conf": 0.73
         }
       ],
-      "action": "wait"
+      "action": "w"
     },
     {
-      "tick": 5481,
-      "session": 14,
-      "ts": 1783814829.6238441,
+      "tick": 1420,
+      "session": 15,
+      "ts": 1783865852.7554235,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
+          "conf": 0.93
         },
         {
           "label": "hunger_bar",
-          "conf": 0.72
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5482,
-      "session": 14,
-      "ts": 1783814830.1242697,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
+          "conf": 0.88
         },
         {
           "label": "xp_bar",
-          "conf": 0.81
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.74
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5483,
-      "session": 14,
-      "ts": 1783814830.6249757,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "coal_ore",
-          "conf": 0.3
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5484,
-      "session": 14,
-      "ts": 1783814831.1243646,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "coal_ore",
-          "conf": 0.29
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5485,
-      "session": 14,
-      "ts": 1783814831.6242454,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "coal_ore",
-          "conf": 0.29
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5486,
-      "session": 14,
-      "ts": 1783814832.1244206,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.71
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5487,
-      "session": 14,
-      "ts": 1783814832.620876,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.74
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5488,
-      "session": 14,
-      "ts": 1783814833.1213548,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
           "conf": 0.73
         }
       ],
-      "action": "wait"
-    },
-    {
-      "tick": 5489,
-      "session": 14,
-      "ts": 1783814833.623346,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.73
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5490,
-      "session": 14,
-      "ts": 1783814834.1218765,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.73
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5491,
-      "session": 14,
-      "ts": 1783814834.6254637,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.81
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5492,
-      "session": 14,
-      "ts": 1783814835.1215916,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.81
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.74
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5493,
-      "session": 14,
-      "ts": 1783814835.6222067,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5494,
-      "session": 14,
-      "ts": 1783814836.12183,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.7
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5495,
-      "session": 14,
-      "ts": 1783814836.62215,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.71
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5496,
-      "session": 14,
-      "ts": 1783814837.1338089,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.73
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 5497,
-      "session": 14,
-      "ts": 1783814837.6231813,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.99
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.72
-        }
-      ],
-      "action": "wait"
+      "action": "w"
     }
   ]
 }

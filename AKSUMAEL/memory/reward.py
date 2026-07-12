@@ -35,6 +35,10 @@ class RewardSystem:
         if action_result.get('action') == 'wait' and not self._manual:
             r -= 0.1
 
+        # Small bonus for moving forward — discourages idling/standing still
+        if action_result.get('key') == 'w':
+            r += 0.02
+
         # Incorporate accumulated signals from this tick
         r += self._manual
         r += self._audio
