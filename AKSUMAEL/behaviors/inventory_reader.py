@@ -126,18 +126,27 @@ class InventoryReader:
 
         frame = self.capture()
         if frame is None:
-            print('[INV] no frame — closing')
-            self._tap('escape', 200)
+            # State unknown — don't blind-fire Escape (it opens the pause
+            # menu if 'e' never actually opened the inventory). 'e' is a
+            # safe no-op-or-toggle either way.
+            print('[INV] no frame — closing with e (state unknown)')
+            self._tap('e', 200)
             return {}
 
-        items = self._ask_claude(frame)
+        items, was_open = self._ask_claude(frame)
         print(f'[INV] read: {items}')
 
-        # Press Escape to close (safer than E which could toggle a different menu)
-        self._tap('escape', 300)
+        if was_open:
+            # Press Escape to close (safer than E which could toggle a different menu)
+            self._tap('escape', 300)
+        else:
+            print('[INV] inventory was not open — skipping close key')
         return items
 
-    def _ask_claude(self, frame) -> dict:
+    def _ask_claude(self, frame) -> tuple[dict, bool]:
+        """Returns (items, was_open) — was_open is False when the inventory
+        was confirmed closed (or the read failed), so callers know not to
+        press a close key."""
         b64 = _frame_to_b64(frame)
         payload = json.dumps({
             "model": config.CLAUDE_MODEL,
@@ -185,7 +194,7 @@ class InventoryReader:
                 # Inventory wasn't open — return empty rather than crash
                 if items.get('inventory_closed'):
                     print('[INV] Claude says inventory was not open')
-                    return {}
+                    return {}, False
                 # Support both old {item: count} and new {item: {count, slot}} formats
                 result = {}
                 for k, v in items.items():
@@ -201,7 +210,7 @@ class InventoryReader:
                     else:
                         continue
                     result[key] = {'count': count, 'slot': slot}
-                return result
+                return result, True
             except urllib.error.HTTPError as e:
                 print(f'[INV] Claude HTTP {e.code} on attempt {attempt+1}')
                 if e.code not in (429, 500, 502, 503, 529):
@@ -212,7 +221,8 @@ class InventoryReader:
             if attempt < 2:
                 time.sleep(2 ** attempt)
 
-        return {}
+        # Couldn't confirm state — don't claim it was open.
+        return {}, False
 
     def _tap(self, key: str, wait_ms: int):
         self.executor.execute({

@@ -194,8 +194,13 @@ def run():
             # ── HUD / menu state ────────────────────────────────
             # Used to gate anything that would corrupt an open menu screen
             # (F3 debug overlay toggle, scan/pathfinder sweeps, skill execution).
+            # NOTE: 'crafting_table', 'chest_row', 'furnace' are WORLD BLOCKS —
+            # YOLO detects them constantly during normal mining/exploring, not
+            # just when their UI is open. Only 'inventory' (an actual open-menu
+            # class) belongs here; the others caused _menu_open false-positives
+            # that idled the bot and triggered spurious Escape presses.
             _hud_labels  = {o.get('label') for o in objects}
-            _menu_open   = bool(_hud_labels & {'inventory', 'crafting_table', 'chest_row', 'furnace'})
+            _menu_open   = bool(_hud_labels & {'inventory'})
             _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
 
             # ── Escape stuck menu ────────────────────────────────
@@ -527,6 +532,11 @@ def run():
                     _no_carry  = {'e', 'f3', 'esc', 'escape', 'f', 'q', None}
                     if _carry_key not in _no_carry or last_action.get('look') or last_action.get('click'):
                         action_dict = {**last_action}
+                        # One-shot keys (esc/e/f3/...) must never repeat across
+                        # carry ticks even when look/click is what let this
+                        # branch through — strip it so only look/click carry.
+                        if _carry_key in _no_carry:
+                            action_dict['key'] = None
                         # Dampen look delta on carry ticks to avoid spin
                         if action_dict.get('look'):
                             lk = action_dict['look']

@@ -75,6 +75,7 @@ class ChestManager:
     def __init__(self):
         self._cache    = {}     # last read result: {item: {count, slot}}
         self._cache_ts = 0.0
+        self._was_open = False  # True only if the last read confirmed a chest UI was open
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -93,12 +94,14 @@ class ChestManager:
             return dict(self._cache)
         if frame is None:
             print('[CHEST] no frame — skipping read')
+            self._was_open = False
             return dict(self._cache)
 
-        items = self._ask_claude(frame)
+        items, was_open = self._ask_claude(frame)
         print(f'[CHEST] read: {items}')
         self._cache    = items
         self._cache_ts = time.time()
+        self._was_open = was_open
         return dict(items)
 
     def store_item(self, executor, item: str, inv_slot: int):
@@ -114,6 +117,12 @@ class ChestManager:
         self._shift_click(executor, x, y)
 
     def close(self, executor):
+        if not self._was_open:
+            # The right-click never actually opened a chest UI (missed the
+            # block, or the read failed) — Escape here would just pop the
+            # pause menu instead of closing nothing.
+            print('[CHEST] no confirmed-open chest — skipping close key')
+            return
         print('[CHEST] closing')
         executor.execute({'key': 'escape', 'click': None, 'gamepad': None, 'source': 'chest'})
         time.sleep(0.2)
@@ -127,7 +136,10 @@ class ChestManager:
 
     # ── Internals ────────────────────────────────────────────────
 
-    def _ask_claude(self, frame) -> dict:
+    def _ask_claude(self, frame) -> tuple[dict, bool]:
+        """Returns (items, was_open) — was_open is False when the chest was
+        confirmed closed (or the read failed), so close() knows not to
+        press Escape."""
         b64 = _frame_to_b64(frame)
         payload = json.dumps({
             "model": config.CLAUDE_MODEL,
@@ -173,7 +185,7 @@ class ChestManager:
                 items = json.loads(text)
                 if items.get('chest_closed'):
                     print('[CHEST] Claude says chest was not open')
-                    return {}
+                    return {}, False
                 result = {}
                 for k, v in items.items():
                     if not isinstance(k, str) or k == 'chest_closed':
@@ -188,7 +200,7 @@ class ChestManager:
                     else:
                         continue
                     result[key] = {'count': count, 'slot': slot}
-                return result
+                return result, True
             except urllib.error.HTTPError as e:
                 print(f'[CHEST] Claude HTTP {e.code} on attempt {attempt+1}')
                 if e.code not in (429, 500, 502, 503, 529):
@@ -199,7 +211,8 @@ class ChestManager:
             if attempt < 2:
                 time.sleep(2 ** attempt)
 
-        return {}
+        # Couldn't confirm state — don't claim it was open.
+        return {}, False
 
     def _click(self, executor, x_pct: float, y_pct: float, button: str = 'left'):
         action = {
