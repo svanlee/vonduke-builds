@@ -1,0 +1,149 @@
+{
+  "name": "mine_emerald_ore",
+  "trigger_objects": [
+    "emerald_ore"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": null,
+        "click": [
+          50,
+          50
+        ],
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    }
+  ],
+  "avg_reward": 0.85,
+  "uses": 0,
+  "created": 1783790001.0,
+  "last_used": 1783863439.1530674
+}
