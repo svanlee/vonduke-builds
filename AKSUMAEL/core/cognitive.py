@@ -7,6 +7,10 @@
 import json
 import os
 import time
+import urllib.error
+import urllib.request
+
+import config
 
 COGNITIVE_DIR = 'data/cognitive'
 MAX_EPISODES  = 50
@@ -158,18 +162,27 @@ class EpisodicMemory:
 
 
 class InnerMonologue:
-    """One self-generated thought per tick — a template-based stub, not an LLM call."""
+    """One self-generated thought, gated to fire an LLM call only every
+    config.MONOLOGUE_EVERY_N_TICKS ticks (cheap haiku call, ~50 tokens) —
+    between LLM ticks, update() is a no-op-cost template fallback so the
+    thought log doesn't go stale. The most recent real thought is fed back
+    into the next vision-LLM planning call as extra context."""
 
     FILE = f'{COGNITIVE_DIR}/inner_monologue.json'
 
-    def __init__(self):
+    def __init__(self, goal_stack=None):
         self.thoughts = _load(self.FILE, [])
+        self._goal_stack = goal_stack   # optional — for goal/failure context
 
-    def update(self, tick: int, objects: list, action_dict: dict, reward: float):
-        thought = self._compose(objects, action_dict, reward)
-        self.thoughts.append({'tick': tick, 'ts': time.time(), 'thought': thought})
-        self.thoughts = self.thoughts[-MAX_THOUGHTS:]
-        _save(self.FILE, self.thoughts)
+    def update(self, tick: int, objects: list, action_dict: dict, reward: float,
+               goal: str = None, recent_episodes: list = None):
+        if tick % max(1, config.MONOLOGUE_EVERY_N_TICKS) == 0:
+            thought = self._generate_llm(objects, action_dict, reward, goal, recent_episodes)
+            if thought is None:
+                thought = self._compose(objects, action_dict, reward)
+            self.thoughts.append({'tick': tick, 'ts': time.time(), 'thought': thought})
+            self.thoughts = self.thoughts[-MAX_THOUGHTS:]
+            _save(self.FILE, self.thoughts)
 
     def _compose(self, objects: list, action_dict: dict, reward: float) -> str:
         labels = [o.get('label') for o in objects if o.get('label')]
@@ -177,6 +190,50 @@ class InnerMonologue:
         action = action_dict.get('action', 'wait')
         mood   = 'good' if reward > 0 else 'bad' if reward < 0 else 'neutral'
         return f"{seen} I chose to {action}. That felt {mood} (r={reward:+.2f})."
+
+    def _generate_llm(self, objects: list, action_dict: dict, reward: float,
+                       goal: str = None, recent_episodes: list = None) -> str | None:
+        if not config.ANTHROPIC_API_KEY:
+            return None
+        labels = [o.get('label') for o in objects if o.get('label')]
+        fails  = ''
+        if recent_episodes:
+            bad = [e.get('goal') for e in recent_episodes[-3:] if e.get('outcome') != 'success']
+            if bad:
+                fails = f' Recent failures: {", ".join(bad)}.'
+        prompt = (
+            'You are the inner monologue of a Minecraft AI. In ONE short sentence '
+            '(max 20 words), think out loud about what to do next. '
+            f'Current goal: {goal or "explore"}. Visible: {", ".join(labels) or "nothing"}. '
+            f'Last reward: {reward:+.2f}.{fails} '
+            'Respond with only the sentence, no quotes, no preamble.'
+        )
+        payload = json.dumps({
+            'model': config.CLAUDE_MODEL,
+            'max_tokens': 50,
+            'messages': [{'role': 'user', 'content': prompt}],
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            'https://api.anthropic.com/v1/messages',
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'x-api-key': config.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+            text_block = next((b for b in data.get('content', []) if b.get('type') == 'text'), None)
+            if text_block is None:
+                return None
+            return text_block['text'].strip()
+        except urllib.error.HTTPError as e:
+            print(f'[MONOLOGUE] Claude HTTP {e.code}')
+        except Exception as e:
+            print(f'[MONOLOGUE] generation error: {e}')
+        return None
 
     def recent(self, n: int = 5) -> str:
         return '\n'.join(t['thought'] for t in self.thoughts[-n:])
@@ -196,8 +253,10 @@ class CognitiveArchitecture:
         self.episodic  = EpisodicMemory()
         self.monologue = InnerMonologue()
 
-    def update(self, tick: int, objects: list, action_dict: dict, reward: float):
+    def update(self, tick: int, objects: list, action_dict: dict, reward: float,
+               goal: str = None, recent_episodes: list = None):
         self.belief.update(tick, objects, action_dict, reward)
         self.goals.update(tick, objects, action_dict, reward)
         self.episodic.update(tick, objects, action_dict, reward)
-        self.monologue.update(tick, objects, action_dict, reward)
+        self.monologue.update(tick, objects, action_dict, reward,
+                               goal=goal, recent_episodes=recent_episodes)

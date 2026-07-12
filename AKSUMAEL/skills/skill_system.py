@@ -83,8 +83,12 @@ class SkillStep:
 class Skill:
     """A named, timed action sequence with a fuzzy context trigger."""
 
+    BLACKLIST_FAILURES = 3   # failed_count threshold to auto-blacklist
+
     def __init__(self, name, trigger_objects=None, steps=None,
-                 avg_reward=0.0, uses=0, created=None):
+                 avg_reward=0.0, uses=0, created=None,
+                 preconditions=None, postconditions=None,
+                 success_count=0, failed_count=0, blacklisted=False):
         self.name            = name
         self.trigger_objects = trigger_objects or []
         self.steps           = steps or []          # list of SkillStep
@@ -92,6 +96,14 @@ class Skill:
         self.uses            = uses
         self.created         = created or time.time()
         self.last_used       = None
+        # ── Voyager-style verification (v1.1) ──────────────────
+        # preconditions:  {"has_item": [...], "yolo_visible": [...]}
+        # postconditions: {"inventory_gained": [...], "min_count": 1}
+        self.preconditions   = preconditions or {}
+        self.postconditions  = postconditions or {}
+        self.success_count   = success_count
+        self.failed_count    = failed_count
+        self.blacklisted     = blacklisted
 
     @property
     def actions(self):
@@ -107,6 +119,11 @@ class Skill:
             'uses':            self.uses,
             'created':         self.created,
             'last_used':       self.last_used,
+            'preconditions':   self.preconditions,
+            'postconditions':  self.postconditions,
+            'success_count':   self.success_count,
+            'failed_count':    self.failed_count,
+            'blacklisted':     self.blacklisted,
         }
 
     @classmethod
@@ -124,9 +141,58 @@ class Skill:
             avg_reward=d.get('avg_reward', 0.0),
             uses=d.get('uses', 0),
             created=d.get('created'),
+            # Backfill: older skill files predate these fields — default to
+            # empty/zero so they keep working exactly as before.
+            preconditions=d.get('preconditions', {}),
+            postconditions=d.get('postconditions', {}),
+            success_count=d.get('success_count', 0),
+            failed_count=d.get('failed_count', 0),
+            blacklisted=d.get('blacklisted', False),
         )
         s.last_used = d.get('last_used')
         return s
+
+    # ── Voyager-style verification ─────────────────────────────
+    def check_preconditions(self, inventory: dict, objects: list) -> bool:
+        """True if `inventory` ({item: count}) and current `objects` (YOLO
+        detections) satisfy this skill's preconditions. Skills with no
+        preconditions always pass (keeps old skills working unchanged)."""
+        if not self.preconditions:
+            return True
+        has_item = self.preconditions.get('has_item') or []
+        if has_item and not all(inventory.get(item, 0) > 0 for item in has_item):
+            return False
+        yolo_visible = self.preconditions.get('yolo_visible') or []
+        if yolo_visible:
+            current_labels = {o.get('label', '') for o in objects}
+            if not (set(yolo_visible) & current_labels):
+                return False
+        return True
+
+    def verify_postconditions(self, inv_before: dict, inv_after: dict) -> bool:
+        """True if the inventory diff after replay satisfies this skill's
+        postconditions. Skills with no postconditions are assumed to have
+        succeeded (keeps old skills working unchanged)."""
+        if not self.postconditions:
+            return True
+        gained = self.postconditions.get('inventory_gained') or []
+        if not gained:
+            return True
+        min_count = self.postconditions.get('min_count', 1)
+        for item in gained:
+            delta = inv_after.get(item, 0) - inv_before.get(item, 0)
+            if delta >= min_count:
+                return True
+        return False
+
+    def record_outcome(self, success: bool):
+        """Update success/failed counters and auto-blacklist on repeated failure."""
+        if success:
+            self.success_count += 1
+        else:
+            self.failed_count += 1
+            if self.failed_count >= self.BLACKLIST_FAILURES:
+                self.blacklisted = True
 
     def has_real_action(self) -> bool:
         """False if every step is a no-op (null key/click/look, zeroed gamepad)."""
@@ -351,6 +417,8 @@ class SkillSystem:
         best_sk    = None
         best_value = 0.0
         for sk in self.skills.values():
+            if sk.blacklisted:
+                continue
             match = sk.matches(current_objects)
             if match < self.MIN_MATCH_SCORE:
                 continue
@@ -361,13 +429,92 @@ class SkillSystem:
         return best_sk if best_sk else (None, 0.0)
 
     def find_candidates(self, current_objects: list) -> list:
-        """Return all skills matching >= MIN_MATCH_SCORE, as (Skill, match_score) pairs."""
+        """Return all non-blacklisted skills matching >= MIN_MATCH_SCORE, as
+        (Skill, match_score) pairs."""
         return [(sk, match) for sk in self.skills.values()
-                if (match := sk.matches(current_objects)) >= self.MIN_MATCH_SCORE]
+                if not sk.blacklisted
+                and (match := sk.matches(current_objects)) >= self.MIN_MATCH_SCORE]
 
     def mark_used(self, skill: Skill):
         skill.last_used = time.time()
         self.save(skill)
+
+    # ── Verification (Voyager-style) ────────────────────────────
+    def check_preconditions(self, skill: Skill, inventory: dict, objects: list) -> bool:
+        """Convenience wrapper — see Skill.check_preconditions."""
+        return skill.check_preconditions(inventory, objects)
+
+    def verify_replay(self, skill: Skill, inv_before: dict, inv_after: dict):
+        """Call once after a skill replay finishes. Updates success/failed
+        counters, auto-blacklists on repeated failure, and persists."""
+        success = skill.verify_postconditions(inv_before, inv_after)
+        skill.record_outcome(success)
+        self.save(skill)
+        if not success:
+            tag = 'BLACKLISTED' if skill.blacklisted else 'failed'
+            print(f'[SKILL] {skill.name} postcondition {tag} '
+                  f'(failed={skill.failed_count})')
+        return success
+
+    # ── Skill Evolution (periodic self-improvement pass) ───────
+    def evolve_skills(self) -> dict:
+        """Periodic skill improvement pass (called every
+        config.SKILL_EVOLVE_TICKS from the runtime loop):
+          1. success_count > SKILL_PROVEN_USES -> mark 'proven'
+          2. failed_count > SKILL_BLACKLIST_FAILURES -> blacklist
+          3. Among proven skills sharing the same trigger set, keep only
+             the one with the shortest step sequence (fewest steps to
+             replay); delete the rest as redundant duplicates.
+        Logs a summary to data/memory/skill_evolution.jsonl.
+        """
+        import config as _config
+        proven, blacklisted_now, merged = [], [], []
+
+        for sk in self.skills.values():
+            if sk.success_count > _config.SKILL_PROVEN_USES and not sk.blacklisted:
+                proven.append(sk.name)
+            if sk.failed_count > _config.SKILL_BLACKLIST_FAILURES and not sk.blacklisted:
+                sk.blacklisted = True
+                blacklisted_now.append(sk.name)
+
+        # Group proven skills by canonical trigger set; keep the shortest.
+        groups: dict = {}
+        for sk in self.skills.values():
+            if sk.name not in proven:
+                continue
+            key = tuple(sorted(_canonical(t) for t in sk.trigger_objects))
+            groups.setdefault(key, []).append(sk)
+
+        for key, group in groups.items():
+            if len(group) < 2:
+                continue
+            group.sort(key=lambda s: len(s.steps))
+            keep = group[0]
+            for dup in group[1:]:
+                merged.append({'kept': keep.name, 'removed': dup.name})
+                self.delete(dup.name)
+
+        for sk in self.skills.values():
+            self.save(sk)
+
+        summary = {
+            'ts': time.time(),
+            'proven': proven,
+            'blacklisted': blacklisted_now,
+            'merged': merged,
+            'total_skills': len(self.skills),
+        }
+        try:
+            import os as _os
+            _os.makedirs(_config.MEMORY_DIR, exist_ok=True)
+            with open(_os.path.join(_config.MEMORY_DIR, 'skill_evolution.jsonl'), 'a') as f:
+                f.write(json.dumps(summary) + '\n')
+        except Exception as e:
+            print(f'[SKILL] evolution log error: {e}')
+
+        print(f'[SKILL] evolve: proven={len(proven)} '
+              f'blacklisted={len(blacklisted_now)} merged={len(merged)}')
+        return summary
 
     # ── Management ────────────────────────────────────────────
     def list_skills(self) -> list:
