@@ -99,5 +99,13 @@ class GoalStack:
         if has_seeds and seen_farmland and self.current == "explore":
             self.push("plant_crops")
 
+    def current_goal(self) -> str:
+        """Return the current goal string."""
+        return self.current
+
+    def has_goal(self, goal: str) -> bool:
+        """Return True if goal is the active goal or anywhere in the stack."""
+        return self.current == goal or goal in self.stack
+
     def context_summary(self) -> str:
         return f"Current goal: {self.current}" + (f" (queued: {', '.join(list(self.stack)[-2:])})" if self.stack else "")
