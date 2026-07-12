@@ -130,6 +130,11 @@ def run():
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
+    _prev_replay_active = False  # replayer.is_active() as of last tick
+    # Mining skills replay recorded look deltas that tend to walk the camera
+    # pitch upward over a full replay. Once the skill ends, nudge the pitch
+    # back down toward the horizon so EXPLORE/APPROACH aren't scanning sky.
+    _MINE_PITCH_RESET_DY = config.LOOK_SENSITIVITY * 8   # ~120px — down, not to the ground
 
     # Init extended F3 fields on world_mem so context_summary() can use them
     world_mem.pos_x   = getattr(world_mem, 'pos_x',   None)
@@ -262,6 +267,15 @@ def run():
             # Continuous watch: runs every SCAN_COOLDOWN_TICKS whenever not
             # mid-skill-replay. Sweep is fast (~4s); zoom+identify only fires
             # when YOLO actually spotted a danger label.
+            _replay_active_now = replayer.is_active()
+            if (_prev_replay_active and not _replay_active_now
+                    and last_skill_name and last_skill_name.startswith('mine_')):
+                print(f'[CAMERA] {last_skill_name} replay ended — '
+                      f'resetting pitch toward horizon (dy={_MINE_PITCH_RESET_DY})')
+                executor.execute({'look': {'dx': 0, 'dy': _MINE_PITCH_RESET_DY},
+                                   'source': 'pitch_reset'})
+            _prev_replay_active = _replay_active_now
+
             if (not replayer.is_active()
                     and not _menu_open
                     and not _f3_open
