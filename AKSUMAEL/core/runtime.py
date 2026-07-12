@@ -92,6 +92,7 @@ def run():
     from behaviors.respawn import RespawnBehavior
     from behaviors.hunger import HungerBehavior
     from behaviors.crafting import CraftingBehavior
+    from behaviors.scan import EnvironmentScanner
     from core.fsm import GameFSM, State
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
@@ -99,6 +100,7 @@ def run():
     hunger_behavior = HungerBehavior(executor)
     crafting_behavior = CraftingBehavior(executor)
     goal_interp = GoalInterpreter(goals, crafting_behavior)
+    scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
     fsm = GameFSM()
 
     # Start background threads
@@ -119,6 +121,7 @@ def run():
     fsm_state        = None  # updated each tick for console logging
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
+    _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -212,6 +215,14 @@ def run():
 
             fsm_state, fsm_action = fsm.tick(objects, world_mem, _hunger_frac)
 
+            # ── Scan / identify / pathfinder ──────────────────
+            # Runs every SCAN_COOLDOWN_TICKS in EXPLORE, blocks ~3-5s total.
+            if (fsm_state == State.EXPLORE
+                    and not replayer.is_active()
+                    and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
+                scanner.run(world_mem, target_bearing=0)
+                _last_scan_tick = tick
+
             # ── Decision ──────────────────────────────────────
             action_dict = _idle()
             used_skill  = None
@@ -290,6 +301,7 @@ def run():
                         # Base history — always injected (cheap, 3-4 lines)
                         history = (progression.context_summary() + '\n'
                                    + world_mem.context_summary() + '\n'
+                                   + world_mem.scan_summary() + '\n'
                                    + inventory.context_summary() + '\n'
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))

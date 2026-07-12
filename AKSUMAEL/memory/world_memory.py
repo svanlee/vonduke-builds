@@ -37,6 +37,10 @@ class WorldMemory:
         self.animals_seen  = {}         # animal label → last seen tick
         self.near_water    = False      # True when water bbox detected this tick
         self.llm_calls     = 0          # total LLM API calls this session
+        # ── Scan / Pathfinder (ephemeral — not persisted) ────────────
+        self.scan_threats  = []         # [{bearing, label, identified, img_path, tick}]
+        self._last_scan_tick = 0
+        self.scan_path     = {}         # most recent pathfinder output
         self._load()
 
     def _load(self):
@@ -224,3 +228,37 @@ class WorldMemory:
 
     def record_llm_call(self):
         self.llm_calls += 1
+
+    # ── Scan / Pathfinder ────────────────────────────────────────
+
+    SCAN_THREAT_TTL = 120   # ticks before a scan entry expires
+
+    def record_scan(self, identified_threats: list, path: dict):
+        """Store the latest scan results. Expire stale entries."""
+        now = self.total_ticks
+        # Expire old threats
+        self.scan_threats = [
+            t for t in self.scan_threats
+            if now - t.get('tick', 0) < self.SCAN_THREAT_TTL
+        ]
+        # Add fresh ones
+        for t in identified_threats:
+            self.scan_threats.append({**t, 'tick': now})
+        self.scan_path = path
+        self._last_scan_tick = now
+
+    def scan_summary(self) -> str:
+        """One-line scan context for LLM history injection."""
+        if not self.scan_threats:
+            return '[SCAN] No active threats logged.'
+        labels = [t['label'] for t in self.scan_threats]
+        unique = list(dict.fromkeys(labels))   # ordered dedup
+        path   = self.scan_path
+        action = path.get('action', '?') if path else '?'
+        reason = path.get('reason', '') if path else ''
+        age    = self.total_ticks - self._last_scan_tick
+        return (
+            f'[SCAN] Threats: {", ".join(unique)}. '
+            f'Pathfinder: {action} — {reason}. '
+            f'(scanned {age} ticks ago)'
+        )
