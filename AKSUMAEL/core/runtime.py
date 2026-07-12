@@ -337,6 +337,13 @@ def run():
                                 })
                                 src_tag = 'VISION_OVERRIDE'
 
+                # Between LLM ticks in EXPLORE: carry last movement forward
+                # so AKSUMAEL keeps walking/acting instead of going idle for 14 ticks
+                else:
+                    if last_action.get('key') in ('w', 'a', 's', 'd'):
+                        action_dict = {**last_action}
+                        src_tag = 'CARRY'
+
             # ── Death/respawn detection ─────────────────────────
             if respawner.update(objects, last_observation=last_action.get('observation', '')):
                 world_mem.record_death()
