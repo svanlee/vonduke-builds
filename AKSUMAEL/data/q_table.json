@@ -99,10 +99,21 @@
     "emerald_ore_hotbar_hunger_ba_105633": 0.9150792859575094,
     "mine_redstone_ore": 0.27474275385580726
   },
-  "coal_ore,hotbar,hunger_bar": {},
+  "coal_ore,hotbar,hunger_bar": {
+    "mine_coal_ore": 0.20453255463116532
+  },
   "gold_ore,hotbar,hunger_bar": {
-    "armor_bar_gold_ore_health_ba_c7d2a1": 0.1503734935412496
+    "armor_bar_gold_ore_health_ba_c7d2a1": 0.13232334419936465
   },
   "gold_ore,hotbar": {},
-  "gold_ore,hotbar,xp_bar": {}
+  "gold_ore,hotbar,xp_bar": {},
+  "coal_ore,gold_ore,hotbar": {},
+  "coal_ore,hotbar": {
+    "mine_coal_ore": 0.24913025951562093,
+    "coal_ore_hotbar_hunger_bar_d66b1a": 0.6829106296457217
+  },
+  "hotbar": {},
+  "coal_ore,hotbar,xp_bar": {
+    "mine_coal_ore": 0.2940589972895689
+  }
 }

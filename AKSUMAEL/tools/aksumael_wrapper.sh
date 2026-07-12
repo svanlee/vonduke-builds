@@ -74,6 +74,11 @@ while true; do
                 echo "[WRAPPER] Stopped by control file. Exiting."
                 exit 0
                 ;;
+            win_shutdown)
+                echo "[WRAPPER] Sending Windows shutdown via KB2040..."
+                "$VENV_PYTHON" "$AKSUMAEL_DIR/tools/win_shutdown.py"
+                echo "[WRAPPER] win_shutdown done."
+                ;;
             *)
                 echo "[WRAPPER] Unknown command: $CMD"
                 ;;

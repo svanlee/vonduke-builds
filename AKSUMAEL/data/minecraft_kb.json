@@ -2,16 +2,16 @@
   "mechanics": {
     "wood": {
       "goal": "Get wood, craft a crafting table and stone pickaxe before nightfall.",
-      "how_to": "Find a tree. Hold left-click on log blocks (trunk). 4 logs → 16 planks → crafting table. Open crafting table (right-click), craft: wooden pickaxe (3 planks top row + 2 sticks center column). Then mine 3 stone blocks → stone pickaxe. Milestone: stone pickaxe in hand.",
+      "how_to": "Find a tree. Hold left-click on log blocks (trunk). 4 logs \u2192 16 planks \u2192 crafting table. Open crafting table (right-click), craft: wooden pickaxe (3 planks top row + 2 sticks center column). Then mine 3 stone blocks \u2192 stone pickaxe. Milestone: stone pickaxe in hand.",
       "tips": [
-        "Chop the bottom log — upper logs fall and auto-collect",
+        "Chop the bottom log \u2014 upper logs fall and auto-collect",
         "Leaves sometimes drop saplings (replant later)",
         "Crafting table opens with right-click",
         "If night comes before shelter: pillar up 6 blocks and wait on top"
       ],
       "key_crafting": {
-        "planks": "1 log → 4 planks",
-        "sticks": "2 planks (vertical) → 4 sticks",
+        "planks": "1 log \u2192 4 planks",
+        "sticks": "2 planks (vertical) \u2192 4 sticks",
         "crafting_table": "4 planks in 2x2",
         "wooden_pickaxe": "3 planks (top row) + 2 sticks (center column)",
         "stone_pickaxe": "3 cobblestone (top row) + 2 sticks (center column)"
@@ -19,9 +19,9 @@
     },
     "stone": {
       "goal": "Stone tools, food, torches. Survive nights. Find iron ore underground.",
-      "how_to": "Mine cobblestone with wooden pickaxe. Kill animals (cow/pig/sheep/chicken) with sword — left-click. Cook meat in furnace. Find coal ore (grey with black flecks) on cave walls or at Y<40. Coal + stick = torch. Dig down or find a cave to explore for iron.",
+      "how_to": "Mine cobblestone with wooden pickaxe. Kill animals (cow/pig/sheep/chicken) with sword \u2014 left-click. Cook meat in furnace. Find coal ore (grey with black flecks) on cave walls or at Y<40. Coal + stick = torch. Dig down or find a cave to explore for iron.",
       "tips": [
-        "Never dig straight down — fall risk",
+        "Never dig straight down \u2014 fall risk",
         "Caves are faster than shaft mining for finding iron",
         "Coal ore looks like grey stone with dark flecks",
         "Iron ore is grey stone with orange/tan flecks",
@@ -36,13 +36,13 @@
     },
     "iron": {
       "goal": "Mine and smelt iron. Craft iron pickaxe, sword, and armor.",
-      "how_to": "Iron ore spawns at Y=15–50. Mine with stone pickaxe minimum. Smelt in furnace: put iron ore in top slot, coal/wood in bottom slot. Need ~24 ingots for pickaxe + sword + chestplate. Then dig deeper (below Y=16) for diamonds.",
+      "how_to": "Iron ore spawns at Y=15\u201350. Mine with stone pickaxe minimum. Smelt in furnace: put iron ore in top slot, coal/wood in bottom slot. Need ~24 ingots for pickaxe + sword + chestplate. Then dig deeper (below Y=16) for diamonds.",
       "tips": [
         "Iron ore has orange/tan flecks on grey stone",
         "Furnace: ore goes in top slot, fuel goes in bottom slot",
-        "Lava pools often appear at Y<11 — bring water bucket",
+        "Lava pools often appear at Y<11 \u2014 bring water bucket",
         "Iron armor: helmet=5, chestplate=8, leggings=7, boots=4 ingots",
-        "Y=15 is the sweet spot — iron generates heavily here"
+        "Y=15 is the sweet spot \u2014 iron generates heavily here"
       ],
       "key_crafting": {
         "iron_pickaxe": "3 iron ingots (top row) + 2 sticks (center column)",
@@ -53,12 +53,12 @@
     },
     "diamond": {
       "goal": "Find diamonds at Y=-58 to Y=16. Craft tools. Build Nether portal.",
-      "how_to": "Strip mine at Y=-58 east-west with tunnels every 3 blocks. Need iron pickaxe to mine diamond ore. Watch for lava — place water to neutralize. After getting 12+ diamonds: craft pickaxe + sword. Collect 10 obsidian (iron or diamond pickaxe near lava + water). Craft flint and steel. Build 4-wide × 5-tall obsidian frame, light it.",
+      "how_to": "Strip mine at Y=-58 east-west with tunnels every 3 blocks. Need iron pickaxe to mine diamond ore. Watch for lava \u2014 place water to neutralize. After getting 12+ diamonds: craft pickaxe + sword. Collect 10 obsidian (iron or diamond pickaxe near lava + water). Craft flint and steel. Build 4-wide \u00d7 5-tall obsidian frame, light it.",
       "tips": [
         "Diamond ore is grey stone with blue/cyan flecks",
         "Never mine diamond ore adjacent to lava without checking sides first",
         "Obsidian forms when water touches lava source block",
-        "Nether portal frame: 4 wide × 5 tall (corners optional = only needs 10 obsidian)",
+        "Nether portal frame: 4 wide \u00d7 5 tall (corners optional = only needs 10 obsidian)",
         "Flint: mine gravel until it drops flint. Flint + iron ingot = flint & steel",
         "Enchant diamond pickaxe with Fortune III to multiply gem drops"
       ],
@@ -71,39 +71,50 @@
     },
     "nether": {
       "goal": "Find Nether Fortress. Collect 6 blaze rods + 12 ender pearls.",
-      "how_to": "Enter portal. Nether Fortress = large dark nether brick structure (look for it across lava lakes or on cliffs). Blazes spawn on cage spawners inside — kill for blaze rods. Endermen spawn in open nether wastes and warped forests — kill for ender pearls. Return to Overworld when you have enough.",
+      "how_to": "Enter portal. Nether Fortress = large dark nether brick structure (look for it across lava lakes or on cliffs). Blazes spawn on cage spawners inside \u2014 kill for blaze rods. Endermen spawn in open nether wastes and warped forests \u2014 kill for ender pearls. Return to Overworld when you have enough.",
       "tips": [
-        "Fortresses generate in strips along the Z axis — travel east or west to find one",
-        "Blazes fire fireballs — wear armor, bring potions of fire resistance if possible",
+        "Fortresses generate in strips along the Z axis \u2014 travel east or west to find one",
+        "Blazes fire fireballs \u2014 wear armor, bring potions of fire resistance if possible",
         "Gold armor makes piglins neutral (they won't attack you)",
         "Piglin bartering: throw gold ingots at piglins for ender pearls and other items",
         "Ghast fireballs can be deflected by hitting them back",
         "Bridge over lava with cobblestone or netherack"
       ],
       "key_crafting": {
-        "blaze_powder": "1 blaze rod → 2 blaze powder",
+        "blaze_powder": "1 blaze rod \u2192 2 blaze powder",
         "eye_of_ender": "1 blaze powder + 1 ender pearl",
         "brewing_stand": "1 blaze rod (center) + 3 cobblestone (bottom row)",
-        "fire_resistance_potion": "nether wart → magma cream → potion"
+        "fire_resistance_potion": "nether wart \u2192 magma cream \u2192 potion"
       }
     },
     "end": {
       "goal": "Locate stronghold with Eyes of Ender. Enter The End. Kill Ender Dragon.",
-      "how_to": "Throw Eye of Ender (right-click) — it flies toward the stronghold. Follow it. When it flies downward, dig. Find the End Portal room (3×3 portal frame blocks). Fill all 12 frame blocks with Eyes of Ender. Jump in. In The End: shoot End Crystals on obsidian pillars with bow first. Then attack dragon with sword when it perches on the fountain portal.",
+      "how_to": "Throw Eye of Ender (right-click) \u2014 it flies toward the stronghold. Follow it. When it flies downward, dig. Find the End Portal room (3\u00d73 portal frame blocks). Fill all 12 frame blocks with Eyes of Ender. Jump in. In The End: shoot End Crystals on obsidian pillars with bow first. Then attack dragon with sword when it perches on the fountain portal.",
       "tips": [
         "Bring 12 Eyes of Ender for the portal (may use 1-2 finding it)",
-        "End Crystals heal the dragon — destroy all of them before engaging",
+        "End Crystals heal the dragon \u2014 destroy all of them before engaging",
         "Dragon is immune to arrows except when perched on portal",
-        "Beds explode in The End — can be placed near portal as a weapon",
+        "Beds explode in The End \u2014 can be placed near portal as a weapon",
         "Carry golden apples and good armor",
-        "The dragon fight ends when the death animation plays — XP fountains up"
+        "The dragon fight ends when the death animation plays \u2014 XP fountains up"
       ],
       "key_crafting": {
         "bow": "3 sticks (diagonal) + 3 string",
-        "arrow": "1 flint + 1 stick + 1 feather → 4 arrows",
+        "arrow": "1 flint + 1 stick + 1 feather \u2192 4 arrows",
         "golden_apple": "8 gold ingots around 1 apple"
       }
     }
   },
-  "discoveries": []
+  "discoveries": [
+    {
+      "text": "tunnel opens to an outdoor grassy area at night",
+      "tick": 90,
+      "ts": "2026-07-11 21:35:40"
+    },
+    {
+      "text": "surrounded by dirt walls, likely underground tunnel, no wood source visible",
+      "tick": 150,
+      "ts": "2026-07-11 21:36:24"
+    }
+  ]
 }
