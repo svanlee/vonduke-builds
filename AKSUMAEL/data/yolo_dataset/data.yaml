@@ -1,7 +1,7 @@
 path: data/yolo_dataset
 train: images/train
 val: images/train
-nc: 44
+nc: 47
 names:
   0: health_bar
   1: hunger_bar
@@ -47,3 +47,6 @@ names:
   41: sheep_wool
   42: iron_ingot
   43: diamond
+  44: duck
+  45: village_house
+  46: birch_log
