@@ -72,18 +72,20 @@ class NightSurvivalBehavior:
         day_index = world_mem.total_ticks // config.MC_DAY_TICKS
 
         if self._state == 'idle':
-            if approaching_night and self._last_night_day != day_index:
-                self._last_night_day = day_index
-                self._goals.push('find_shelter')
-                if self._has_blocks(inv_snapshot):
-                    print('[NIGHT] dusk detected — pillaring up')
-                    self._state        = 'pillar'
-                    self._pillar_count = 0
-                else:
-                    print('[NIGHT] dusk detected, no blocks — digging in instead')
-                    self._state  = 'dig_in'
-                    self._dug_in = True
-            return None
+            if not (approaching_night and self._last_night_day != day_index):
+                return None
+            self._last_night_day = day_index
+            self._goals.push('find_shelter')
+            if self._has_blocks(inv_snapshot):
+                print('[NIGHT] dusk detected — pillaring up')
+                self._state        = 'pillar'
+                self._pillar_count = 0
+                return self._do_pillar()
+            else:
+                print('[NIGHT] dusk detected, no blocks — digging in instead')
+                self._state  = 'dig_in'
+                self._dug_in = True
+                return self._do_dig_in()
 
         if self._state == 'pillar':
             return self._do_pillar()
