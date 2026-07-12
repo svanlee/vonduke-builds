@@ -254,6 +254,11 @@ def run():
                 name = replayer._current.name[:10] if replayer._current else '?'
                 src_tag = f'REPLAY:{name}'
 
+            elif _menu_open:
+                # Menu/inventory is open — any skill or FSM action would corrupt
+                # the UI. Stay idle until the menu is closed.
+                src_tag = 'MENU'
+
             else:
                 # Try a learned skill first — if multiple candidates match,
                 # let the RL policy pick among them instead of the naive best.
