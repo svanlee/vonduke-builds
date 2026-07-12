@@ -1,0 +1,42 @@
+{
+  "_comment": "Game launch sequences for AKSUMAEL via KB2040 HID.",
+  "_step_types": "key | click | look | wait | say",
+  "_notes": [
+    "Add any game here — no Python changes needed.",
+    "wait_ms: pause after each step (default 200ms)",
+    "type=wait: pause without any input (ms field)"
+  ],
+
+  "minecraft": {
+    "description": "Navigate Minecraft Java title screen → Singleplayer → most recent world",
+    "steps": [
+      { "type": "say",  "message": "Launching Minecraft..." },
+      { "type": "key",  "key": "esc",   "wait_ms": 300,
+        "_note": "dismiss any overlay / focus the window" },
+      { "type": "wait", "ms": 800 },
+      { "type": "key",  "key": "tab",   "wait_ms": 150,
+        "_note": "Tab to first button (Singleplayer)" },
+      { "type": "key",  "key": "enter", "wait_ms": 300 },
+      { "type": "wait", "ms": 1500,
+        "_note": "world select screen loads" },
+      { "type": "key",  "key": "tab",   "wait_ms": 150,
+        "_note": "Tab to first world in list" },
+      { "type": "key",  "key": "enter", "wait_ms": 500 },
+      { "type": "wait", "ms": 8000,
+        "_note": "world loading — generous wait" },
+      { "type": "say",  "message": "World load complete — scanning for HUD..." }
+    ]
+  },
+
+  "_template": {
+    "description": "Template — copy and rename the key to your game name",
+    "steps": [
+      { "type": "say",  "message": "Launching <game>..." },
+      { "type": "key",  "key": "esc",   "wait_ms": 300 },
+      { "type": "wait", "ms": 500 },
+      { "type": "key",  "key": "enter", "wait_ms": 300 },
+      { "type": "wait", "ms": 5000 },
+      { "type": "say",  "message": "Launch sequence done." }
+    ]
+  }
+}
