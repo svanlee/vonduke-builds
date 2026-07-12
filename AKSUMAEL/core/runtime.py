@@ -405,7 +405,8 @@ def run():
                 elif tick % config.LLM_EVERY_N_TICKS == 0:
                     # Frame-diff gate: skip call if scene hasn't changed enough
                     _scene_changed = True
-                    if _last_llm_frame is not None and frame is not None:
+                    if (_last_llm_frame is not None and frame is not None
+                            and frame.shape == _last_llm_frame.shape):
                         _diff = cv2.absdiff(frame, _last_llm_frame)
                         if _diff.mean() < 8.0:
                             _scene_changed = False
