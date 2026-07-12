@@ -1,0 +1,6 @@
+[Unit]
+Description=Sync AKSUMAEL live log into workspace for Cowork sandbox access
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -c 'tail -n 200 /tmp/aksumael_live.log > /home/ros/vonduke-builds/AKSUMAEL/data/live.log'
