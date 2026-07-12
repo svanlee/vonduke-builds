@@ -1,9 +1,32 @@
 """Short-horizon goal stack. Claude can push/pop goals; runtime injects current goal into prompt."""
 
 from collections import deque
-import json, os
+import json, os, time
+
+import config
 
 GOALS_PATH = "data/goals.json"
+RETIRED_GOALS_LOG = os.path.join(config.MEMORY_DIR, "retired_goals.jsonl")
+
+# Goals that never retire regardless of age — the base/standing goals.
+_NEVER_RETIRE = frozenset({"survive", "survive_night", "explore", "eat",
+                            "flee_danger", "find_shelter", "return_to_base"})
+
+# Materials required per pickaxe-crafting tier (mirrors suggest_craft_goal).
+_CRAFT_REQUIREMENTS = {
+    "craft_wood_pickaxe":    {"planks": 3, "stick": 2},
+    "craft_stone_pickaxe":   {"cobblestone": 3, "stick": 2},
+    "craft_iron_pickaxe":    {"iron_ingot": 3, "stick": 2},
+    "craft_diamond_pickaxe": {"diamond": 3, "stick": 2},
+}
+_CRAFT_RESULT_ITEM = {
+    "craft_wood_pickaxe":    "wooden_pickaxe",
+    "craft_stone_pickaxe":   "stone_pickaxe",
+    "craft_iron_pickaxe":    "iron_pickaxe",
+    "craft_diamond_pickaxe": "diamond_pickaxe",
+}
+_PLANK_VARIANTS = ("oak_planks", "spruce_planks", "birch_planks",
+                   "jungle_planks", "acacia_planks", "dark_oak_planks")
 
 GOAL_PRIORITIES = {
     "survive_night": 10,
@@ -25,6 +48,13 @@ class GoalStack:
     def __init__(self):
         self.stack: deque = deque(maxlen=5)
         self.current = "explore"
+        # ── Goal retirement (v1.1) — tick a goal was first observed as
+        # current, tracked by name. Detected via check_retirement() so it
+        # works whether the goal changed via push()/pop() or a direct
+        # `goals.current = "..."` assignment (both patterns are used).
+        self._pushed_at   = {}
+        self._last_seen   = None
+        self.last_retirement = None   # {'goal','reason','ticks_active'} of the most recent retirement
         self._load()
 
     def _load(self):
@@ -182,3 +212,74 @@ class GoalStack:
 
     def context_summary(self) -> str:
         return f"Current goal: {self.current}" + (f" (queued: {', '.join(list(self.stack)[-2:])})" if self.stack else "")
+
+    # ── Goal retirement ──────────────────────────────────────────
+    def check_retirement(self, tick: int, world=None, inventory=None):
+        """Call once per runtime tick. Retires the current goal (pops it)
+        when it's either been achieved (success) or looks unachievable
+        after sitting active too long (timeout). Logs every retirement to
+        RETIRED_GOALS_LOG for later analysis. No-op for standing goals in
+        _NEVER_RETIRE (survive/explore/etc — those are never "achieved")."""
+        goal = self.current
+        if goal != self._last_seen:
+            self._pushed_at[goal] = tick
+            self._last_seen = goal
+        if goal in _NEVER_RETIRE:
+            return
+
+        age = tick - self._pushed_at.get(goal, tick)
+        items = getattr(inventory, "items", {}) if inventory is not None else {}
+
+        # ── Success retirement — postcondition already met ─────────
+        if goal in _CRAFT_RESULT_ITEM:
+            if items.get(_CRAFT_RESULT_ITEM[goal], 0) > 0:
+                self._retire(tick, goal, "success: already crafted", age, world)
+                return
+        elif goal.startswith("mine_"):
+            ore_item = _mine_goal_to_item(goal)
+            base_item = ore_item.replace("_ore", "")
+            if items.get(base_item, 0) > 0 or items.get(ore_item, 0) > 0:
+                self._retire(tick, goal, "success: ore already in inventory", age, world)
+                return
+
+        # ── Timeout retirement — goal looks unachievable ────────────
+        if goal.startswith("mine_") and age > 60 and world is not None:
+            ore_label = _mine_goal_to_item(goal)
+            if world.nearest_ore(ore_label) is None:
+                self._retire(tick, goal, f"timeout: no known {ore_label} location", age, world)
+                return
+
+        elif self.is_craft_goal(goal) and age > 100:
+            req = _CRAFT_REQUIREMENTS.get(goal)
+            if req is not None:
+                have = dict(items)
+                have["planks"] = sum(have.get(p, 0) for p in _PLANK_VARIANTS)
+                if any(have.get(item, 0) < count for item, count in req.items()):
+                    self._retire(tick, goal, "timeout: materials still missing", age, world)
+                    return
+
+        elif age > config.GOAL_MAX_AGE_TICKS:
+            self._retire(tick, goal, "timeout: max age exceeded", age, world)
+
+    def _retire(self, tick: int, goal: str, reason: str, ticks_active: int, world=None):
+        position = list(world.position) if world is not None and getattr(world, 'position', None) else None
+        print(f'[GOALS] retiring "{goal}" — {reason} ({ticks_active} ticks active)')
+        self._pushed_at.pop(goal, None)
+        self.last_retirement = {'goal': goal, 'reason': reason, 'ticks_active': ticks_active}
+        self.pop()
+        try:
+            os.makedirs(config.MEMORY_DIR, exist_ok=True)
+            with open(RETIRED_GOALS_LOG, "a") as f:
+                f.write(json.dumps({
+                    "goal": goal, "reason": reason,
+                    "ticks_active": ticks_active, "position": position,
+                    "tick": tick, "ts": time.time(),
+                }) + "\n")
+        except Exception as e:
+            print(f'[GOALS] retired-goal log error: {e}')
+
+
+def _mine_goal_to_item(goal: str) -> str:
+    """'mine_diamonds' -> 'diamond_ore', 'mine_coal' -> 'coal_ore'."""
+    base = goal[len("mine_"):].rstrip("s")
+    return base if base.endswith("_ore") else f"{base}_ore"

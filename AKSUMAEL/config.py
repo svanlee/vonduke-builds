@@ -234,3 +234,34 @@ F3_KEY_WAIT_TICKS = 12       # ticks to wait after pressing F3 before OCR (12 * 
 # ── Paths ─────────────────────────────────────────────────────
 SKILLS_DIR = "data/skills"
 REWARD_LOG = "data/reward_log.json"
+MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
+
+# ── Self-Improving Loop (JARVIS-1+ architecture) ───────────────
+# Goal retirement — how long (ticks) an unachievable goal is allowed to
+# stay active before the goal stack gives up on it.
+GOAL_MAX_AGE_TICKS       = 200   # ~50s at LOOP_INTERVAL_SEC=0.25
+GOAL_MAX_AGE_SURVIVE     = None  # 'survive'-class goals never retire
+
+# Curriculum generator — how often (ticks) to ask the LLM what to attempt
+# next, and only when the goal stack looks idle (current goal == explore).
+CURRICULUM_INTERVAL_TICKS = 300  # ~75s
+
+# Skill evolution pass — proven/blacklist marking + duplicate merging.
+SKILL_EVOLVE_TICKS       = 1000  # ~250s
+SKILL_PROVEN_USES        = 5     # success_count threshold to mark 'proven'
+SKILL_BLACKLIST_FAILURES = 3     # failed_count threshold to blacklist
+
+# Inner monologue — real LLM-generated thought, gated to fire this often
+# (cheap haiku call, ~50 tokens) instead of every tick.
+MONOLOGUE_EVERY_N_TICKS  = 50
+
+# Episode memory — rolling window persisted to data/memory/episodes.jsonl
+EPISODE_MEMORY_MAX        = 200
+EPISODE_RETRIEVE_TOP_K    = 3
+
+# Code skills — LLM-generated Python functions as a more robust alternative
+# to recorded key-sequence skills. Executing LLM-generated code carries real
+# risk even on a single-user local rig, so this is OFF by default; flip to
+# True only after reviewing generated skills in data/skills/code/.
+ENABLE_CODE_SKILLS        = False
+CODE_SKILLS_DIR            = "data/skills/code"

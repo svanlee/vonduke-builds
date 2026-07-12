@@ -14,6 +14,10 @@ from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision
 from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
+from core.planner            import Planner
+from core.episode_memory     import EpisodeMemory
+from core.curriculum         import CurriculumGenerator
+from core                    import code_skill_generator
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
@@ -66,6 +70,9 @@ def run():
     tts       = TTSEngine()
     ear       = GameEar()          # graceful if no audio device
     skills    = SkillSystem()
+    planner     = Planner()
+    episodes    = EpisodeMemory()
+    curriculum  = CurriculumGenerator(planner)
     rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
     aim_ctrl  = AimController()          # uses YOLO-frame coords (640×360)
@@ -99,7 +106,7 @@ def run():
     from behaviors.chest_manager import ChestManager
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
-    from core.fsm import GameFSM, State
+    from core.fsm import GameFSM, State, ORE_TARGETS
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor, goals)
@@ -155,6 +162,15 @@ def run():
     CHEST_COOLDOWN_TICKS = 200    # min ticks between chest opens (avoid spamming Claude)
     BASE_X, BASE_Z        = -6, -3   # spawn / base coordinates
     _prev_replay_active = False  # replayer.is_active() as of last tick
+    # Skill pre/postcondition verification (v1.1) — snapshot inventory when a
+    # skill replay starts, diff it against the post-replay inventory to
+    # decide whether the skill's postconditions were actually met.
+    _verify_skill      = None   # Skill instance currently being verified
+    _verify_inv_before = {}
+    # Goal-episode tracking (v1.1) — snapshot inventory the first tick a goal
+    # becomes current, so a retirement can be logged as a JARVIS-1-style
+    # episode (goal, outcome, inventory before/after) once it changes again.
+    _goal_inv_snapshots = {}
     # Mining skills replay recorded look deltas that tend to walk the camera
     # pitch upward over a full replay. Once the skill ends, nudge the pitch
     # back down toward the horizon so EXPLORE/APPROACH aren't scanning sky.
@@ -250,6 +266,34 @@ def run():
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
+
+            # ── Goal retirement + episode memory (v1.1) ─────────
+            # Snapshot inventory the first tick we see a given goal, so a
+            # retirement (success or timeout) can be recorded as an episode.
+            _goal_now = goals.current_goal()
+            if _goal_now not in _goal_inv_snapshots:
+                _goal_inv_snapshots[_goal_now] = dict(inventory.items)
+            try:
+                goals.check_retirement(tick, world, inventory)
+            except Exception as e:
+                print(f'[GOALS] retirement check error: {e}')
+            if goals.current_goal() != _goal_now and goals.last_retirement:
+                _ret = goals.last_retirement
+                _outcome = 'success' if _ret['reason'].startswith('success') else 'timeout'
+                episodes.record(
+                    goal=_ret['goal'], plan=[], outcome=_outcome,
+                    inv_before=_goal_inv_snapshots.pop(_goal_now, {}),
+                    inv_after=dict(inventory.items),
+                    position=getattr(world, 'position', None), tick=tick,
+                )
+                goals.last_retirement = None
+
+            # ── Curriculum: suggest a new goal when idle (v1.1) ─
+            try:
+                curriculum.run_every_n_ticks(tick, goals, inventory, world)
+            except Exception as e:
+                print(f'[CURRICULUM] error: {e}')
+
             progression.auto_update(inventory, world_mem, tick)
 
             # ── Proximity to base (used by chest interaction + LLM context) ─
@@ -335,13 +379,23 @@ def run():
             # mid-skill-replay. Sweep is fast (~4s); zoom+identify only fires
             # when YOLO actually spotted a danger label.
             _replay_active_now = replayer.is_active()
-            if (_prev_replay_active and not _replay_active_now
-                    and _is_mining_skill(last_skill_name)):
-                print(f'[CAMERA] {last_skill_name} replay ended — '
-                      f'resetting pitch toward horizon over {_PITCH_RESET_TICKS} ticks '
-                      f'(total dy={_MINE_PITCH_RESET_DY})')
-                _pitch_reset_ticks_left = _PITCH_RESET_TICKS
-                _pitch_reset_dy_step    = _MINE_PITCH_RESET_DY // _PITCH_RESET_TICKS
+            if _prev_replay_active and not _replay_active_now:
+                # Skill postcondition verification — inventory diff vs the
+                # snapshot taken when this replay started (see skill-firing
+                # block below). Skills with no postconditions always pass.
+                if _verify_skill is not None:
+                    try:
+                        skills.verify_replay(_verify_skill, _verify_inv_before, dict(inventory.items))
+                    except Exception as e:
+                        print(f'[SKILL] verify error: {e}')
+                    _verify_skill = None
+
+                if _is_mining_skill(last_skill_name):
+                    print(f'[CAMERA] {last_skill_name} replay ended — '
+                          f'resetting pitch toward horizon over {_PITCH_RESET_TICKS} ticks '
+                          f'(total dy={_MINE_PITCH_RESET_DY})')
+                    _pitch_reset_ticks_left = _PITCH_RESET_TICKS
+                    _pitch_reset_dy_step    = _MINE_PITCH_RESET_DY // _PITCH_RESET_TICKS
             _prev_replay_active = _replay_active_now
 
             # Spread the post-mining pitch correction over several ticks
@@ -364,8 +418,14 @@ def run():
                 # → full 360° sweep since a threat could close in from any side.
                 _moving_forward = last_action.get('key') == 'w'
                 _getting_stuck  = _low_reward_streak >= (_STUCK_TICKS // 2)
-                scanner.run(world_mem, target_bearing=0,
-                            full_sweep=not _moving_forward or _getting_stuck)
+                _scan_result = scanner.run(world_mem, target_bearing=0,
+                                           full_sweep=not _moving_forward or _getting_stuck)
+                for _t in (_scan_result or {}).get('threats', []):
+                    _ident = _t.get('identified', {})
+                    if _ident.get('threat'):
+                        world.mark_threat(_t.get('label', 'unknown'),
+                                          bearing=_t.get('bearing', 0),
+                                          confidence=_t.get('conf', 0.0))
                 _last_scan_tick = tick
 
             # ── Decision ──────────────────────────────────────
@@ -414,6 +474,22 @@ def run():
                     if len(candidates) < _pre:
                         print(f'[SKILL] goal={_cur_goal}: suppressed '
                               f'{_pre - len(candidates)} mining skill(s)')
+
+                # ── Precondition gating (Voyager-style verification) ──
+                # Skills without preconditions always pass (old skills keep
+                # working unchanged). Uses the cached inventory read — never
+                # forces a fresh (expensive) inventory open just to gate.
+                if candidates:
+                    _precond_inv = (inv_reader.read(force=False)
+                                     if inv_reader._cache_ts > 0 else dict(inventory.items))
+                    _pre2 = len(candidates)
+                    candidates = [
+                        (sk, m) for sk, m in candidates
+                        if sk.check_preconditions(_precond_inv, objects)
+                    ]
+                    if len(candidates) < _pre2:
+                        print(f'[SKILL] preconditions filtered out '
+                              f'{_pre2 - len(candidates)} candidate(s)')
 
                 if len(candidates) > 1:
                     names = [sk.name for sk, _ in candidates]
@@ -470,7 +546,26 @@ def run():
                     if _aim_candidates:
                         aim_box = max(_aim_candidates,
                                       key=lambda o: o.get('conf', 0.0)).get('box')
-                    replayer.start(skill, aim_box=aim_box, aim_ctrl=aim_ctrl)
+
+                    # Code skills (LLM-generated Python, more robust than a
+                    # fixed key sequence) are tried first when enabled;
+                    # recorded-sequence replay is always the fallback.
+                    _code_ran = False
+                    if config.ENABLE_CODE_SKILLS:
+                        try:
+                            _code_ran = code_skill_generator.run_code_skill(
+                                skill.name, executor, world, objects)
+                        except Exception as e:
+                            print(f'[CODE_SKILL] error running {skill.name}: {e}')
+                        if _code_ran:
+                            skill.record_outcome(True)
+                            skills.save(skill)
+                            print(f'[SKILL] {skill.name} executed via code skill')
+
+                    if not _code_ran:
+                        _verify_skill      = skill
+                        _verify_inv_before = dict(inventory.items)
+                        replayer.start(skill, aim_box=aim_box, aim_ctrl=aim_ctrl)
                     skills.mark_used(skill)
                     inventory.on_skill_fired(skill.name)
                     if skill.name.startswith('mine_'):
@@ -519,6 +614,21 @@ def run():
                                    + inventory.context_summary() + '\n'
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))
+
+                        # Inner monologue (last real thought) — cheap, no
+                        # extra API call here, just replays the last LLM
+                        # thought generated on its own 50-tick cadence.
+                        _thought = cognitive.monologue.recent(n=1)
+                        if _thought:
+                            history += f'\n[THOUGHT] {_thought}'
+
+                        # Episode memory — past attempts at a similar goal,
+                        # JARVIS-1 style ("last time you tried X..."). Local
+                        # lookup only, no API cost.
+                        _episode_hint = episodes.context_snippet(
+                            goals.current_goal(), dict(inventory.items))
+                        if _episode_hint:
+                            history += f'\n{_episode_hint}'
 
                         # Chest contents at base — cheap, keeps Claude aware
                         # of stored materials without re-opening the chest.
@@ -728,6 +838,16 @@ def run():
                 world_mem.cumulative_pitch_dy = _cum_pitch_dy + _pitch_correction
 
             # ── World model ────────────────────────────────────
+            # Spatial memory: remember where ores were spotted (needs a
+            # known position — F3 reads are periodic, so this is a no-op
+            # most ticks between reads) and expire stale scanned threats.
+            if world.position is not None:
+                for o in objects:
+                    _lbl = o.get('label', '')
+                    if _lbl in ORE_TARGETS:
+                        world.mark_ore(_lbl, world.position)
+            world.retire_stale_threats(tick)
+
             world.update({
                 'objects': objects,
                 'action':  final.get('key') or action_dict.get('action', 'wait'),
@@ -819,17 +939,35 @@ def run():
                 print(f'[RL] {rl.stats()}')
 
             # ── Cognitive architecture ──────────────────────────
-            cognitive.update(tick, objects, action_dict, r)
+            cognitive.update(tick, objects, action_dict, r,
+                              goal=goals.current_goal(), recent_episodes=episodes.episodes[-5:])
 
             # ── Skill mining ───────────────────────────────────
             if used_skill is None and not replayer.is_active():
                 mined = skills.observe(objects, final, r)
                 if mined:
                     tts.say_line('skill_learned')
+                    if config.ENABLE_CODE_SKILLS and mined.uses <= 1:
+                        try:
+                            _code = code_skill_generator.generate_code_skill(
+                                mined.name, [s.action for s in mined.steps],
+                                context=f'triggers on {mined.trigger_objects}')
+                            if _code:
+                                code_skill_generator.save_code_skill(mined.name, _code)
+                                print(f'[CODE_SKILL] generated for {mined.name}')
+                        except Exception as e:
+                            print(f'[CODE_SKILL] generation error: {e}')
 
             # ── Skill pruning ───────────────────────────────────
             if tick % 50 == 0:
                 skills.prune_bad()
+
+            # ── Skill evolution (proven/blacklist/merge pass) ───
+            if tick % config.SKILL_EVOLVE_TICKS == 0:
+                try:
+                    skills.evolve_skills()
+                except Exception as e:
+                    print(f'[SKILL] evolve error: {e}')
 
             # ── F3 debug overlay OCR ─────────────────────────────
             # Guard: only open F3 when HUD is present and no menu is open.
@@ -849,6 +987,10 @@ def run():
                     _f3_open = False
                     if f3_data['f3_active']:
                         world_mem.update_f3(f3_data)
+                        _px = getattr(world_mem, 'pos_x', None)
+                        _pz = getattr(world_mem, 'pos_z', None)
+                        if _px is not None and _pz is not None:
+                            world.update_position((_px, world_mem.y_level, _pz))
                     else:
                         print('[F3] OCR found no XYZ — closed, will retry in 60 ticks')
             elif f3_countdown <= 0:
