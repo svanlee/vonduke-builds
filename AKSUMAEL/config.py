@@ -11,11 +11,12 @@ VISION_PROVIDER   = "claude"
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL      = "claude-haiku-4-5-20251001"   # haiku for cost; inventory reads use this too
+CLAUDE_MODEL        = "claude-haiku-4-5-20251001"   # inventory/chest reads (cheap)
+CLAUDE_VISION_MODEL = "claude-sonnet-5"             # main gameplay decisions (smarter)
 
 
 # ── Agent Loop ────────────────────────────────────────────────
-LOOP_INTERVAL_SEC  = 0.5   # seconds between ticks — faster loop for responsive mining
+LOOP_INTERVAL_SEC  = 0.25  # seconds between ticks — faster loop for responsive mining
 YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
 KEY_HOLD_MS  = 500   # ms to hold each key press (was hardcoded 20ms)
 MINE_HOLD_MS = 450   # ms to hold left-click per mining tick (fills most of LOOP_INTERVAL)
@@ -26,7 +27,7 @@ LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed
 # ── Scan / Identify / Pathfinder ──────────────────────────────
 LOOK_SCAN_STEP       = 80   # px per sweep position — wide arc, fast environmental scan
 LOOK_AIM_STEP        = 20   # px for fine threat zoom-in / targeting
-SCAN_COOLDOWN_TICKS  = 60   # min ticks between scan runs (~30s)
+SCAN_COOLDOWN_TICKS  = 30   # min ticks between scan runs (~15s)
 SCAN_MAX_THREATS     = 3    # max threats to zoom+identify per scan (keeps it fast)
 SCAN_LOG_DIR         = "data/scan_log"  # where identified threat frames are saved
 

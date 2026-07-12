@@ -269,7 +269,7 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
 
     os.makedirs('data/models', exist_ok=True)
 
-    base_weights = MODEL_OUT if os.path.exists(MODEL_OUT) else 'yolov8n.pt'
+    base_weights = MODEL_OUT if os.path.exists(MODEL_OUT) else 'yolov8s.pt'
     print(f'[TRAIN] starting fine-tune from {base_weights}: '
           f'epochs={epochs} imgsz={imgsz} batch={batch}')
     print()

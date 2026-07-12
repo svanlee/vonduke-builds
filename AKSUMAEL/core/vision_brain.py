@@ -96,7 +96,7 @@ Look at this screenshot and respond with a JSON object:
 Only output valid JSON, nothing else."""
 
     payload = json.dumps({
-        "model": config.CLAUDE_MODEL,
+        "model": config.CLAUDE_VISION_MODEL,
         "max_tokens": 400,
         "messages": [{
             "role": "user",

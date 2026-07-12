@@ -460,10 +460,17 @@ def run():
                         elif _g == 'explore':
                             _px, _pz = world_mem.pos_x, world_mem.pos_z
                             if _px is not None and _pz is not None:
-                                _dist_from_spawn = ((_px - (-6)) ** 2 + (_pz - (-3)) ** 2) ** 0.5
+                                _dx = (world_mem.pos_x or 0) - BASE_X
+                                _dz = (world_mem.pos_z or 0) - BASE_Z
+                                _dist_from_spawn = (_dx ** 2 + _dz ** 2) ** 0.5
                                 if _dist_from_spawn > 50:
-                                    history += (f'\nYou are far from your base at X=-6 Z=-3. '
-                                                f'Navigate back using w/a/d and look.')
+                                    history += (
+                                        f'\nNavigate toward base: you are at X={world_mem.pos_x:.0f} '
+                                        f'Z={world_mem.pos_z:.0f}, base is at X=-6 Z=-3. '
+                                        f'Face the direction that decreases your distance and walk (w).')
+                            else:
+                                history += ('\nPosition unknown — press F3 briefly to get '
+                                            'coordinates, then navigate.')
                             if 50 < _low_reward_streak < 150:
                                 history += ('\nYou seem stuck. Try turning sharply '
                                             '(look dx=60) then sprint (ctrl+w).')
