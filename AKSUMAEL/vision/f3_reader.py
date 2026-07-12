@@ -31,10 +31,21 @@ except ImportError:
 # Wide crop to catch all lines regardless of GUI scale.
 F3_CROP = (0, 0, 960, 650)  # x1, y1, x2, y2
 
+# Known Minecraft biome IDs for last-resort substring matching
+_KNOWN_BIOMES = [
+    "plains", "forest", "taiga", "desert", "jungle", "swamp", "savanna",
+    "badlands", "ocean", "river", "beach", "mountains", "hills", "peaks",
+    "snowy", "frozen", "mushroom", "dark_forest", "flower_forest",
+    "birch_forest", "old_growth", "sparse_jungle", "bamboo_jungle",
+    "windswept", "meadow", "grove", "stony", "jagged", "lush_caves",
+    "dripstone", "deep", "basalt", "nether", "end", "void", "overworld",
+]
+
 # ── Regex patterns for each F3 line ──────────────────────────
 # XYZ: 45.465 / 69.00000 / -10.093
+# OCR often reads 'X' as 'n' — tolerate [XxNn] as first char.
 XYZ_RE    = re.compile(
-    r"XYZ:\s*([-\d.]+)\s*/\s*([-\d.]+)\s*/\s*([-\d.]+)", re.IGNORECASE)
+    r"[XxNn][Yy][Zz]\s*[:\;\.]\s*([-\d.]+)\s*/\s*([-\d.]+)\s*/\s*([-\d.]+)", re.IGNORECASE)
 # Block: 45 69 -11
 BLOCK_RE  = re.compile(r"Block:\s*([-\d]+)\s+([-\d]+)\s+([-\d]+)", re.IGNORECASE)
 # Biome: minecraft:plains  or  Biome: plains
@@ -144,6 +155,14 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         m = BIOME_MC_RE.search(text)
         if m:
             result["biome"] = m.group(1)
+    # Last resort: OCR mangled "minecraft:NAME" beyond regex recognition —
+    # scan for any known biome name as a substring in the raw OCR text.
+    if result["biome"] is None:
+        text_lower = text.lower()
+        for name in _KNOWN_BIOMES:
+            if name in text_lower:
+                result["biome"] = name
+                break
 
     # Facing direction — exact match first, fuzzy fallback for garbled OCR words
     m = FACING_RE.search(text)
