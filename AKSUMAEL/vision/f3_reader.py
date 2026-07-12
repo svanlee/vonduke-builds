@@ -37,7 +37,10 @@ XYZ_RE    = re.compile(
 # Block: 45 69 -11
 BLOCK_RE  = re.compile(r"Block:\s*([-\d]+)\s+([-\d]+)\s+([-\d]+)", re.IGNORECASE)
 # Biome: minecraft:plains  or  Biome: plains
-BIOME_RE  = re.compile(r"Biome:\s*([\w:/ ]+)", re.IGNORECASE)
+# OCR often mangles 'Biome:' — tolerate i→l/1, :→;/.
+BIOME_RE  = re.compile(r"[Bb][il1oO0]me\s*[:\;\.]\s*([\w:]+)", re.IGNORECASE)
+# Fallback: match minecraft:xxx directly (biome IDs always carry this prefix)
+BIOME_MC_RE = re.compile(r"minecraft:(\w+)")
 # Facing: north (Towards -Z) ...
 FACING_RE = re.compile(r"Facing:\s*(north|south|east|west)", re.IGNORECASE)
 # 40 fps  or  T: 40 vsync
@@ -125,6 +128,11 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
     if m:
         raw = m.group(1).strip()
         result["biome"] = raw.replace("minecraft:", "").split()[0]  # first word
+    else:
+        # Fallback: biome IDs always appear as minecraft:name in F3 text
+        m = BIOME_MC_RE.search(text)
+        if m:
+            result["biome"] = m.group(1)
 
     # Facing direction
     m = FACING_RE.search(text)
@@ -147,5 +155,9 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
             result["chunk_z"] = int(m.group(3))
         except ValueError:
             pass
+
+    if result["facing"] is None or result["biome"] is None:
+        snippet = text[:300].replace('\n', ' | ')
+        print(f"[F3-DEBUG] facing={result['facing']} biome={result['biome']} raw_ocr={snippet!r}")
 
     return result
