@@ -123,10 +123,19 @@ def run():
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
     f3_countdown     = 50    # ticks until next F3 OCR read (offset from startup)
+    _f3_open         = False  # True while F3 overlay is open (we pressed it, waiting to close)
     fsm_state        = None  # updated each tick for console logging
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
+
+    # Init extended F3 fields on world_mem so context_summary() can use them
+    world_mem.pos_x   = getattr(world_mem, 'pos_x',   None)
+    world_mem.pos_z   = getattr(world_mem, 'pos_z',   None)
+    world_mem.facing  = getattr(world_mem, 'facing',  'unknown')
+    world_mem.fps     = getattr(world_mem, 'fps',     None)
+    world_mem.chunk_x = getattr(world_mem, 'chunk_x', None)
+    world_mem.chunk_z = getattr(world_mem, 'chunk_z', None)
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     try:
@@ -241,6 +250,7 @@ def run():
             # when YOLO actually spotted a danger label.
             if (not replayer.is_active()
                     and not _menu_open
+                    and not _f3_open
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
                 scanner.run(world_mem, target_bearing=0)
                 _last_scan_tick = tick
@@ -409,7 +419,8 @@ def run():
                 crafting_behavior.run()
 
             # ── Curiosity survey ────────────────────────────────
-            if surveyor:
+            # Only survey in EXPLORE/EAT — never interrupt MINE, COMBAT, FISH, etc.
+            if surveyor and fsm_state in (State.EXPLORE, State.EAT, None):
                 llm_conf = last_action.get('confidence', 1.0)
                 if surveyor.should_trigger(objects, llm_conf):
                     surveyor.run(frame, objects)
@@ -458,23 +469,25 @@ def run():
                 skills.prune_bad()
 
             # ── F3 debug overlay OCR ─────────────────────────────
+            # Guard: only open F3 when HUD is present and no menu is open.
+            # Track _f3_open so we never send inputs while it's up.
             f3_countdown -= 1
-            # Guard: only read F3 when we're clearly in-game with HUD visible
-            # and NOT inside a menu/inventory (which would corrupt the UI)
-            if f3_countdown <= 0 and _hud_present and not _menu_open:
+            if f3_countdown <= 0 and _hud_present and not _menu_open and not _f3_open:
                 f3_countdown = config.F3_READ_EVERY_N_TICKS
                 if frame is not None:
-                    executor.execute({'key': 'f3'})
+                    _f3_open = True
+                    executor.execute({'key': 'f3'})                    # open
                     time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
-                    f3_frame = pipeline.latest_raw_frame   # fresh full-res frame
-                    f3_data = read_f3(f3_frame)
-                    executor.execute({'key': 'f3'})  # close
+                    f3_frame = pipeline.latest_raw_frame               # full-res frame
+                    f3_data  = read_f3(f3_frame)
+                    executor.execute({'key': 'f3'})                    # close
+                    _f3_open = False
                     if f3_data['f3_active']:
                         world_mem.update_f3(f3_data)
-                        print(f"[F3] Y={f3_data['y_level']} biome={f3_data['biome']}")
+                    else:
+                        print('[F3] overlay opened but OCR found no XYZ — closed')
             elif f3_countdown <= 0:
-                # Not safe to read F3 right now (menu open or no HUD) —
-                # reset countdown and try again shortly instead of stalling.
+                # Menu open, no HUD, or f3 already open — defer, try again soon
                 f3_countdown = 30
 
             # ── Console log ────────────────────────────────────
