@@ -7,12 +7,12 @@
 # "gemini" = free tier, ~1500 req/day
 # "claude" = paid, one-line swap
 import os
-VISION_PROVIDER   = "gemini"
+VISION_PROVIDER = "claude"
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL        = "claude-haiku-4-5-20251001"   # inventory/chest reads (cheap)
-CLAUDE_VISION_MODEL = "claude-sonnet-5"             # main gameplay decisions (smarter)
+CLAUDE_VISION_MODEL = "claude-haiku-4-5-20251001"             # main gameplay decisions (smarter)
 
 
 # ── Agent Loop ────────────────────────────────────────────────
