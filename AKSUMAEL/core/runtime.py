@@ -12,7 +12,7 @@ from core.capture            import VideoCapturePipeline
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
-from core.vision_brain       import ask_vision, get_call_counts
+from core.vision_brain       import ask_vision, get_call_counts, get_last_provider
 from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
@@ -1168,6 +1168,8 @@ def _write_health_log(tick: int, goal: str, last_reward: float, cognitive) -> No
         f'last_reward:  {last_reward:+.3f}',
         f'video2:       {"present" if video_present else "ABSENT"}',
         f'ttyUSB0:      {"present" if tty_present else "ABSENT"}',
+        f'vision_route: {get_last_provider() or "none"} (last tick)',
+        f'local_calls:  {vision_calls["local"]}',
         f'gemini_calls: {vision_calls["gemini"]}',
         f'claude_calls: {claude_calls}',
     ]
