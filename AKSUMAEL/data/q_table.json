@@ -38,7 +38,7 @@
   "armor_bar,coal_ore,health_bar": {
     "armor_bar_health_bar_hotbar__c93505": 0.884624363248631,
     "armor_bar_emerald_ore_health_4aebc3": 0.6222367637319467,
-    "mine_coal_ore": 0.5993950303216415
+    "mine_coal_ore": 0.08847157541135092
   },
   "diamond_ore,emerald_ore,gold_ore": {
     "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962,
@@ -252,8 +252,17 @@
   "diamond_ore,hotbar": {},
   "crosshair,emerald_ore,health_bar": {},
   "redstone_ore": {
-    "redstone_ore_821414": -0.03723620321090351,
-    "redstone_ore_77c582": -0.09999997666575725
+    "redstone_ore_821414": 0.09594499144418837,
+    "redstone_ore_77c582": 0.3440702130603036,
+    "redstone_ore_bae470": 0.5968437816806447,
+    "redstone_ore_f4b460": -0.07424604795945441,
+    "redstone_ore_845b0a": 0.026863795322478255,
+    "redstone_ore_9cdb71": 0.1000001099797704,
+    "redstone_ore_7bac87": -0.048252337894035185,
+    "mine_redstone_ore": 0.16484114201682293,
+    "redstone_ore_659e6b": -0.07369075347919143,
+    "redstone_ore_c7ecef": 0.10000059734420919,
+    "redstone_ore_fe4b1c": 0.1000000398701891
   },
   "hotbar,lapis_ore,redstone_ore": {
     "diamond_ore_lapis_ore_redsto_e9c220": 1.6201414228974362
@@ -276,7 +285,9 @@
     "redstone_ore_d52a8a": 4.097978083437374,
     "redstone_ore_c7ecef": 1.3154611978017718
   },
-  "coal_ore": {},
+  "coal_ore": {
+    "coal_ore_281a72": 0.09788459809321023
+  },
   "health_bar,hotbar,hunger_bar": {},
   "health_bar,hotbar,oak_planks": {},
   "hotbar,redstone_ore,xp_bar": {
@@ -287,8 +298,20 @@
   "diamond_ore,hotbar,redstone_ore": {
     "diamond_ore_5d1ebb": 1.5306428412701603
   },
-  "diamond_ore,redstone_ore": {},
+  "diamond_ore,redstone_ore": {
+    "redstone_ore_bae470": -0.09057977302095029,
+    "redstone_ore_77c582": 0.5375764527883002
+  },
   "gold_ore,redstone_ore": {
-    "redstone_ore_821414": 0.6408628487222472
-  }
+    "redstone_ore_821414": 0.6543285414785676,
+    "redstone_ore_77c582": 0.38734375632239815,
+    "redstone_ore_ef2a5c": -0.030496116468105766
+  },
+  "hunger_bar": {},
+  "health_bar,hunger_bar": {},
+  "armor_bar,health_bar": {},
+  "armor_bar,health_bar,hunger_bar": {},
+  "armor_bar,hunger_bar": {},
+  "armor_bar,health_bar,xp_bar": {},
+  "coal_ore,health_bar": {}
 }

@@ -21,6 +21,28 @@ def _dataset_size() -> int:
     return total
 
 
+# Retry budget for subprocess calls that die with a reset/broken pipe —
+# GPU contention between the live capture/YOLO threads and the training
+# subprocess's DataLoader workers can tear down the stdout/stderr pipe
+# mid-scan (ConnectionResetError) rather than the subprocess exiting cleanly.
+SUBPROCESS_PIPE_RETRIES = 2
+
+
+def _run_subprocess_with_retry(args, **kwargs):
+    """subprocess.run() wrapper that retries on transient pipe failures
+    instead of propagating them and killing the whole training thread."""
+    last_err = None
+    for attempt in range(1, SUBPROCESS_PIPE_RETRIES + 1):
+        try:
+            return subprocess.run(args, **kwargs)
+        except (ConnectionResetError, BrokenPipeError) as e:
+            last_err = e
+            print(f'[AUTOTRAIN] ⚠ pipe to subprocess dropped ({e}) — '
+                  f'retry {attempt}/{SUBPROCESS_PIPE_RETRIES}')
+            time.sleep(2)
+    raise last_err
+
+
 class AutoTrainer:
     def __init__(self, yolo_detector):
         self._yolo      = yolo_detector
@@ -66,7 +88,7 @@ class AutoTrainer:
 
         autolabel_script = os.path.join(tools_dir, 'claude_autolabel.py')
         print('[AUTOTRAIN] auto-labeling new survey frames with Claude...')
-        label_result = subprocess.run(
+        label_result = _run_subprocess_with_retry(
             [python, autolabel_script],
             capture_output=True, text=True, timeout=1800
         )
@@ -75,10 +97,17 @@ class AutoTrainer:
         else:
             print('[AUTOTRAIN] auto-labeling complete')
 
+        # Force the training subprocess's own DataLoader workers to use the
+        # 'spawn' start method rather than 'fork' — this process shares a GPU
+        # (CUDA context) with the live capture/YOLO threads, and forked
+        # workers inheriting that state is what tears down the pipe.
+        train_env = {**os.environ, 'PYTORCH_MULTIPROCESSING_START_METHOD': 'spawn'}
+
         train_script = os.path.join(tools_dir, 'yolo_finetune.py')
-        return subprocess.run(
+        return _run_subprocess_with_retry(
             [python, train_script, 'train'],
-            capture_output=True, text=True, timeout=1800  # 30 min max
+            capture_output=True, text=True, timeout=1800,  # 30 min max
+            env=train_env,
         )
 
     def _train_thread(self):
@@ -97,6 +126,12 @@ class AutoTrainer:
                 print(f'[AUTOTRAIN] training failed:\n{result.stderr[-500:]}')
         except subprocess.TimeoutExpired:
             print('[AUTOTRAIN] training timed out after 30 minutes')
+        except (ConnectionResetError, BrokenPipeError) as e:
+            # Pipe to the subprocess died even after retries — log and bail
+            # cleanly so the next should_train() cycle can start a fresh run
+            # instead of leaving _training stuck True or crashing the thread.
+            print(f'[AUTOTRAIN] ⚠ training subprocess pipe lost, giving up '
+                  f'this cycle (will retry next survey pass): {e}')
         except Exception as e:
             print(f'[AUTOTRAIN] error: {e}')
         finally:

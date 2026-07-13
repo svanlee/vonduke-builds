@@ -77,8 +77,13 @@
       "delay_after_ms": 150
     }
   ],
-  "avg_reward": 0.565,
-  "uses": 5,
+  "avg_reward": 0.616,
+  "uses": 8,
   "created": 1783868410.6096227,
-  "last_used": 1783878429.250421
+  "last_used": 1783890813.4233723,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false
 }
