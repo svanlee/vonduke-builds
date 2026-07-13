@@ -3,10 +3,14 @@
 # ╚══════════════════════════════════════════════════════╝
 
 import os
+import pathlib
 import random
 import time
 import cv2
 import config
+
+TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
+TRAIN_LOCK_MAX_WAIT_SEC = 2400  # training subprocess has its own 30-min timeout
 
 from core.capture            import VideoCapturePipeline
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
@@ -49,6 +53,17 @@ BANNER = """
 
 
 def run():
+    if TRAIN_LOCK.exists():
+        waited = 0
+        print(f'[STARTUP] Training in progress ({TRAIN_LOCK.read_text().strip()}) — waiting for it to finish...')
+        while TRAIN_LOCK.exists() and waited < TRAIN_LOCK_MAX_WAIT_SEC:
+            time.sleep(10)
+            waited += 10
+        if TRAIN_LOCK.exists():
+            print(f'[STARTUP] Training lock still held after {waited}s — starting anyway (stale lock?).')
+        else:
+            print(f'[STARTUP] Training finished after {waited}s — continuing startup.')
+
     print(BANNER)
     print(f'  vision   : {config.VISION_PROVIDER} / capture card')
     print(f'  actions  : {config.ACTION_OUTPUT} → {config.PLATFORM_TARGET}')

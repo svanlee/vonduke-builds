@@ -6,8 +6,10 @@
 # AutoTrainer — background retraining triggered by frame accumulation.
 # Spawns yolo_finetune.py train as a subprocess, then hot-reloads weights.
 
-import subprocess, threading, time, os, sys
+import subprocess, threading, time, os, sys, pathlib
 import config
+
+TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
 
 
 def _dataset_size() -> int:
@@ -67,6 +69,10 @@ class AutoTrainer:
 
     def label_then_train(self):
         """Run the Claude auto-labeler over pending survey frames, then train."""
+        if TRAIN_LOCK.exists():
+            print(f'[AUTOTRAIN] training already in progress ({TRAIN_LOCK.read_text().strip()}) — skipping this cycle')
+            return subprocess.CompletedProcess(args=[], returncode=1, stdout='', stderr='training lock held')
+
         python = sys.executable
         tools_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools'))
 
@@ -95,11 +101,18 @@ class AutoTrainer:
         train_env = {**os.environ, 'PYTORCH_MULTIPROCESSING_START_METHOD': 'spawn'}
 
         train_script = os.path.join(tools_dir, 'yolo_finetune.py')
-        return subprocess.run(
-            [python, train_script, 'train'],
-            capture_output=True, text=True, timeout=1800,  # 30 min max
-            env=train_env,
-        )
+        # Lockfile blocks a concurrent manually-launched training run (or a
+        # second AutoTrainer instance after a restart) from competing for
+        # the same GPU/CUDA context.
+        TRAIN_LOCK.write_text(str(os.getpid()))
+        try:
+            return subprocess.run(
+                [python, train_script, 'train'],
+                capture_output=True, text=True, timeout=1800,  # 30 min max
+                env=train_env,
+            )
+        finally:
+            TRAIN_LOCK.unlink(missing_ok=True)
 
     def _train_thread(self):
         try:

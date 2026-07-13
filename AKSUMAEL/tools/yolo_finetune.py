@@ -24,6 +24,9 @@ import json
 import shutil
 import random
 import time
+import pathlib
+
+TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import config
@@ -245,6 +248,10 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     exist yet) on the labeled Minecraft dataset in data/yolo_dataset.
     Trains on the RTX 4050 GPU when available; falls back to CPU otherwise.
     """
+    if TRAIN_LOCK.exists():
+        print(f'[TRAIN] another training run is already in progress ({TRAIN_LOCK.read_text().strip()}) — aborting.')
+        return
+
     try:
         from ultralytics import YOLO
     except ImportError:
@@ -286,21 +293,25 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     _batch    = 16 if _has_cuda else batch
     print(f'[TRAIN] device={_device}  amp={_amp}  workers={_workers}  batch={_batch}')
 
-    model = YOLO(base_weights)
-    results = model.train(
-        data=yaml_path,
-        epochs=epochs,
-        imgsz=imgsz,
-        batch=_batch,
-        project='data/models',
-        name='aksumael_mc',
-        exist_ok=True,
-        verbose=True,
-        workers=_workers,
-        cache=False,
-        amp=_amp,
-        device=_device,
-    )
+    TRAIN_LOCK.write_text(str(os.getpid()))
+    try:
+        model = YOLO(base_weights)
+        results = model.train(
+            data=yaml_path,
+            epochs=epochs,
+            imgsz=imgsz,
+            batch=_batch,
+            project='data/models',
+            name='aksumael_mc',
+            exist_ok=True,
+            verbose=True,
+            workers=_workers,
+            cache=False,
+            amp=_amp,
+            device=_device,
+        )
+    finally:
+        TRAIN_LOCK.unlink(missing_ok=True)
 
     # Copy best weights to standard path. Use results.save_dir (the actual
     # directory ultralytics wrote to) rather than a hardcoded guess — this
