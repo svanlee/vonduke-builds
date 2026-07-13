@@ -1,6 +1,6 @@
 path: data/yolo_dataset
 train: images/train
-val: images/train
+val: images/val
 nc: 53
 names:
   0: health_bar

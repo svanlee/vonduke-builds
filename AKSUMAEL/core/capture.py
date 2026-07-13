@@ -298,22 +298,32 @@ class VideoCapturePipeline:
         """
         frame, objs = self.display.get_display_frame()
         if frame is None:
-            key = cv2.waitKey(1) & 0xFF
+            key = self._safe_wait_key()
         elif self.display._ui is not None:
             # LabelingUI handles its own rendering; call update+render here.
             self.display._ui.update(frame, objs)
             if not self.display._ui.render():
                 self.display.quit = True
                 return False
-            key = cv2.waitKey(1) & 0xFF
+            key = self._safe_wait_key()
         else:
             cv2.imshow(window_name, frame)
-            key = cv2.waitKey(1) & 0xFF
+            key = self._safe_wait_key()
 
         if key == ord('q'):
             self.display.quit = True
             return False
         return True
+
+    @staticmethod
+    def _safe_wait_key() -> int:
+        """cv2.waitKey requires a GUI backend (GTK/Qt/Cocoa); this build of
+        OpenCV is headless, so treat that as 'no key pressed' instead of
+        crashing the whole process every tick."""
+        try:
+            return cv2.waitKey(1) & 0xFF
+        except cv2.error:
+            return 0xFF
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
