@@ -173,6 +173,7 @@ class InnerMonologue:
     def __init__(self, goal_stack=None):
         self.thoughts = _load(self.FILE, [])
         self._goal_stack = goal_stack   # optional — for goal/failure context
+        self.claude_call_count = 0      # session total, for health reporting
 
     def update(self, tick: int, objects: list, action_dict: dict, reward: float,
                goal: str = None, recent_episodes: list = None):
@@ -195,6 +196,7 @@ class InnerMonologue:
                        goal: str = None, recent_episodes: list = None) -> str | None:
         if not config.ANTHROPIC_API_KEY:
             return None
+        self.claude_call_count += 1
         labels = [o.get('label') for o in objects if o.get('label')]
         fails  = ''
         if recent_episodes:

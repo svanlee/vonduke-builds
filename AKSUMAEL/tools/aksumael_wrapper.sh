@@ -6,8 +6,11 @@
 # ║  so we can track the real PID and restart cleanly.  ║
 # ║                                                      ║
 # ║  Watches .aksumael_ctl for commands:                 ║
-# ║    restart  — kill and relaunch                      ║
-# ║    stop     — kill and exit wrapper                  ║
+# ║    restart   — kill and relaunch                     ║
+# ║    reinit_hw — alias for restart (sent by the        ║
+# ║                hotplug watcher when video2/ttyUSB0   ║
+# ║                appear)                               ║
+# ║    stop      — kill and exit wrapper                 ║
 # ╚══════════════════════════════════════════════════════╝
 
 AKSUMAEL_DIR="$HOME/vonduke-builds/AKSUMAEL"
@@ -78,7 +81,11 @@ start_aksumael() {
     echo "[WRAPPER] Starting AKSUMAEL..."
     cd "$AKSUMAEL_DIR"
     export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
-    if [[ "$QT_QPA_PLATFORM" != "offscreen" ]]; then
+    # cv2's bundled Qt only ships the xcb platform plugin (no libqoffscreen.so
+    # in this venv) — forcing offscreen here crashes main.py on startup with
+    # "no Qt platform plugin could be initialized" whenever a real DISPLAY is
+    # available. Only fall back to offscreen when there's no DISPLAY to use.
+    if [[ -z "$DISPLAY" && "$QT_QPA_PLATFORM" != "offscreen" ]]; then
         export QT_QPA_PLATFORM=offscreen
     fi
     "$VENV_PYTHON" -u main.py >> "$LOG_FILE" 2>&1 &
@@ -108,9 +115,10 @@ while true; do
         echo "[WRAPPER] Got command: $CMD"
 
         case "$CMD" in
-            restart)
+            restart|reinit_hw)
                 stop_aksumael
                 sleep 1
+                wait_for_hardware
                 start_aksumael
                 ;;
             stop)

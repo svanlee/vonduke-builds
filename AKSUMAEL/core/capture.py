@@ -55,10 +55,36 @@ class CaptureThread(threading.Thread):
 
     # ── Thread body ───────────────────────────────────────────────────────
 
+    # How long to keep retrying the initial device open before giving up.
+    # The capture card may not be plugged in yet (or still enumerating) when
+    # AKSUMAEL starts — waiting here means an unattended restart recovers on
+    # its own instead of running blind for the rest of the session.
+    OPEN_RETRY_INTERVAL_SEC = 30
+    OPEN_RETRY_TIMEOUT_SEC  = 300
+
+    def _open(self):
+        """Try to open the capture device, retrying every OPEN_RETRY_INTERVAL_SEC
+        for up to OPEN_RETRY_TIMEOUT_SEC. Returns an opened cv2.VideoCapture, or
+        None if it never appeared and the caller should give up."""
+        waited = 0
+        while not self._stop.is_set():
+            cap = cv2.VideoCapture(self._dev, cv2.CAP_V4L2)
+            if cap.isOpened():
+                return cap
+            cap.release()
+            if waited >= self.OPEN_RETRY_TIMEOUT_SEC:
+                print(f'[CAPTURE] ⚠ CaptureThread: /dev/video{self._dev} still not '
+                      f'available after {waited}s — giving up (will retry on next restart)')
+                return None
+            print(f'[CAPTURE] /dev/video{self._dev} not available yet — '
+                  f'retrying in {self.OPEN_RETRY_INTERVAL_SEC}s ({waited}s / {self.OPEN_RETRY_TIMEOUT_SEC}s)')
+            self._stop.wait(self.OPEN_RETRY_INTERVAL_SEC)
+            waited += self.OPEN_RETRY_INTERVAL_SEC
+        return None
+
     def run(self):
-        cap = cv2.VideoCapture(self._dev, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            print(f'[CAPTURE] ⚠ CaptureThread: cannot open /dev/video{self._dev}')
+        cap = self._open()
+        if cap is None:
             return
 
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                              # min lag
