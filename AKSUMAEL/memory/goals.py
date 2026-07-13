@@ -56,6 +56,11 @@ class GoalStack:
         self._pushed_at   = {}
         self._last_seen   = None
         self.last_retirement = None   # {'goal','reason','ticks_active'} of the most recent retirement
+        # Consecutive-timeout tracking for find_and_chop_tree — after 3
+        # timeouts in a row, back off from re-queueing it for a while so
+        # AKSUMAEL doesn't spin in a tree-search loop forever.
+        self._chop_tree_fail_streak   = 0
+        self._chop_tree_blocked_until = 0
         self._load()
 
     def _load(self):
@@ -82,7 +87,7 @@ class GoalStack:
             self.current = "explore"
         self.save()
 
-    def auto_update(self, world_memory, inventory):
+    def auto_update(self, world_memory, inventory, tick: int = 0):
         """Heuristic goal updates based on world state."""
         # Hunger overrides everything
         if hasattr(world_memory, 'hunger_level') and world_memory.hunger_level < 6:
@@ -101,7 +106,8 @@ class GoalStack:
         inv_logs = (inventory.items.get('log', 0)
                     + inventory.items.get('oak_log', 0)
                     + inventory.items.get('wood', 0))
-        if wood_count == 0 and inv_logs < 4 and self.current == "explore":
+        if (wood_count == 0 and inv_logs < 4 and self.current == "explore"
+                and tick >= self._chop_tree_blocked_until):
             self.push("find_and_chop_tree")
 
         # Need food — hunger below 60% and no food in inventory
@@ -250,8 +256,12 @@ class GoalStack:
                 self._retire(tick, goal, f"timeout: no known {ore_label} location", age, world)
                 return
 
-        elif self.is_craft_goal(goal) and age > 100:
+        if self.is_craft_goal(goal) and age > 100:
             req = _CRAFT_REQUIREMENTS.get(goal)
+            # req is None for craft goals outside the tiered pickaxe map
+            # (e.g. "craft_pickaxe" pushed by the keyword-based goal
+            # interpreter) — fall through to the generic max-age check
+            # below instead of leaving those goals stuck forever.
             if req is not None:
                 have = dict(items)
                 have["planks"] = sum(have.get(p, 0) for p in _PLANK_VARIANTS)
@@ -259,13 +269,34 @@ class GoalStack:
                     self._retire(tick, goal, "timeout: materials still missing", age, world)
                     return
 
-        elif age > config.GOAL_MAX_AGE_TICKS:
+        if age > config.GOAL_MAX_AGE_TICKS:
             self._retire(tick, goal, "timeout: max age exceeded", age, world)
 
     def _retire(self, tick: int, goal: str, reason: str, ticks_active: int, world=None):
         position = list(world.position) if world is not None and getattr(world, 'position', None) else None
         print(f'[GOALS] retiring "{goal}" — {reason} ({ticks_active} ticks active)')
         self._pushed_at.pop(goal, None)
+
+        if goal == "find_and_chop_tree":
+            if reason.startswith("timeout"):
+                self._chop_tree_fail_streak += 1
+                if self._chop_tree_fail_streak >= 3:
+                    self._chop_tree_blocked_until = tick + 500
+                    self._chop_tree_fail_streak = 0
+                    print('[GOALS] find_and_chop_tree timed out 3x in a row — '
+                          'backing off for 500 ticks')
+            else:
+                self._chop_tree_fail_streak = 0
+        # A stuck craft_pickaxe goal (see is_craft_goal retirement above)
+        # is usually downstream of repeated tree-finding failures — count
+        # it toward the same streak so the backoff kicks in either way.
+        elif goal == "craft_pickaxe" and reason.startswith("timeout"):
+            self._chop_tree_fail_streak += 1
+            if self._chop_tree_fail_streak >= 3:
+                self._chop_tree_blocked_until = tick + 500
+                self._chop_tree_fail_streak = 0
+                print('[GOALS] craft_pickaxe timed out 3x in a row — '
+                      'backing off find_and_chop_tree for 500 ticks')
         self.last_retirement = {'goal': goal, 'reason': reason, 'ticks_active': ticks_active}
         self.pop()
         try:
