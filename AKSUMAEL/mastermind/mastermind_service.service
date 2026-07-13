@@ -1,0 +1,35 @@
+# ╔══════════════════════════════════════════════════════╗
+# ║  Mastermind Coordinator — systemd unit template        ║
+# ║                                                        ║
+# ║  Install:                                              ║
+# ║    sudo cp mastermind/mastermind_service.service \      ║
+# ║      /etc/systemd/system/mastermind.service             ║
+# ║    sudo systemctl daemon-reload                         ║
+# ║    sudo systemctl enable --now mastermind.service       ║
+# ║                                                        ║
+# ║  Edit the paths/User below to match the machine this   ║
+# ║  runs on (the coordinator host, not every hive node —  ║
+# ║  each AKSUMAEL instance just needs MASTERMIND_ENABLED  ║
+# ║  + MASTERMIND_HOST set in its own config.py).           ║
+# ╚══════════════════════════════════════════════════════╝
+
+[Unit]
+Description=AKSUMAEL Mastermind hive coordinator
+Documentation=https://github.com/
+After=network-online.target mosquitto.service
+Wants=network-online.target
+# Uncomment if mosquitto.service manages the broker on this host:
+# Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=ros
+WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
+ExecStart=/home/ros/vonduke-builds/AKSUMAEL/tools/start_mastermind.sh
+Environment=MQTT_HOST=127.0.0.1
+Environment=MQTT_PORT=1883
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

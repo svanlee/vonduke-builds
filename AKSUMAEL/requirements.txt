@@ -22,3 +22,10 @@ requests             # ElevenLabs
 
 # Audio — Game Ear (optional, graceful if missing)
 sounddevice
+
+# Mastermind hive coordinator (optional, only used if MASTERMIND_ENABLED)
+paho-mqtt
+
+# Axon voice hub — local/offline speech-to-text (optional, only used if
+# running axon/hub.py; graceful no-op if missing)
+openai-whisper
