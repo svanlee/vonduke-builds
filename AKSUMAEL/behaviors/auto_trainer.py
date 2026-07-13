@@ -21,26 +21,10 @@ def _dataset_size() -> int:
     return total
 
 
-# Retry budget for subprocess calls that die with a reset/broken pipe —
-# GPU contention between the live capture/YOLO threads and the training
-# subprocess's DataLoader workers can tear down the stdout/stderr pipe
-# mid-scan (ConnectionResetError) rather than the subprocess exiting cleanly.
-SUBPROCESS_PIPE_RETRIES = 2
-
-
-def _run_subprocess_with_retry(args, **kwargs):
-    """subprocess.run() wrapper that retries on transient pipe failures
-    instead of propagating them and killing the whole training thread."""
-    last_err = None
-    for attempt in range(1, SUBPROCESS_PIPE_RETRIES + 1):
-        try:
-            return subprocess.run(args, **kwargs)
-        except (ConnectionResetError, BrokenPipeError) as e:
-            last_err = e
-            print(f'[AUTOTRAIN] ⚠ pipe to subprocess dropped ({e}) — '
-                  f'retry {attempt}/{SUBPROCESS_PIPE_RETRIES}')
-            time.sleep(2)
-    raise last_err
+# Cooldown applied after a failed training run — shorter than the normal
+# post-success cooldown so a bad run doesn't get retried every 3 minutes,
+# but still recovers faster than waiting a full hour.
+FAILURE_COOLDOWN_SEC = 600
 
 
 class AutoTrainer:
@@ -88,7 +72,7 @@ class AutoTrainer:
 
         autolabel_script = os.path.join(tools_dir, 'claude_autolabel.py')
         print('[AUTOTRAIN] auto-labeling new survey frames with Claude...')
-        label_result = _run_subprocess_with_retry(
+        label_result = subprocess.run(
             [python, autolabel_script],
             capture_output=True, text=True, timeout=1800
         )
@@ -97,6 +81,13 @@ class AutoTrainer:
         else:
             print('[AUTOTRAIN] auto-labeling complete')
 
+        # mesh-llm is idle for now and was eating VRAM the training subprocess
+        # needs for its own CUDA context — stop it before spawning training.
+        # Left stopped afterward (not restarted) per current operating mode.
+        print('[AUTOTRAIN] stopping mesh-llm to free VRAM for training...')
+        subprocess.run(['systemctl', '--user', 'stop', 'mesh-llm'],
+                        timeout=10, capture_output=True)
+
         # Force the training subprocess's own DataLoader workers to use the
         # 'spawn' start method rather than 'fork' — this process shares a GPU
         # (CUDA context) with the live capture/YOLO threads, and forked
@@ -104,7 +95,7 @@ class AutoTrainer:
         train_env = {**os.environ, 'PYTORCH_MULTIPROCESSING_START_METHOD': 'spawn'}
 
         train_script = os.path.join(tools_dir, 'yolo_finetune.py')
-        return _run_subprocess_with_retry(
+        return subprocess.run(
             [python, train_script, 'train'],
             capture_output=True, text=True, timeout=1800,  # 30 min max
             env=train_env,
@@ -124,16 +115,16 @@ class AutoTrainer:
                 print('[AUTOTRAIN] new weights active')
             else:
                 print(f'[AUTOTRAIN] training failed:\n{result.stderr[-500:]}')
+                with self._lock:
+                    self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
         except subprocess.TimeoutExpired:
             print('[AUTOTRAIN] training timed out after 30 minutes')
-        except (ConnectionResetError, BrokenPipeError) as e:
-            # Pipe to the subprocess died even after retries — log and bail
-            # cleanly so the next should_train() cycle can start a fresh run
-            # instead of leaving _training stuck True or crashing the thread.
-            print(f'[AUTOTRAIN] ⚠ training subprocess pipe lost, giving up '
-                  f'this cycle (will retry next survey pass): {e}')
+            with self._lock:
+                self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
         except Exception as e:
             print(f'[AUTOTRAIN] error: {e}')
+            with self._lock:
+                self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
         finally:
             with self._lock:
                 self._training = False

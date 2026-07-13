@@ -278,7 +278,11 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     _has_cuda = torch.cuda.is_available()
     _device   = 0 if _has_cuda else 'cpu'
     _amp      = _has_cuda           # AMP only with CUDA
-    _workers  = 4 if _has_cuda else 2
+    # 0 workers — this process shares a GPU/CUDA context with the live
+    # AKSUMAEL capture/YOLO threads, and DataLoader worker subprocesses
+    # opening a second CUDA context on top of that is what was tearing
+    # down the training subprocess's stdout/stderr pipe mid-run.
+    _workers  = 0
     _batch    = 16 if _has_cuda else batch
     print(f'[TRAIN] device={_device}  amp={_amp}  workers={_workers}  batch={_batch}')
 

@@ -301,7 +301,7 @@ def run():
                 continue
 
             world_mem.update(objects, action=last_action)
-            goals.auto_update(world_mem, inventory)
+            goals.auto_update(world_mem, inventory, tick)
 
             # ── Mastermind hive — drain assigned goals, publish status ──
             try:

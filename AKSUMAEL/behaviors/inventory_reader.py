@@ -121,8 +121,10 @@ class InventoryReader:
         print('[INV] opening inventory')
         self._tap('e', 700)          # open inventory — longer wait for slow frames
 
-        # Give the UI a moment to render fully
-        time.sleep(0.5)
+        # Give the UI a moment to render fully. Was 0.5s but logs showed
+        # ~50% of reads coming back "inventory was not open" — the UI
+        # fade-in sometimes isn't done yet at that point.
+        time.sleep(0.9)
 
         frame = self.capture()
         if frame is None:
