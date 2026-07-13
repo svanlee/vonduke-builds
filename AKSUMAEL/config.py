@@ -4,10 +4,18 @@
 
 # ── Vision Provider ───────────────────────────────────────────
 # Platform: HP Victus (RTX 4050 Laptop GPU) + Samsung T7 SSD, robocar-hub @ 192.168.1.156
-# "gemini" = free tier, ~1500 req/day
-# "claude" = paid, one-line swap
+# 3-tier routing: local (Mesh-LLM) -> gemini -> claude. See core/vision_brain.ask_vision().
+# "local"  = primary, no cost, no rate cap — falls back on timeout/connection failure
+# "gemini" = fallback, free tier, ~1500 req/day
+# "claude" = last resort, paid, complex reasoning only
 import os
-VISION_PROVIDER = "gemini"
+VISION_PROVIDER = "local"
+
+LOCAL_LLM_URL     = "http://localhost:9337/v1"
+LOCAL_LLM_MODEL   = "auto"
+LOCAL_LLM_TIMEOUT = 8       # seconds — if local takes longer, fall back to Gemini
+LOCAL_LLM_ENABLED = True
+
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.5-flash"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
