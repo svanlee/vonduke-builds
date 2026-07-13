@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Inventory Reader                   ║
-# ║  Opens inventory, asks Claude to read it, returns     ║
-# ║  a structured {item: count} dict for crafting logic.  ║
+# ║  Opens inventory, asks the local LLM to read it,      ║
+# ║  returns a structured {item: count} dict for crafting.║
 # ╚══════════════════════════════════════════════════════╝
 
 import base64
@@ -135,7 +135,7 @@ class InventoryReader:
             self._tap('e', 200)
             return {}
 
-        items, was_open = self._ask_claude(frame)
+        items, was_open = self._ask_llm(frame)
         print(f'[INV] read: {items}')
 
         if was_open:
@@ -145,57 +145,44 @@ class InventoryReader:
             print('[INV] inventory was not open — skipping close key')
         return items
 
-    def _ask_claude(self, frame) -> tuple[dict, bool]:
+    def _ask_llm(self, frame) -> tuple[dict, bool]:
         """Returns (items, was_open) — was_open is False when the inventory
         was confirmed closed (or the read failed), so callers know not to
         press a close key."""
         b64 = _frame_to_b64(frame)
         payload = json.dumps({
-            "model": config.CLAUDE_MODEL,
+            "model": config.LOCAL_LLM_MODEL,
             "max_tokens": 512,
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "image", "source": {
-                        "type": "base64", "media_type": "image/jpeg", "data": b64}},
-                    {"type": "text", "text": _INVENTORY_PROMPT}
+                    {"type": "text", "text": _INVENTORY_PROMPT},
+                    {"type": "image_url", "image_url":
+                        {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]
             }]
         }).encode('utf-8')
 
         req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
+            f"{config.LOCAL_LLM_URL}/chat/completions",
             data=payload,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': config.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-            }
+            headers={'Content-Type': 'application/json'}
         )
 
         for attempt in range(3):
             try:
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read())
-                text_block = next(
-                    (b for b in data.get('content', []) if b.get('type') == 'text'),
-                    None
-                )
-                if text_block is None:
-                    # Log stop_reason and content types to diagnose API issues
-                    stop   = data.get('stop_reason', 'unknown')
-                    ctypes = [b.get('type') for b in data.get('content', [])]
-                    raise ValueError(
-                        f'no text block in Claude response '
-                        f'(stop_reason={stop}, content_types={ctypes})'
-                    )
-                text = text_block['text'].strip()
+                choices = data.get('choices') or []
+                if not choices or 'message' not in choices[0]:
+                    raise ValueError(f'no message in local-LLM response: {data}')
+                text = choices[0]['message']['content'].strip()
                 if text.startswith('```'):
                     text = '\n'.join(text.split('\n')[1:-1])
                 items = json.loads(text)
                 # Inventory wasn't open — return empty rather than crash
                 if items.get('inventory_closed'):
-                    print('[INV] Claude says inventory was not open')
+                    print('[INV] local LLM says inventory was not open')
                     return {}, False
                 # Support both old {item: count} and new {item: {count, slot}} formats
                 result = {}
@@ -214,7 +201,7 @@ class InventoryReader:
                     result[key] = {'count': count, 'slot': slot}
                 return result, True
             except urllib.error.HTTPError as e:
-                print(f'[INV] Claude HTTP {e.code} on attempt {attempt+1}')
+                print(f'[INV] local-LLM HTTP {e.code} on attempt {attempt+1}')
                 if e.code not in (429, 500, 502, 503, 529):
                     break
             except Exception as e:

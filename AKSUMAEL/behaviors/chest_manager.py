@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Chest Manager                       ║
-# ║  Opens chests, asks Claude to read contents, and       ║
-# ║  shift-clicks items between chest and player inventory.║
+# ║  Opens chests, asks the local LLM to read contents,    ║
+# ║  and shift-clicks items between chest and inventory.   ║
 # ╚══════════════════════════════════════════════════════╝
 
 import base64
@@ -69,7 +69,7 @@ If no chest is open, return: {"chest_closed": true}"""
 
 
 class ChestManager:
-    """Open a chest, ask Claude to read its contents, and move items
+    """Open a chest, ask the local LLM to read its contents, and move items
     between chest and player inventory via shift-click."""
 
     def __init__(self):
@@ -87,7 +87,7 @@ class ChestManager:
         return capture_fn()
 
     def read_contents(self, frame, force: bool = False) -> dict:
-        """Ask Claude to read chest contents from `frame`. Cached for
+        """Ask the local LLM to read chest contents from `frame`. Cached for
         _CACHE_TTL_SEC unless force=True or frame is None."""
         now = time.time()
         if not force and now - self._cache_ts < _CACHE_TTL_SEC:
@@ -97,7 +97,7 @@ class ChestManager:
             self._was_open = False
             return dict(self._cache)
 
-        items, was_open = self._ask_claude(frame)
+        items, was_open = self._ask_llm(frame)
         print(f'[CHEST] read: {items}')
         self._cache    = items
         self._cache_ts = time.time()
@@ -136,55 +136,43 @@ class ChestManager:
 
     # ── Internals ────────────────────────────────────────────────
 
-    def _ask_claude(self, frame) -> tuple[dict, bool]:
+    def _ask_llm(self, frame) -> tuple[dict, bool]:
         """Returns (items, was_open) — was_open is False when the chest was
         confirmed closed (or the read failed), so close() knows not to
         press Escape."""
         b64 = _frame_to_b64(frame)
         payload = json.dumps({
-            "model": config.CLAUDE_MODEL,
+            "model": config.LOCAL_LLM_MODEL,
             "max_tokens": 512,
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "image", "source": {
-                        "type": "base64", "media_type": "image/jpeg", "data": b64}},
-                    {"type": "text", "text": _CHEST_PROMPT}
+                    {"type": "text", "text": _CHEST_PROMPT},
+                    {"type": "image_url", "image_url":
+                        {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]
             }]
         }).encode('utf-8')
 
         req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
+            f"{config.LOCAL_LLM_URL}/chat/completions",
             data=payload,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': config.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-            }
+            headers={'Content-Type': 'application/json'}
         )
 
         for attempt in range(3):
             try:
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read())
-                text_block = next(
-                    (b for b in data.get('content', []) if b.get('type') == 'text'),
-                    None
-                )
-                if text_block is None:
-                    stop   = data.get('stop_reason', 'unknown')
-                    ctypes = [b.get('type') for b in data.get('content', [])]
-                    raise ValueError(
-                        f'no text block in Claude response '
-                        f'(stop_reason={stop}, content_types={ctypes})'
-                    )
-                text = text_block['text'].strip()
+                choices = data.get('choices') or []
+                if not choices or 'message' not in choices[0]:
+                    raise ValueError(f'no message in local-LLM response: {data}')
+                text = choices[0]['message']['content'].strip()
                 if text.startswith('```'):
                     text = '\n'.join(text.split('\n')[1:-1])
                 items = json.loads(text)
                 if items.get('chest_closed'):
-                    print('[CHEST] Claude says chest was not open')
+                    print('[CHEST] local LLM says chest was not open')
                     return {}, False
                 result = {}
                 for k, v in items.items():
@@ -202,7 +190,7 @@ class ChestManager:
                     result[key] = {'count': count, 'slot': slot}
                 return result, True
             except urllib.error.HTTPError as e:
-                print(f'[CHEST] Claude HTTP {e.code} on attempt {attempt+1}')
+                print(f'[CHEST] local-LLM HTTP {e.code} on attempt {attempt+1}')
                 if e.code not in (429, 500, 502, 503, 529):
                     break
             except Exception as e:

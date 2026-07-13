@@ -61,33 +61,29 @@ def _strip_fences(text: str) -> str:
 def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str | None:
     """Ask the LLM to write a Python function implementing this skill.
     Returns the function source as a string, or None on failure."""
-    if not config.ANTHROPIC_API_KEY:
+    if not config.LOCAL_LLM_ENABLED:
         return None
 
     prompt = CODE_SKILL_PROMPT.format(name=skill_name, steps=json.dumps(steps)[:800],
                                        context=context[:400])
     payload = json.dumps({
-        'model': config.CLAUDE_MODEL,
+        'model': config.LOCAL_LLM_MODEL,
         'max_tokens': 600,
         'messages': [{'role': 'user', 'content': prompt}],
     }).encode('utf-8')
 
     req = urllib.request.Request(
-        'https://api.anthropic.com/v1/messages',
+        f'{config.LOCAL_LLM_URL}/chat/completions',
         data=payload,
-        headers={
-            'Content-Type': 'application/json',
-            'x-api-key': config.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-        },
+        headers={'Content-Type': 'application/json'},
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read())
-        text_block = next((b for b in data.get('content', []) if b.get('type') == 'text'), None)
-        if text_block is None:
+        choices = data.get('choices') or []
+        if not choices or 'message' not in choices[0]:
             return None
-        code = _strip_fences(text_block['text'])
+        code = _strip_fences(choices[0]['message']['content'])
         if 'def run_skill(' not in code:
             print('[CODE_SKILL] LLM response missing run_skill() — discarding')
             return None
@@ -96,7 +92,7 @@ def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str 
             return None
         return code
     except urllib.error.HTTPError as e:
-        print(f'[CODE_SKILL] Claude HTTP {e.code}')
+        print(f'[CODE_SKILL] local-LLM HTTP {e.code}')
     except Exception as e:
         print(f'[CODE_SKILL] generation error: {e}')
     return None

@@ -194,7 +194,7 @@ class InnerMonologue:
 
     def _generate_llm(self, objects: list, action_dict: dict, reward: float,
                        goal: str = None, recent_episodes: list = None) -> str | None:
-        if not config.ANTHROPIC_API_KEY:
+        if not config.LOCAL_LLM_ENABLED:
             return None
         self.claude_call_count += 1
         labels = [o.get('label') for o in objects if o.get('label')]
@@ -211,28 +211,24 @@ class InnerMonologue:
             'Respond with only the sentence, no quotes, no preamble.'
         )
         payload = json.dumps({
-            'model': config.CLAUDE_MODEL,
+            'model': config.LOCAL_LLM_MODEL,
             'max_tokens': 50,
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         req = urllib.request.Request(
-            'https://api.anthropic.com/v1/messages',
+            f'{config.LOCAL_LLM_URL}/chat/completions',
             data=payload,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': config.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-            },
+            headers={'Content-Type': 'application/json'},
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read())
-            text_block = next((b for b in data.get('content', []) if b.get('type') == 'text'), None)
-            if text_block is None:
+            choices = data.get('choices') or []
+            if not choices or 'message' not in choices[0]:
                 return None
-            return text_block['text'].strip()
+            return choices[0]['message']['content'].strip()
         except urllib.error.HTTPError as e:
-            print(f'[MONOLOGUE] Claude HTTP {e.code}')
+            print(f'[MONOLOGUE] local-LLM HTTP {e.code}')
         except Exception as e:
             print(f'[MONOLOGUE] generation error: {e}')
         return None
