@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Axon Command Parser                ║
-# ║  Rule-based fast path + Claude Haiku fallback for    ║
+# ║  Rule-based fast path + local-LLM fallback for       ║
 # ║  turning a voice transcript into a structured intent ║
 # ╚══════════════════════════════════════════════════════╝
 
@@ -39,7 +39,7 @@ _STATUS_PATTERN = re.compile(
 def parse(transcript: str) -> dict:
     """
     Parse a voice command transcript into a structured intent:
-      {"type": "goal",  "goal": str, "priority": int, "source": "rule"|"haiku"}
+      {"type": "goal",  "goal": str, "priority": int, "source": "rule"|"local_llm"}
       {"type": "query", "query": "status"}
       {"type": "unknown"}
     """
@@ -54,14 +54,14 @@ def parse(transcript: str) -> dict:
         if pattern.search(text):
             return {"type": "goal", "goal": goal, "priority": priority, "source": "rule"}
 
-    return _parse_with_haiku(text)
+    return _parse_with_local_llm(text)
 
 
-def _parse_with_haiku(text: str) -> dict:
-    """Single Claude Haiku call for free-form commands the rules didn't
+def _parse_with_local_llm(text: str) -> dict:
+    """Single local-LLM call for free-form commands the rules didn't
     catch. At most one API call per command; never retries."""
-    if not config.ANTHROPIC_API_KEY:
-        print('[AXON] no ANTHROPIC_API_KEY set — cannot parse free-form command')
+    if not config.LOCAL_LLM_ENABLED:
+        print('[AXON] local LLM disabled — cannot parse free-form command')
         return {"type": "unknown"}
 
     prompt = f"""You control a Minecraft AI agent named AKSUMAEL. Turn the voice command
@@ -74,27 +74,23 @@ Voice command: "{text}"
 Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 1-10}}"""
 
     payload = json.dumps({
-        "model": config.CLAUDE_MODEL,
+        "model": config.LOCAL_LLM_MODEL,
         "max_tokens": 60,
         "messages": [{"role": "user", "content": prompt}],
     }).encode('utf-8')
 
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
+        f"{config.LOCAL_LLM_URL}/chat/completions",
         data=payload,
-        headers={
-            'Content-Type': 'application/json',
-            'x-api-key': config.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-        },
+        headers={'Content-Type': 'application/json'},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-        text_block = next((b for b in data.get('content', []) if b.get('type') == 'text'), None)
-        if text_block is None:
+        choices = data.get('choices') or []
+        if not choices or 'message' not in choices[0]:
             return {"type": "unknown"}
-        raw = text_block['text'].strip()
+        raw = choices[0]['message']['content'].strip()
         if raw.startswith('```'):
             raw = '\n'.join(raw.split('\n')[1:-1])
         parsed = json.loads(raw)
@@ -102,7 +98,7 @@ Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 
         if not goal:
             return {"type": "unknown"}
         priority = int(parsed.get('priority', 5))
-        return {"type": "goal", "goal": goal, "priority": priority, "source": "haiku"}
+        return {"type": "goal", "goal": goal, "priority": priority, "source": "local_llm"}
     except Exception as e:
-        print(f'[AXON] haiku parse error: {e}')
+        print(f'[AXON] local-LLM parse error: {e}')
         return {"type": "unknown"}

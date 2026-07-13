@@ -91,7 +91,7 @@ class CurriculumGenerator:
             return []
 
     def _ask_llm(self, inventory: dict, world, avoided: set) -> str | None:
-        if not config.ANTHROPIC_API_KEY:
+        if not config.LOCAL_LLM_ENABLED:
             return None
         world_summary = world.get_chunk_summary() if world is not None else 'unknown'
         inv_str = ', '.join(f'{k}:{v}' for k, v in list((inventory or {}).items())[:10]) or 'empty'
@@ -101,29 +101,25 @@ class CurriculumGenerator:
             world_summary=world_summary,
         )
         payload = json.dumps({
-            'model': config.CLAUDE_MODEL,
+            'model': config.LOCAL_LLM_MODEL,
             'max_tokens': 30,
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         req = urllib.request.Request(
-            'https://api.anthropic.com/v1/messages',
+            f'{config.LOCAL_LLM_URL}/chat/completions',
             data=payload,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': config.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-            },
+            headers={'Content-Type': 'application/json'},
         )
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read())
-            text_block = next((b for b in data.get('content', []) if b.get('type') == 'text'), None)
-            if text_block is None:
+            choices = data.get('choices') or []
+            if not choices or 'message' not in choices[0]:
                 return None
-            goal = text_block['text'].strip().strip('."\'').lower().replace(' ', '_')
+            goal = choices[0]['message']['content'].strip().strip('."\'').lower().replace(' ', '_')
             return goal or None
         except urllib.error.HTTPError as e:
-            print(f'[CURRICULUM] Claude HTTP {e.code}')
+            print(f'[CURRICULUM] local-LLM HTTP {e.code}')
         except Exception as e:
             print(f'[CURRICULUM] suggestion error: {e}')
         return None
