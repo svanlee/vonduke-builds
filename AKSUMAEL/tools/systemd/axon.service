@@ -1,0 +1,16 @@
+[Unit]
+Description=Axon voice hub for AKSUMAEL (local Whisper wake-word listener)
+After=aksumael.service sound.target
+Wants=aksumael.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
+ExecStart=/usr/bin/bash /home/ros/vonduke-builds/AKSUMAEL/tools/start_axon.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/tmp/axon.log
+StandardError=append:/tmp/axon.log
+
+[Install]
+WantedBy=default.target
