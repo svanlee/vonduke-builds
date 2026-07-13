@@ -2,6 +2,7 @@
 # ║  AKSUMAEL v1.0.0 — Main Runtime Loop                  ║
 # ╚══════════════════════════════════════════════════════╝
 
+import os
 import random
 import time
 import cv2
@@ -11,13 +12,15 @@ from core.capture            import VideoCapturePipeline
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
-from core.vision_brain       import ask_vision
+from core.vision_brain       import ask_vision, get_call_counts
 from core.world_model        import WorldModel
 from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
 from core.episode_memory     import EpisodeMemory
 from core.curriculum         import CurriculumGenerator
 from core                    import code_skill_generator
+from core                    import feature_extractor
+from core                    import policy_blender
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
@@ -75,8 +78,40 @@ def run():
     curriculum  = CurriculumGenerator(planner)
     rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
+
+    # Neural policy backbone (opt-in) — low-level learned action policy
+    # that blends with the skill/FSM/LLM decision (core/policy_blender.py)
+    # when no skill fires. Off by default; requires PyTorch at runtime.
+    neural_policy = None
+    rl_trainer    = None
+    if config.NEURAL_POLICY_ENABLED:
+        try:
+            from core.neural_policy import NeuralPolicy
+            from core.rl_trainer    import RLTrainer
+            neural_policy = NeuralPolicy(obs_dim=feature_extractor.OBS_DIM,
+                                          goal_dim=feature_extractor.GOAL_DIM)
+            rl_trainer    = RLTrainer(neural_policy)
+            print('[NEURAL_POLICY] enabled — PPO trainer running in background')
+        except Exception as e:
+            print(f'[NEURAL_POLICY] init failed: {e} — falling back to rule-based only')
+            neural_policy = None
+            rl_trainer    = None
     aim_ctrl  = AimController()          # uses YOLO-frame coords (640×360)
     ui        = LabelingUI(yolo, router, reward, skills=skills)
+
+    # ── Mastermind hive (opt-in) ────────────────────────────────
+    mastermind_client = None
+    if getattr(config, 'MASTERMIND_ENABLED', False):
+        try:
+            from mastermind.agent_client import AgentClient
+            mastermind_client = AgentClient(
+                host=config.MASTERMIND_HOST,
+                port=getattr(config, 'MASTERMIND_PORT', 1883),
+                agent_id=getattr(config, 'MASTERMIND_AGENT_ID', None),
+                env_name=config.ACTIVE_ENV,
+            )
+        except Exception as e:
+            print(f'[MASTERMIND] disabled for this run — client init failed: {e}')
 
     # ── Threaded capture / YOLO / display pipeline ─────────────
     # CaptureThread reads /dev/video2 at full speed (MJPEG, CAP_PROP_BUFFERSIZE=1)
@@ -138,6 +173,7 @@ def run():
     SKILL_COOLDOWN_TICKS      = 30     # how long a spammed skill stays suppressed
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
+    _pending_neural_transition = None   # (obs, goal, action_idx, log_prob, value) awaiting this tick's reward
     # Anti-stuck: count consecutive low-reward ticks
     _low_reward_streak  = 0
     _LOW_REWARD_THRESH  = 0.05   # reward below this = unproductive
@@ -266,6 +302,16 @@ def run():
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory)
+
+            # ── Mastermind hive — drain assigned goals, publish status ──
+            try:
+                goals.check_injected_goals()
+            except Exception as e:
+                print(f'[MASTERMIND] injected-goals check error: {e}')
+            if mastermind_client is not None:
+                mastermind_client.tick(tick, status='running',
+                                        current_goal=goals.current_goal(),
+                                        world_model=world)
 
             # ── Goal retirement + episode memory (v1.1) ─────────
             # Snapshot inventory the first tick we see a given goal, so a
@@ -526,6 +572,39 @@ def run():
                         last_skill_name  = None
                         same_skill_count = 0
 
+                # ── Neural policy (opt-in) ─────────────────────────
+                # No skill has fired at this point — before falling through
+                # to FSM/LLM, let the low-level neural policy propose an
+                # action and blend it with "no rule fired" via
+                # core/policy_blender.py. Only overrides when the net is
+                # confident (see NEURAL_CONF_THRESHOLD); otherwise
+                # _neural_action_dict stays None and the FSM/LLM chain below
+                # runs exactly as it did before this feature existed.
+                _neural_action_dict = None
+                _neural_src_tag     = None
+                if (config.NEURAL_POLICY_ENABLED and neural_policy is not None
+                        and not (skill and match >= skills.MIN_MATCH_SCORE)):
+                    try:
+                        _obs_feat  = feature_extractor.extract_obs_features(objects, last_action)
+                        _goal_feat = feature_extractor.extract_goal_embedding(goals.current_goal())
+                        _neural    = neural_policy.select_action(_obs_feat, _goal_feat)
+                        _blended   = policy_blender.blend(
+                            neural_action=_neural['action_dict'], rule_action=None,
+                            confidence=_neural['confidence'], skill_active=False,
+                            episode_count=rl_trainer.episode_count if rl_trainer else 0)
+                        if _blended is not None:
+                            _neural_action_dict = {**_blended,
+                                                    'action':     f"neural:{_neural['action_name']}",
+                                                    'confidence': _neural['confidence']}
+                            _neural_src_tag = f"NEURAL:{_neural['action_name']}"
+                            if rl_trainer is not None:
+                                _value = float(neural_policy.value(_obs_feat, _goal_feat).item())
+                                _pending_neural_transition = (
+                                    _obs_feat, _goal_feat, _neural['action_idx'],
+                                    _neural['log_prob'], _value)
+                    except Exception as e:
+                        print(f'[NEURAL_POLICY] tick error: {e}')
+
                 if skill and match >= skills.MIN_MATCH_SCORE:
                     same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
                     last_skill_name  = skill.name
@@ -577,6 +656,13 @@ def run():
                         'confidence':  min(0.95, skill.avg_reward),
                         'observation': f'skill match {match:.2f} {skill.name}',
                     })
+
+                # Neural policy override — only reached when no skill fired
+                # and the blender (called above) decided the net was
+                # confident enough to act on its own this tick.
+                elif _neural_action_dict is not None:
+                    action_dict = _neural_action_dict
+                    src_tag = _neural_src_tag
 
                 # FSM takes over when no skill matched and FSM is actively
                 # targeting something (APPROACH / COMBAT / COLLECT / INTERACT /
@@ -859,6 +945,17 @@ def run():
             rl.update(r, objects)
             prev_objects = objects
 
+            # ── Neural policy training (opt-in) ─────────────────
+            # Pairs this tick's action (if the neural policy produced one
+            # above) with this tick's reward and hands it to the background
+            # PPO trainer; tick() advances its own counter toward the next
+            # config.RL_TRAIN_EVERY_N_TICKS update.
+            if rl_trainer is not None:
+                if _pending_neural_transition is not None:
+                    rl_trainer.record(*_pending_neural_transition, r)
+                    _pending_neural_transition = None
+                rl_trainer.tick()
+
             # ── Anti-stuck ────────────────────────────────────
             # If reward has been near zero for too long, force a goal reset
             # and cancel any active skill replay so AKSUMAEL tries something new.
@@ -1008,6 +1105,12 @@ def run():
                   f'conf:{conf:.2f} | r:{r:+.3f} | avg:{reward.average():+.3f} | '
                   f'{obs}')
 
+            # ── Health log ──────────────────────────────────────
+            # Cheap unattended-monitoring file so Scott can check status
+            # without tailing raw logs — see _write_health_log() below.
+            if tick % 60 == 0:
+                _write_health_log(tick, goals.current_goal(), r, cognitive)
+
             # ── Pace ──────────────────────────────────────────
             time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
 
@@ -1020,6 +1123,9 @@ def run():
               f'skills:{len(skills.skills)}  '
               f'session:{world.session_num}')
         replayer.stop()
+        if rl_trainer is not None:
+            rl_trainer.stop()
+            neural_policy.save_checkpoint()
         tts.say_line('shutdown', priority=True)
         skills.save_all()
         rl.save()
@@ -1028,6 +1134,8 @@ def run():
         inventory.save()
         goals.save()
         progression.save()
+        if mastermind_client is not None:
+            mastermind_client.shutdown()
         time.sleep(1.5)
         executor.close()
         router.stop()
@@ -1042,6 +1150,32 @@ def _idle() -> dict:
     return {'observation': '', 'action': 'wait',
             'key': None, 'click': None,
             'gamepad': None, 'confidence': 0.0}
+
+
+HEALTH_LOG_PATH = '/tmp/aksumael_health.txt'
+
+
+def _write_health_log(tick: int, goal: str, last_reward: float, cognitive) -> None:
+    """Plain-text status snapshot for unattended checks (no log tailing needed)."""
+    video_present = os.path.exists(f'/dev/video{config.CAMERA_INDEX}')
+    tty_present   = os.path.exists('/dev/ttyUSB0')
+    vision_calls  = get_call_counts()
+    claude_calls  = vision_calls['claude'] + cognitive.monologue.claude_call_count
+    lines = [
+        f'updated:      {time.strftime("%Y-%m-%d %H:%M:%S")}',
+        f'tick:         {tick}',
+        f'goal:         {goal or "none"}',
+        f'last_reward:  {last_reward:+.3f}',
+        f'video2:       {"present" if video_present else "ABSENT"}',
+        f'ttyUSB0:      {"present" if tty_present else "ABSENT"}',
+        f'gemini_calls: {vision_calls["gemini"]}',
+        f'claude_calls: {claude_calls}',
+    ]
+    try:
+        with open(HEALTH_LOG_PATH, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+    except Exception as e:
+        print(f'[HEALTH] write failed: {e}')
 
 
 # Learned skill names are built from their trigger objects (see

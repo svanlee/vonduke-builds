@@ -247,6 +247,19 @@ SKILLS_DIR = "data/skills"
 REWARD_LOG = "data/reward_log.json"
 MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
 
+# ── Axon Voice Hub ────────────────────────────────────────────
+# Local, offline voice control (axon/hub.py) — runs as its own process
+# (tools/start_axon.sh), not inside the main runtime loop. Whisper runs
+# on-device (no cloud STT); the only network call is the Claude Haiku
+# fallback in axon/command_parser.py for free-form commands the
+# rule-based fast path doesn't recognize. Delivers commands into the
+# same data/injected_goals.json queue the mastermind hive uses (see
+# memory.goals.GoalStack.check_injected_goals), so no separate polling
+# path is needed in core/runtime.py.
+AXON_WHISPER_MODEL = "base"     # tiny/base/small — bigger is slower but more accurate
+AXON_WAKE_WORDS    = ["aksumael", "axon"]
+AXON_MIC_INDEX     = -1         # -1 = system default input device
+
 # ── Self-Improving Loop (JARVIS-1+ architecture) ───────────────
 # Goal retirement — how long (ticks) an unachievable goal is allowed to
 # stay active before the goal stack gives up on it.
@@ -276,3 +289,22 @@ EPISODE_RETRIEVE_TOP_K    = 3
 # True only after reviewing generated skills in data/skills/code/.
 ENABLE_CODE_SKILLS        = False
 CODE_SKILLS_DIR            = "data/skills/code"
+
+# ── Neural Policy (PPO backbone) ───────────────────────────────
+# Low-level learned policy that blends with the rule-based (skill/FSM/LLM)
+# decision — see core/neural_policy.py, core/policy_blender.py. Off by
+# default: opt in once a checkpoint has actually been trained on this rig.
+NEURAL_POLICY_ENABLED = False
+NEURAL_POLICY_PATH    = "data/models/neural_policy.pt"
+RL_TRAIN_EVERY_N_TICKS = 1000
+
+# ── Mastermind Hive Coordinator ────────────────────────────────
+# Opt-in: set MASTERMIND_ENABLED=True and point MASTERMIND_HOST at the
+# machine running mastermind/coordinator.py (see tools/start_mastermind.sh)
+# to have this instance join the hive — publish status/observations over
+# MQTT and accept goal assignments. Safe to leave True with no broker
+# reachable; core/runtime.py degrades to solo mode if the connection fails.
+MASTERMIND_ENABLED = False
+MASTERMIND_HOST    = "127.0.0.1"
+MASTERMIND_PORT    = 1883
+MASTERMIND_AGENT_ID = None   # None = auto-generate from hostname

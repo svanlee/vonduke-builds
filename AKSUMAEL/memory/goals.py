@@ -7,6 +7,7 @@ import config
 
 GOALS_PATH = "data/goals.json"
 RETIRED_GOALS_LOG = os.path.join(config.MEMORY_DIR, "retired_goals.jsonl")
+INJECTED_GOALS_PATH = "data/injected_goals.json"
 
 # Goals that never retire regardless of age — the base/standing goals.
 _NEVER_RETIRE = frozenset({"survive", "survive_night", "explore", "eat",
@@ -277,6 +278,30 @@ class GoalStack:
                 }) + "\n")
         except Exception as e:
             print(f'[GOALS] retired-goal log error: {e}')
+
+    # ── Mastermind hive goal injection ─────────────────────────
+    def check_injected_goals(self):
+        """Call once per runtime tick (alongside check_retirement). Drains
+        data/injected_goals.json — written by mastermind/agent_client.py
+        when the hive coordinator assigns this agent a goal — and pushes
+        each queued goal onto the stack in order. No-op, and cheap, when
+        the hive isn't enabled or the queue is empty."""
+        if not os.path.exists(INJECTED_GOALS_PATH):
+            return
+        try:
+            with open(INJECTED_GOALS_PATH) as f:
+                data = json.load(f)
+            queue = data.get("queue", [])
+            if not queue:
+                return
+            for item in queue:
+                goal = item.get("goal")
+                if goal:
+                    print(f"[GOALS] hive-injected goal: {goal} ({item.get('reason', 'mastermind')})")
+                    self.push(goal)
+            os.remove(INJECTED_GOALS_PATH)
+        except Exception as e:
+            print(f"[GOALS] injected-goals read error: {e}")
 
 
 def _mine_goal_to_item(goal: str) -> str:
