@@ -102,7 +102,9 @@ class CurriculumGenerator:
         )
         payload = json.dumps({
             'model': config.LOCAL_LLM_MODEL,
-            'max_tokens': 30,
+            # Generous budget — this model 'thinks' before answering, which
+            # can burn several hundred tokens before the actual goal name.
+            'max_tokens': 800,
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         req = urllib.request.Request(
@@ -111,12 +113,13 @@ class CurriculumGenerator:
             headers={'Content-Type': 'application/json'},
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=45) as resp:
                 data = json.loads(resp.read())
             choices = data.get('choices') or []
-            if not choices or 'message' not in choices[0]:
+            content = choices[0]['message'].get('content') if choices else None
+            if not content:
                 return None
-            goal = choices[0]['message']['content'].strip().strip('."\'').lower().replace(' ', '_')
+            goal = content.strip().strip('."\'').lower().replace(' ', '_')
             return goal or None
         except urllib.error.HTTPError as e:
             print(f'[CURRICULUM] local-LLM HTTP {e.code}')
