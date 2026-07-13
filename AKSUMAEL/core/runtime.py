@@ -10,7 +10,21 @@ import cv2
 import config
 
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
-TRAIN_LOCK_MAX_WAIT_SEC = 2400  # training subprocess has its own 30-min timeout
+
+
+def _train_lock_owner_alive() -> bool:
+    """False if the lock is stale (owning process no longer exists)."""
+    try:
+        pid = int(TRAIN_LOCK.read_text().strip())
+    except (ValueError, FileNotFoundError):
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 from core.capture            import VideoCapturePipeline
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
@@ -56,13 +70,16 @@ def run():
     if TRAIN_LOCK.exists():
         waited = 0
         print(f'[STARTUP] Training in progress ({TRAIN_LOCK.read_text().strip()}) — waiting for it to finish...')
-        while TRAIN_LOCK.exists() and waited < TRAIN_LOCK_MAX_WAIT_SEC:
+        while TRAIN_LOCK.exists():
+            if not _train_lock_owner_alive():
+                print('[STARTUP] Lock owner process is gone — treating lock as stale, removing it.')
+                TRAIN_LOCK.unlink(missing_ok=True)
+                break
             time.sleep(10)
             waited += 10
-        if TRAIN_LOCK.exists():
-            print(f'[STARTUP] Training lock still held after {waited}s — starting anyway (stale lock?).')
-        else:
-            print(f'[STARTUP] Training finished after {waited}s — continuing startup.')
+            if waited % 60 == 0:
+                print(f'[STARTUP] ...still waiting ({waited}s)')
+        print(f'[STARTUP] continuing startup after {waited}s wait.' if waited else '[STARTUP] no training lock — continuing startup.')
 
     print(BANNER)
     print(f'  vision   : {config.VISION_PROVIDER} / capture card')
