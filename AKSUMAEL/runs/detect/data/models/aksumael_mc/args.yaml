@@ -2,7 +2,7 @@ task: detect
 mode: train
 model: data/models/aksumael_mc.pt
 data: data/yolo_dataset/data.yaml
-epochs: 30
+epochs: 50
 time: null
 patience: 100
 batch: 16
@@ -11,7 +11,7 @@ save: true
 save_period: -1
 cache: false
 device: '0'
-workers: 4
+workers: 0
 project: data/models
 name: aksumael_mc
 exist_ok: true

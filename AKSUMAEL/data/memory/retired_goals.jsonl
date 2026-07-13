@@ -1,1 +1,12 @@
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1783943922.1866777}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 232, "ts": 1783947330.7213345}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 1612, "ts": 1783948868.8440168}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1783950841.360438}
+{"goal": "Exit corridor and reach nearest ", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 442, "ts": 1783951263.5165656}
+{"goal": "exit corridor and find tree to c", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 802, "ts": 1783952058.9051483}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 1004, "ts": 1783952461.2424397}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3117, "ts": 1783954752.0256133}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3818, "ts": 1783955204.6069727}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 505, "ts": 1783961436.797827}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4332, "ts": 1783964298.5173788}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1783967115.2817585}
