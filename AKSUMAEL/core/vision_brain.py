@@ -1,5 +1,6 @@
 import base64
 import json
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -11,10 +12,138 @@ CLAUDE_MAX_RETRIES  = 3
 CLAUDE_BACKOFF_BASE = 1.0   # seconds; doubles each retry (1s, 2s, 4s)
 
 
+class _RateLimiter:
+    """Token-bucket shared by every caller of ask_vision() — the main tick
+    loop AND the scan pipeline's threat-identify burst (up to
+    SCAN_MAX_THREATS calls in ~1s) both go through this one function, so
+    this is the single choke point that caps real outbound request rate
+    regardless of how many call sites fire at once."""
+
+    def __init__(self, per_minute: float, burst: int):
+        self._rate     = per_minute / 60.0   # tokens per second
+        self._capacity = float(burst)
+        self._tokens   = float(burst)
+        self._last     = time.monotonic()
+        self._lock     = threading.Lock()
+
+    def acquire(self):
+        with self._lock:
+            now = time.monotonic()
+            self._tokens = min(self._capacity, self._tokens + (now - self._last) * self._rate)
+            self._last = now
+            if self._tokens < 1.0:
+                wait = (1.0 - self._tokens) / self._rate
+                self._tokens = 0.0
+            else:
+                self._tokens -= 1.0
+                wait = 0.0
+        if wait > 0:
+            time.sleep(wait)
+
+
+# Conservative ceilings, held well under provider limits even if every call
+# site (main loop + scan burst) fires back-to-back.
+# Gemini free tier: 15 req/min, 1500 req/day — cap at 10/min so a 3-call
+# scan burst plus a main-loop tick can never trip the per-minute limit.
+_GEMINI_LIMITER = _RateLimiter(per_minute=10, burst=3)
+_CLAUDE_LIMITER = _RateLimiter(per_minute=20, burst=3)
+# Local model runs on-box — no external quota, so no rate limiter/bucket for it.
+
+_call_counts = {'local': 0, 'gemini': 0, 'claude': 0}
+_last_provider = None
+
+
+def get_call_counts() -> dict:
+    """Session-total vision-LLM call counts, for health reporting."""
+    return dict(_call_counts)
+
+
+def get_last_provider() -> str:
+    """Provider used on the most recent ask_vision() call, for health reporting."""
+    return _last_provider
+
+
 def _frame_to_b64(frame) -> str:
     """Encode OpenCV frame as base64 JPEG."""
     _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return base64.b64encode(buf.tobytes()).decode('utf-8')
+
+
+def _ask_local(frame, context: str, recent_history: str):
+    """
+    Query the on-box Mesh-LLM server (OpenAI-compatible /v1/chat/completions).
+    Tries a multimodal request first (base64 JPEG + prompt); if the loaded
+    model rejects image content (HTTP 400 — text-only model), retries once
+    with a text-only prompt that relies on the YOLO-detections block already
+    folded into `context`.
+
+    Returns the raw JSON-observation string on success, or None on any
+    failure (connection refused, timeout, non-200) — None is the fallback
+    signal for ask_vision() to move on to Gemini.
+    """
+    prompt = f"""{context}
+
+Recent history:
+{recent_history}
+
+Look at this screenshot and respond with a JSON object:
+{{
+  "observation": "what you see in one sentence",
+  "action": "one specific action to take (e.g. press W, click at center, wait)",
+  "key": "keyboard key if applicable, else null",
+  "click": [x_percent, y_percent] or null,
+  "look": {{"dx": -15, "dy": 0}} or null,
+  "confidence": 0.0-1.0
+}}
+Only output valid JSON, nothing else."""
+
+    url = f"{config.LOCAL_LLM_URL}/chat/completions"
+
+    def _post(payload: dict):
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=config.LOCAL_LLM_TIMEOUT) as resp:
+            data = json.loads(resp.read())
+        text = data['choices'][0]['message']['content'].strip()
+        if text.startswith('```'):
+            text = '\n'.join(text.split('\n')[1:-1])
+        return text
+
+    vision_payload = {
+        "model": config.LOCAL_LLM_MODEL,
+        "temperature": 0.2,
+        "max_tokens": 400,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url":
+                    {"url": f"data:image/jpeg;base64,{_frame_to_b64(frame)}"}}
+            ]
+        }]
+    }
+
+    try:
+        return _post(vision_payload)
+    except urllib.error.HTTPError as e:
+        if e.code != 400:
+            return None   # non-recoverable (5xx, auth, etc.) — fall back
+    except Exception:
+        return None   # connection refused / timeout / malformed response
+
+    # Model rejected multimodal content (400) — retry text-only, relying on
+    # the YOLO-detections block already embedded in `context`.
+    text_payload = {
+        "model": config.LOCAL_LLM_MODEL,
+        "temperature": 0.2,
+        "max_tokens": 400,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    try:
+        return _post(text_payload)
+    except Exception:
+        return None
 
 
 def _ask_gemini(frame, context: str, recent_history: str) -> str:
@@ -166,7 +295,11 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
                 phase: str = None) -> dict:
     """
     Send frame to vision LLM. Returns parsed action dict.
-    Falls back to Gemini if Claude fails, and vice versa.
+
+    3-tier routing: local (Mesh-LLM, on-box, no rate cap) is primary for
+    every call. If it's disabled, unreachable, or times out, falls back to
+    Gemini. If Gemini also fails, Claude (haiku) is the last resort for
+    complex reasoning.
 
     `phase` (wood/stone/iron/diamond/nether/end), if given, selects the
     phase-specific tactical checklist appended to GAME_CONTEXT.
@@ -174,10 +307,30 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
     base_context = config.game_context_for_phase(phase)
     context = f"{base_context}\n\n{_format_detections(objects or [])}"
 
-    provider = config.VISION_PROVIDER.lower()
-    raw = _ask_gemini(frame, context, recent_history) \
-          if provider == "gemini" \
-          else _ask_claude(frame, context, recent_history)
+    global _last_provider
+    raw, provider = None, None
+
+    if config.LOCAL_LLM_ENABLED:
+        # No rate limiter — local calls don't touch the Gemini/Claude buckets.
+        raw = _ask_local(frame, context, recent_history)
+        if raw:
+            provider = 'local'
+
+    if raw is None:
+        _GEMINI_LIMITER.acquire()
+        _call_counts['gemini'] += 1
+        gemini_raw = _ask_gemini(frame, context, recent_history)
+        if gemini_raw and "error" not in gemini_raw.lower():
+            raw, provider = gemini_raw, 'gemini'
+
+    if raw is None:
+        _CLAUDE_LIMITER.acquire()
+        _call_counts['claude'] += 1
+        raw, provider = _ask_claude(frame, context, recent_history), 'claude'
+
+    if provider == 'local':
+        _call_counts['local'] += 1
+    _last_provider = provider
 
     try:
         result = json.loads(raw)
