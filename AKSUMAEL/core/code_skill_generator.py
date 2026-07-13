@@ -68,7 +68,9 @@ def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str 
                                        context=context[:400])
     payload = json.dumps({
         'model': config.LOCAL_LLM_MODEL,
-        'max_tokens': 600,
+        # Generous budget — this model 'thinks' before answering, which can
+        # burn several hundred tokens before the actual function body.
+        'max_tokens': 1400,
         'messages': [{'role': 'user', 'content': prompt}],
     }).encode('utf-8')
 
@@ -78,12 +80,13 @@ def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str 
         headers={'Content-Type': 'application/json'},
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read())
         choices = data.get('choices') or []
-        if not choices or 'message' not in choices[0]:
+        content = choices[0]['message'].get('content') if choices else None
+        if not content:
             return None
-        code = _strip_fences(choices[0]['message']['content'])
+        code = _strip_fences(content)
         if 'def run_skill(' not in code:
             print('[CODE_SKILL] LLM response missing run_skill() — discarding')
             return None

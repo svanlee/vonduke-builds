@@ -75,7 +75,9 @@ Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 
 
     payload = json.dumps({
         "model": config.LOCAL_LLM_MODEL,
-        "max_tokens": 60,
+        # Generous budget — this model 'thinks' before answering, which
+        # can burn several hundred tokens before the actual JSON reply.
+        "max_tokens": 800,
         "messages": [{"role": "user", "content": prompt}],
     }).encode('utf-8')
 
@@ -85,12 +87,13 @@ Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 
         headers={'Content-Type': 'application/json'},
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=45) as resp:
             data = json.loads(resp.read())
         choices = data.get('choices') or []
-        if not choices or 'message' not in choices[0]:
+        content = choices[0]['message'].get('content') if choices else None
+        if not content:
             return {"type": "unknown"}
-        raw = choices[0]['message']['content'].strip()
+        raw = content.strip()
         if raw.startswith('```'):
             raw = '\n'.join(raw.split('\n')[1:-1])
         parsed = json.loads(raw)

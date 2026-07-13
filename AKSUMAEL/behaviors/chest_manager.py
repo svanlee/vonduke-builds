@@ -143,7 +143,9 @@ class ChestManager:
         b64 = _frame_to_b64(frame)
         payload = json.dumps({
             "model": config.LOCAL_LLM_MODEL,
-            "max_tokens": 512,
+            # Generous budget — this model 'thinks' before answering, which
+            # can burn several hundred tokens before the actual JSON reply.
+            "max_tokens": 1200,
             "messages": [{
                 "role": "user",
                 "content": [
@@ -162,12 +164,13 @@ class ChestManager:
 
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=15) as resp:
+                with urllib.request.urlopen(req, timeout=45) as resp:
                     data = json.loads(resp.read())
                 choices = data.get('choices') or []
-                if not choices or 'message' not in choices[0]:
-                    raise ValueError(f'no message in local-LLM response: {data}')
-                text = choices[0]['message']['content'].strip()
+                content = choices[0]['message'].get('content') if choices else None
+                if not content:
+                    raise ValueError(f'no content in local-LLM response: {data}')
+                text = content.strip()
                 if text.startswith('```'):
                     text = '\n'.join(text.split('\n')[1:-1])
                 items = json.loads(text)
