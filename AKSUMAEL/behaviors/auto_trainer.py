@@ -87,13 +87,6 @@ class AutoTrainer:
         else:
             print('[AUTOTRAIN] auto-labeling complete')
 
-        # mesh-llm is idle for now and was eating VRAM the training subprocess
-        # needs for its own CUDA context — stop it before spawning training,
-        # then restart it once the lock is released (see finally: below).
-        print('[AUTOTRAIN] stopping mesh-llm to free VRAM for training...')
-        subprocess.run(['systemctl', '--user', 'stop', 'mesh-llm'],
-                        timeout=10, capture_output=True)
-
         # Force the training subprocess's own DataLoader workers to use the
         # 'spawn' start method rather than 'fork' — this process shares a GPU
         # (CUDA context) with the live capture/YOLO threads, and forked
@@ -101,11 +94,21 @@ class AutoTrainer:
         train_env = {**os.environ, 'PYTORCH_MULTIPROCESSING_START_METHOD': 'spawn'}
 
         train_script = os.path.join(tools_dir, 'yolo_finetune.py')
-        # Lockfile blocks a concurrent manually-launched training run (or a
-        # second AutoTrainer instance after a restart) from competing for
-        # the same GPU/CUDA context.
+        # Lockfile is written before we stop aksumael/mesh-llm so that if
+        # aksumael's watcher tries to restart it mid-training, it sees the
+        # lock and waits instead of racing the training subprocess for GPU.
         TRAIN_LOCK.write_text(str(os.getpid()))
         try:
+            # Both services hold VRAM the training subprocess needs for its
+            # own CUDA context — stop them before spawning training, then
+            # restart once the lock is released below.
+            print('[AUTOTRAIN] stopping aksumael and mesh-llm to free VRAM for training...')
+            subprocess.run(['systemctl', '--user', 'stop', 'aksumael'],
+                            timeout=15, capture_output=True)
+            subprocess.run(['systemctl', '--user', 'stop', 'mesh-llm'],
+                            timeout=15, capture_output=True)
+            time.sleep(3)  # let VRAM clear
+
             return subprocess.run(
                 [python, train_script, 'train'],
                 capture_output=True, text=True, timeout=1800,  # 30 min max
@@ -113,8 +116,11 @@ class AutoTrainer:
             )
         finally:
             TRAIN_LOCK.unlink(missing_ok=True)
-            import subprocess as _sp
-            _sp.run(["systemctl", "--user", "start", "mesh-llm"], timeout=15, capture_output=True)
+            subprocess.run(['systemctl', '--user', 'start', 'mesh-llm'],
+                            timeout=15, capture_output=True)
+            time.sleep(5)  # let mesh-llm load before aksumael starts making LLM calls
+            subprocess.run(['systemctl', '--user', 'start', 'aksumael'],
+                            timeout=15, capture_output=True)
 
     def _train_thread(self):
         try:
