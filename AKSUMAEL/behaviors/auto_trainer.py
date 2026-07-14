@@ -88,8 +88,8 @@ class AutoTrainer:
             print('[AUTOTRAIN] auto-labeling complete')
 
         # mesh-llm is idle for now and was eating VRAM the training subprocess
-        # needs for its own CUDA context — stop it before spawning training.
-        # Left stopped afterward (not restarted) per current operating mode.
+        # needs for its own CUDA context — stop it before spawning training,
+        # then restart it once the lock is released (see finally: below).
         print('[AUTOTRAIN] stopping mesh-llm to free VRAM for training...')
         subprocess.run(['systemctl', '--user', 'stop', 'mesh-llm'],
                         timeout=10, capture_output=True)
@@ -113,6 +113,8 @@ class AutoTrainer:
             )
         finally:
             TRAIN_LOCK.unlink(missing_ok=True)
+            import subprocess as _sp
+            _sp.run(["systemctl", "--user", "start", "mesh-llm"], timeout=15, capture_output=True)
 
     def _train_thread(self):
         try:
