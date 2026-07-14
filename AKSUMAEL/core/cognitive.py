@@ -7,10 +7,9 @@
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 
 import config
+from core.llm_router import route_llm_call
 
 COGNITIVE_DIR = 'data/cognitive'
 MAX_EPISODES  = 50
@@ -196,7 +195,6 @@ class InnerMonologue:
                        goal: str = None, recent_episodes: list = None) -> str | None:
         if not config.LOCAL_LLM_ENABLED:
             return None
-        self.claude_call_count += 1
         labels = [o.get('label') for o in objects if o.get('label')]
         fails  = ''
         if recent_episodes:
@@ -210,31 +208,12 @@ class InnerMonologue:
             f'Last reward: {reward:+.2f}.{fails} '
             'Respond with only the sentence, no quotes, no preamble.'
         )
-        payload = json.dumps({
-            'model': config.LOCAL_LLM_MODEL,
-            # Generous budget — this model 'thinks' before answering, which
-            # can burn several hundred tokens before the actual sentence.
-            'max_tokens': 800,
-            'messages': [{'role': 'user', 'content': prompt}],
-        }).encode('utf-8')
-        req = urllib.request.Request(
-            f'{config.LOCAL_LLM_URL}/chat/completions',
-            data=payload,
-            headers={'Content-Type': 'application/json'},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                data = json.loads(resp.read())
-            choices = data.get('choices') or []
-            content = choices[0]['message'].get('content') if choices else None
-            if not content:
-                return None
-            return content.strip()
-        except urllib.error.HTTPError as e:
-            print(f'[MONOLOGUE] local-LLM HTTP {e.code}')
-        except Exception as e:
-            print(f'[MONOLOGUE] generation error: {e}')
-        return None
+        # Generous budget — the model 'thinks' before answering, which can
+        # burn several hundred tokens before the actual sentence.
+        raw, provider = route_llm_call(prompt, max_tokens=800, timeout=45)
+        if provider == 'claude':
+            self.claude_call_count += 1
+        return raw.strip() if raw else None
 
     def recent(self, n: int = 5) -> str:
         return '\n'.join(t['thought'] for t in self.thoughts[-n:])

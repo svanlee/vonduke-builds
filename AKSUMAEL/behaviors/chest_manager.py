@@ -4,15 +4,10 @@
 # ║  and shift-clicks items between chest and inventory.   ║
 # ╚══════════════════════════════════════════════════════╝
 
-import base64
 import json
 import time
-import urllib.request
-import urllib.error
 
-import cv2
-
-import config
+from core.llm_router import route_llm_call, frame_to_b64
 
 
 # Cache TTL — don't re-read chest contents more often than this
@@ -34,11 +29,6 @@ _PLAYER_Y0        = 59.5   # top edge of player main grid row 0 (%)
 _PLAYER_DY        = 8.0
 _PLAYER_HOTBAR_Y  = 84.5
 _PLAYER_SLOT_BASE = 27     # chest-screen slot where player inventory starts
-
-
-def _frame_to_b64(frame) -> str:
-    _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    return base64.b64encode(buf.tobytes()).decode('utf-8')
 
 
 def _chest_slot_pct(slot: int) -> tuple[float, float]:
@@ -140,70 +130,39 @@ class ChestManager:
         """Returns (items, was_open) — was_open is False when the chest was
         confirmed closed (or the read failed), so close() knows not to
         press Escape."""
-        b64 = _frame_to_b64(frame)
-        payload = json.dumps({
-            "model": config.LOCAL_LLM_MODEL,
-            # Generous budget — this model 'thinks' before answering, which
-            # can burn several hundred tokens before the actual JSON reply.
-            "max_tokens": 1200,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _CHEST_PROMPT},
-                    {"type": "image_url", "image_url":
-                        {"url": f"data:image/jpeg;base64,{b64}"}}
-                ]
-            }]
-        }).encode('utf-8')
+        # Generous budget — the model 'thinks' before answering, which can
+        # burn several hundred tokens before the actual JSON reply.
+        raw, _provider = route_llm_call(
+            _CHEST_PROMPT, max_tokens=1200, images=[frame_to_b64(frame)],
+            timeout=45, local_retries=3)
+        if raw is None:
+            print('[CHEST] all LLM tiers failed')
+            return {}, False
 
-        req = urllib.request.Request(
-            f"{config.LOCAL_LLM_URL}/chat/completions",
-            data=payload,
-            headers={'Content-Type': 'application/json'}
-        )
+        try:
+            items = json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f'[CHEST] error parsing response: {e}')
+            return {}, False
 
-        for attempt in range(3):
-            try:
-                with urllib.request.urlopen(req, timeout=45) as resp:
-                    data = json.loads(resp.read())
-                choices = data.get('choices') or []
-                content = choices[0]['message'].get('content') if choices else None
-                if not content:
-                    raise ValueError(f'no content in local-LLM response: {data}')
-                text = content.strip()
-                if text.startswith('```'):
-                    text = '\n'.join(text.split('\n')[1:-1])
-                items = json.loads(text)
-                if items.get('chest_closed'):
-                    print('[CHEST] local LLM says chest was not open')
-                    return {}, False
-                result = {}
-                for k, v in items.items():
-                    if not isinstance(k, str) or k == 'chest_closed':
-                        continue
-                    key = k.lower().replace(' ', '_')
-                    if isinstance(v, dict):
-                        count = max(0, int(v.get('count', 1)))
-                        slot  = int(v.get('slot', -1))
-                    elif isinstance(v, (int, float)):
-                        count = max(0, int(v))
-                        slot  = -1
-                    else:
-                        continue
-                    result[key] = {'count': count, 'slot': slot}
-                return result, True
-            except urllib.error.HTTPError as e:
-                print(f'[CHEST] local-LLM HTTP {e.code} on attempt {attempt+1}')
-                if e.code not in (429, 500, 502, 503, 529):
-                    break
-            except Exception as e:
-                print(f'[CHEST] error on attempt {attempt+1}: {e}')
-
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-
-        # Couldn't confirm state — don't claim it was open.
-        return {}, False
+        if items.get('chest_closed'):
+            print('[CHEST] LLM says chest was not open')
+            return {}, False
+        result = {}
+        for k, v in items.items():
+            if not isinstance(k, str) or k == 'chest_closed':
+                continue
+            key = k.lower().replace(' ', '_')
+            if isinstance(v, dict):
+                count = max(0, int(v.get('count', 1)))
+                slot  = int(v.get('slot', -1))
+            elif isinstance(v, (int, float)):
+                count = max(0, int(v))
+                slot  = -1
+            else:
+                continue
+            result[key] = {'count': count, 'slot': slot}
+        return result, True
 
     def _click(self, executor, x_pct: float, y_pct: float, button: str = 'left'):
         action = {

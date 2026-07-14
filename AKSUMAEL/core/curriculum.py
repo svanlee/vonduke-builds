@@ -7,10 +7,9 @@
 
 import json
 import os
-import urllib.error
-import urllib.request
 
 import config
+from core.llm_router import route_llm_call
 from core.planner import Planner
 
 RETIRED_GOALS_LOG = os.path.join(config.MEMORY_DIR, 'retired_goals.jsonl')
@@ -100,29 +99,11 @@ class CurriculumGenerator:
             inventory=inv_str,
             world_summary=world_summary,
         )
-        payload = json.dumps({
-            'model': config.LOCAL_LLM_MODEL,
-            # Generous budget — this model 'thinks' before answering, which
-            # can burn several hundred tokens before the actual goal name.
-            'max_tokens': 800,
-            'messages': [{'role': 'user', 'content': prompt}],
-        }).encode('utf-8')
-        req = urllib.request.Request(
-            f'{config.LOCAL_LLM_URL}/chat/completions',
-            data=payload,
-            headers={'Content-Type': 'application/json'},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                data = json.loads(resp.read())
-            choices = data.get('choices') or []
-            content = choices[0]['message'].get('content') if choices else None
-            if not content:
-                return None
-            goal = content.strip().strip('."\'').lower().replace(' ', '_')
-            return goal or None
-        except urllib.error.HTTPError as e:
-            print(f'[CURRICULUM] local-LLM HTTP {e.code}')
-        except Exception as e:
-            print(f'[CURRICULUM] suggestion error: {e}')
-        return None
+        # Generous budget — the model 'thinks' before answering, which can
+        # burn several hundred tokens before the actual goal name.
+        raw, _provider = route_llm_call(prompt, max_tokens=800, timeout=45)
+        if not raw:
+            print('[CURRICULUM] all LLM tiers failed')
+            return None
+        goal = raw.strip().strip('."\'').lower().replace(' ', '_')
+        return goal or None

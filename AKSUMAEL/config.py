@@ -4,10 +4,11 @@
 
 # ── Vision Provider ───────────────────────────────────────────
 # Platform: HP Victus (RTX 4050 Laptop GPU) + Samsung T7 SSD, robocar-hub @ 192.168.1.156
-# 3-tier routing: local (Mesh-LLM) -> gemini -> claude. See core/vision_brain.ask_vision().
-# "local"  = primary, no cost, no rate cap — falls back on timeout/connection failure
-# "gemini" = fallback, free tier, ~1500 req/day
-# "claude" = last resort, paid, complex reasoning only
+# All LLM calls in the codebase go through core/llm_router.route_llm_call().
+# "local"  = primary for every call, no cost, no rate cap
+# "gemini" = occasional diversity/monitoring ping (every Nth call) when local
+#            succeeds; real synchronous fallback only when local fails
+# "claude" = emergency backup, paid — tried only if both local and Gemini fail
 import os
 VISION_PROVIDER = "local"
 
@@ -17,7 +18,7 @@ LOCAL_LLM_TIMEOUT = 8       # seconds — if local takes longer, fall back to Ge
 LOCAL_LLM_ENABLED = True
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
-GEMINI_MODEL      = "gemini-2.5-flash"
+GEMINI_MODEL      = "gemini-2.0-flash"   # current free-tier model
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL        = "claude-haiku-4-5-20251001"   # inventory/chest reads (cheap)
 CLAUDE_VISION_MODEL = "claude-haiku-4-5-20251001"             # main gameplay decisions (smarter)
