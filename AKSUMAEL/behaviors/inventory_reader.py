@@ -4,24 +4,14 @@
 # ║  returns a structured {item: count} dict for crafting.║
 # ╚══════════════════════════════════════════════════════╝
 
-import base64
 import json
 import time
-import urllib.request
-import urllib.error
 
-import cv2
-
-import config
+from core.llm_router import route_llm_call, frame_to_b64
 
 
 # Cache TTL — don't re-open inventory more often than this
 _CACHE_TTL_SEC = 15.0
-
-
-def _frame_to_b64(frame) -> str:
-    _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    return base64.b64encode(buf.tobytes()).decode('utf-8')
 
 
 _INVENTORY_PROMPT = """This is a screenshot from Minecraft Java Edition.
@@ -149,72 +139,41 @@ class InventoryReader:
         """Returns (items, was_open) — was_open is False when the inventory
         was confirmed closed (or the read failed), so callers know not to
         press a close key."""
-        b64 = _frame_to_b64(frame)
-        payload = json.dumps({
-            "model": config.LOCAL_LLM_MODEL,
-            # Generous budget — this model 'thinks' before answering, which
-            # can burn several hundred tokens before the actual JSON reply.
-            "max_tokens": 1200,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _INVENTORY_PROMPT},
-                    {"type": "image_url", "image_url":
-                        {"url": f"data:image/jpeg;base64,{b64}"}}
-                ]
-            }]
-        }).encode('utf-8')
+        # Generous budget — the model 'thinks' before answering, which can
+        # burn several hundred tokens before the actual JSON reply.
+        raw, _provider = route_llm_call(
+            _INVENTORY_PROMPT, max_tokens=1200, images=[frame_to_b64(frame)],
+            timeout=45, local_retries=3)
+        if raw is None:
+            print('[INV] all LLM tiers failed')
+            return {}, False
 
-        req = urllib.request.Request(
-            f"{config.LOCAL_LLM_URL}/chat/completions",
-            data=payload,
-            headers={'Content-Type': 'application/json'}
-        )
+        try:
+            items = json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f'[INV] error parsing response: {e}')
+            return {}, False
 
-        for attempt in range(3):
-            try:
-                with urllib.request.urlopen(req, timeout=45) as resp:
-                    data = json.loads(resp.read())
-                choices = data.get('choices') or []
-                content = choices[0]['message'].get('content') if choices else None
-                if not content:
-                    raise ValueError(f'no content in local-LLM response: {data}')
-                text = content.strip()
-                if text.startswith('```'):
-                    text = '\n'.join(text.split('\n')[1:-1])
-                items = json.loads(text)
-                # Inventory wasn't open — return empty rather than crash
-                if items.get('inventory_closed'):
-                    print('[INV] local LLM says inventory was not open')
-                    return {}, False
-                # Support both old {item: count} and new {item: {count, slot}} formats
-                result = {}
-                for k, v in items.items():
-                    if not isinstance(k, str) or k == 'inventory_closed':
-                        continue
-                    key = k.lower().replace(' ', '_')
-                    if isinstance(v, dict):
-                        count = max(0, int(v.get('count', 1)))
-                        slot  = int(v.get('slot', -1))
-                    elif isinstance(v, (int, float)):
-                        count = max(0, int(v))
-                        slot  = -1
-                    else:
-                        continue
-                    result[key] = {'count': count, 'slot': slot}
-                return result, True
-            except urllib.error.HTTPError as e:
-                print(f'[INV] local-LLM HTTP {e.code} on attempt {attempt+1}')
-                if e.code not in (429, 500, 502, 503, 529):
-                    break
-            except Exception as e:
-                print(f'[INV] error on attempt {attempt+1}: {e}')
-
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-
-        # Couldn't confirm state — don't claim it was open.
-        return {}, False
+        # Inventory wasn't open — return empty rather than crash
+        if items.get('inventory_closed'):
+            print('[INV] LLM says inventory was not open')
+            return {}, False
+        # Support both old {item: count} and new {item: {count, slot}} formats
+        result = {}
+        for k, v in items.items():
+            if not isinstance(k, str) or k == 'inventory_closed':
+                continue
+            key = k.lower().replace(' ', '_')
+            if isinstance(v, dict):
+                count = max(0, int(v.get('count', 1)))
+                slot  = int(v.get('slot', -1))
+            elif isinstance(v, (int, float)):
+                count = max(0, int(v))
+                slot  = -1
+            else:
+                continue
+            result[key] = {'count': count, 'slot': slot}
+        return result, True
 
     def _tap(self, key: str, wait_ms: int):
         self.executor.execute({

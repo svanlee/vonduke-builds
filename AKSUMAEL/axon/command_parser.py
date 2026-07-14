@@ -6,10 +6,9 @@
 
 import json
 import re
-import urllib.request
-import urllib.error
 
 import config
+from core.llm_router import route_llm_call
 
 # (regex, goal, priority) — checked in order, first match wins.
 # Goal names line up with memory.goals.GOAL_PRIORITIES where possible so
@@ -58,10 +57,10 @@ def parse(transcript: str) -> dict:
 
 
 def _parse_with_local_llm(text: str) -> dict:
-    """Single local-LLM call for free-form commands the rules didn't
-    catch. At most one API call per command; never retries."""
+    """Single routed LLM call for free-form commands the rules didn't
+    catch. At most one call per command; never retries."""
     if not config.LOCAL_LLM_ENABLED:
-        print('[AXON] local LLM disabled — cannot parse free-form command')
+        print('[AXON] LLM routing disabled — cannot parse free-form command')
         return {"type": "unknown"}
 
     prompt = f"""You control a Minecraft AI agent named AKSUMAEL. Turn the voice command
@@ -73,29 +72,12 @@ Voice command: "{text}"
 
 Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 1-10}}"""
 
-    payload = json.dumps({
-        "model": config.LOCAL_LLM_MODEL,
-        # Generous budget — this model 'thinks' before answering, which
-        # can burn several hundred tokens before the actual JSON reply.
-        "max_tokens": 800,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode('utf-8')
-
-    req = urllib.request.Request(
-        f"{config.LOCAL_LLM_URL}/chat/completions",
-        data=payload,
-        headers={'Content-Type': 'application/json'},
-    )
+    # Generous budget — the model 'thinks' before answering, which can
+    # burn several hundred tokens before the actual JSON reply.
+    raw, _provider = route_llm_call(prompt, max_tokens=800, timeout=45)
+    if not raw:
+        return {"type": "unknown"}
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            data = json.loads(resp.read())
-        choices = data.get('choices') or []
-        content = choices[0]['message'].get('content') if choices else None
-        if not content:
-            return {"type": "unknown"}
-        raw = content.strip()
-        if raw.startswith('```'):
-            raw = '\n'.join(raw.split('\n')[1:-1])
         parsed = json.loads(raw)
         goal = parsed.get('goal')
         if not goal:
@@ -103,5 +85,5 @@ Respond with JSON only, no other text: {{"goal": "snake_case_goal", "priority": 
         priority = int(parsed.get('priority', 5))
         return {"type": "goal", "goal": goal, "priority": priority, "source": "local_llm"}
     except Exception as e:
-        print(f'[AXON] local-LLM parse error: {e}')
+        print(f'[AXON] LLM parse error: {e}')
         return {"type": "unknown"}

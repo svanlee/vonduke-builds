@@ -15,10 +15,9 @@ import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 
 import config
+from core.llm_router import route_llm_call
 
 CODE_SKILL_PROMPT = """You write short, defensive Python functions for a Minecraft
 automation agent called AKSUMAEL.
@@ -66,39 +65,21 @@ def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str 
 
     prompt = CODE_SKILL_PROMPT.format(name=skill_name, steps=json.dumps(steps)[:800],
                                        context=context[:400])
-    payload = json.dumps({
-        'model': config.LOCAL_LLM_MODEL,
-        # Generous budget — this model 'thinks' before answering, which can
-        # burn several hundred tokens before the actual function body.
-        'max_tokens': 1400,
-        'messages': [{'role': 'user', 'content': prompt}],
-    }).encode('utf-8')
+    # Generous budget — the model 'thinks' before answering, which can burn
+    # several hundred tokens before the actual function body.
+    raw, _provider = route_llm_call(prompt, max_tokens=1400, timeout=60)
+    if not raw:
+        print('[CODE_SKILL] all LLM tiers failed')
+        return None
 
-    req = urllib.request.Request(
-        f'{config.LOCAL_LLM_URL}/chat/completions',
-        data=payload,
-        headers={'Content-Type': 'application/json'},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-        choices = data.get('choices') or []
-        content = choices[0]['message'].get('content') if choices else None
-        if not content:
-            return None
-        code = _strip_fences(content)
-        if 'def run_skill(' not in code:
-            print('[CODE_SKILL] LLM response missing run_skill() — discarding')
-            return None
-        if not _is_safe_source(code):
-            print('[CODE_SKILL] generated code failed the safety check — discarding')
-            return None
-        return code
-    except urllib.error.HTTPError as e:
-        print(f'[CODE_SKILL] local-LLM HTTP {e.code}')
-    except Exception as e:
-        print(f'[CODE_SKILL] generation error: {e}')
-    return None
+    code = _strip_fences(raw)
+    if 'def run_skill(' not in code:
+        print('[CODE_SKILL] LLM response missing run_skill() — discarding')
+        return None
+    if not _is_safe_source(code):
+        print('[CODE_SKILL] generated code failed the safety check — discarding')
+        return None
+    return code
 
 
 _FORBIDDEN_PATTERNS = re.compile(
