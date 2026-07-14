@@ -2,6 +2,7 @@
 # ║  AKSUMAEL v1.0.0 — Main Runtime Loop                  ║
 # ╚══════════════════════════════════════════════════════╝
 
+import json
 import os
 import pathlib
 import random
@@ -10,6 +11,7 @@ import cv2
 import config
 
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
+PRESERVED_GOALS_PATH = pathlib.Path('data/preserved_goals.json')
 
 
 def _train_lock_owner_alive() -> bool:
@@ -25,6 +27,41 @@ def _train_lock_owner_alive() -> bool:
         return False
     except PermissionError:
         return True
+
+
+def _restore_preserved_goals():
+    """Re-inject a goal (current + queued stack) that behaviors/auto_trainer.py
+    saved before stopping this service mid-goal, via the same
+    injected_goals.json queue mastermind/axon use — drained by
+    GoalStack.check_injected_goals() on the next tick."""
+    if not PRESERVED_GOALS_PATH.exists():
+        return
+    try:
+        state = json.loads(PRESERVED_GOALS_PATH.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(f'[STARTUP] preserved-goals read error: {e} — discarding')
+        PRESERVED_GOALS_PATH.unlink(missing_ok=True)
+        return
+
+    restored = [g for g in list(state.get('stack', [])) + [state.get('current')] if g]
+    if not restored:
+        PRESERVED_GOALS_PATH.unlink(missing_ok=True)
+        return
+
+    queue = []
+    if os.path.exists(INJECTED_GOALS_PATH):
+        try:
+            with open(INJECTED_GOALS_PATH) as f:
+                queue = json.load(f).get('queue', [])
+        except (OSError, json.JSONDecodeError):
+            queue = []
+    queue.extend({'goal': g, 'reason': 'restored after autotrain restart',
+                  'received_at': time.time()} for g in restored)
+    os.makedirs(os.path.dirname(INJECTED_GOALS_PATH) or '.', exist_ok=True)
+    with open(INJECTED_GOALS_PATH, 'w') as f:
+        json.dump({'queue': queue}, f)
+    print(f'[STARTUP] restored preserved goal(s) from autotrain restart: {restored}')
+    PRESERVED_GOALS_PATH.unlink(missing_ok=True)
 
 from core.capture            import VideoCapturePipeline
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
@@ -42,7 +79,7 @@ from core                    import policy_blender
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
-from memory.goals            import GoalStack
+from memory.goals            import GoalStack, INJECTED_GOALS_PATH
 from memory.goal_interpreter import GoalInterpreter
 from memory.progression      import ProgressionTracker
 from memory.minecraft_kb     import MinecraftKB
@@ -96,6 +133,7 @@ def run():
     world_mem = WorldMemory()
     inventory = InventoryTracker()
     goals       = GoalStack()
+    _restore_preserved_goals()
     progression = ProgressionTracker()
     mc_kb       = MinecraftKB()
     cognitive   = CognitiveArchitecture()
