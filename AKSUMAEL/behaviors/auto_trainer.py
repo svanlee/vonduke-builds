@@ -104,8 +104,15 @@ def _wait_for_mesh_llm_healthy(timeout_sec: float = MESH_LLM_HEALTH_TIMEOUT_SEC,
             with urllib.request.urlopen(url, timeout=5) as resp:
                 data = json.loads(resp.read())
             models = [m.get('id') for m in data.get('data', [])]
-            print(f'[AUTOTRAIN] mesh-llm healthy after {waited:.0f}s — models loaded: {models}')
-            return True
+            # The endpoint answers 200 with an empty list while the API
+            # layer is up but no model has finished loading yet (including
+            # mid-crash-loop) — that's not "healthy", keep polling.
+            if models:
+                print(f'[AUTOTRAIN] mesh-llm healthy after {waited:.0f}s — models loaded: {models}')
+                return True
+            if waited == 0 or waited % 10 == 0:
+                print(f'[AUTOTRAIN] mesh-llm API up but no models loaded yet — '
+                      f'{waited:.0f}s/{timeout_sec:.0f}s')
         except Exception as e:
             if waited == 0 or waited % 10 == 0:
                 print(f'[AUTOTRAIN] mesh-llm not healthy yet ({e}) — '
