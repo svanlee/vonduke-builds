@@ -7,7 +7,6 @@
 # Spawns yolo_finetune.py train as a subprocess, then hot-reloads weights.
 
 import subprocess, threading, time, os, sys, pathlib, json
-import urllib.request, urllib.error
 import config
 from memory.goals import GOALS_PATH
 
@@ -20,9 +19,6 @@ _TRIVIAL_GOALS = {'idle', 'explore'}
 
 GOAL_WAIT_TIMEOUT_SEC = 60
 GOAL_WAIT_POLL_SEC    = 2
-
-MESH_LLM_HEALTH_TIMEOUT_SEC = 60
-MESH_LLM_HEALTH_POLL_SEC    = 2
 
 
 def _dataset_size() -> int:
@@ -90,40 +86,6 @@ def _preserve_goal_state(state: dict):
         print(f'[AUTOTRAIN] failed to preserve goal state: {e}')
 
 
-def _wait_for_mesh_llm_healthy(timeout_sec: float = MESH_LLM_HEALTH_TIMEOUT_SEC,
-                                poll_sec: float = MESH_LLM_HEALTH_POLL_SEC) -> bool:
-    """Poll mesh-llm's OpenAI-compatible /v1/models endpoint until it
-    responds, instead of assuming a fixed sleep was long enough. Logs
-    whatever model list comes back so a stuck/empty load is visible in the
-    autotrain logs rather than silently causing 'all LLM tiers failed'
-    downstream in inventory_reader / vision_brain."""
-    url = f'{config.LOCAL_LLM_URL}/models'
-    waited = 0.0
-    while waited < timeout_sec:
-        try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                data = json.loads(resp.read())
-            models = [m.get('id') for m in data.get('data', [])]
-            # The endpoint answers 200 with an empty list while the API
-            # layer is up but no model has finished loading yet (including
-            # mid-crash-loop) — that's not "healthy", keep polling.
-            if models:
-                print(f'[AUTOTRAIN] mesh-llm healthy after {waited:.0f}s — models loaded: {models}')
-                return True
-            if waited == 0 or waited % 10 == 0:
-                print(f'[AUTOTRAIN] mesh-llm API up but no models loaded yet — '
-                      f'{waited:.0f}s/{timeout_sec:.0f}s')
-        except Exception as e:
-            if waited == 0 or waited % 10 == 0:
-                print(f'[AUTOTRAIN] mesh-llm not healthy yet ({e}) — '
-                      f'{waited:.0f}s/{timeout_sec:.0f}s')
-        time.sleep(poll_sec)
-        waited += poll_sec
-    print(f'[AUTOTRAIN] mesh-llm did not become healthy within {timeout_sec:.0f}s — '
-          f'starting aksumael anyway')
-    return False
-
-
 class AutoTrainer:
     def __init__(self, yolo_detector):
         self._yolo      = yolo_detector
@@ -162,11 +124,23 @@ class AutoTrainer:
         t.start()
         print(f'[AUTOTRAIN] started — {self._frames_since_train} new frames collected')
 
-    def label_then_train(self):
-        """Run the Claude auto-labeler over pending survey frames, then train."""
+    def label_then_train(self) -> bool:
+        """Run the Claude auto-labeler over pending survey frames, then hand
+        the stop/train/restart sequence off to a detached external script.
+
+        aksumael can't cleanly `systemctl stop` itself: systemd kills the
+        whole cgroup, including whatever thread issued the stop, so any
+        restart logic that used to run afterward in *this* process never
+        executed — aksumael never came back after a training cycle. Instead
+        we preserve any in-progress goal, then launch
+        tools/autotrain_restart.sh with start_new_session=True so it lands
+        in its own session/cgroup and survives aksumael being torn down; it
+        does the stop -> train -> restart dance on its own. Returns True if
+        the handoff happened, False if this cycle was skipped.
+        """
         if TRAIN_LOCK.exists():
             print(f'[AUTOTRAIN] training already in progress ({TRAIN_LOCK.read_text().strip()}) — skipping this cycle')
-            return subprocess.CompletedProcess(args=[], returncode=1, stdout='', stderr='training lock held')
+            return False
 
         python = sys.executable
         tools_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools'))
@@ -182,78 +156,52 @@ class AutoTrainer:
         else:
             print('[AUTOTRAIN] auto-labeling complete')
 
-        # Force the training subprocess's own DataLoader workers to use the
-        # 'spawn' start method rather than 'fork' — this process shares a GPU
-        # (CUDA context) with the live capture/YOLO threads, and forked
-        # workers inheriting that state is what tears down the pipe.
-        train_env = {**os.environ, 'PYTORCH_MULTIPROCESSING_START_METHOD': 'spawn'}
-
-        train_script = os.path.join(tools_dir, 'yolo_finetune.py')
-        # Lockfile is written before we stop aksumael/mesh-llm so that if
-        # aksumael's watcher tries to restart it mid-training, it sees the
-        # lock and waits instead of racing the training subprocess for GPU.
+        # Lockfile is written before we hand off so a second trigger inside
+        # this process (or a stray restart) sees training in progress and
+        # skips instead of racing the detached script for GPU.
         TRAIN_LOCK.write_text(str(os.getpid()))
-        try:
-            # Don't yank aksumael out from under an in-progress goal — give
-            # it up to GOAL_WAIT_TIMEOUT_SEC to reach idle/explore on its
-            # own, and if it doesn't, preserve the goal so it can be
-            # re-injected on the next startup (see core.runtime).
-            print('[AUTOTRAIN] checking for an active goal before stopping aksumael...')
-            goal_state = _wait_for_goal_to_settle()
-            if _goal_is_active(goal_state):
-                print(f'[AUTOTRAIN] goal "{goal_state.get("current")}" still active '
-                      f'after {GOAL_WAIT_TIMEOUT_SEC}s wait — preserving it before stopping')
-                _preserve_goal_state(goal_state)
-            else:
-                print('[AUTOTRAIN] no active goal (idle/explore) — proceeding to stop')
 
-            # Both services hold VRAM the training subprocess needs for its
-            # own CUDA context — stop them before spawning training, then
-            # restart once the lock is released below.
-            print('[AUTOTRAIN] stopping aksumael and mesh-llm to free VRAM for training...')
-            subprocess.run(['systemctl', '--user', 'stop', 'aksumael'],
-                            timeout=15, capture_output=True)
-            subprocess.run(['systemctl', '--user', 'stop', 'mesh-llm'],
-                            timeout=15, capture_output=True)
-            time.sleep(3)  # let VRAM clear
+        # Don't yank aksumael out from under an in-progress goal — give it
+        # up to GOAL_WAIT_TIMEOUT_SEC to reach idle/explore on its own, and
+        # if it doesn't, preserve the goal so it can be re-injected on the
+        # next startup (see core.runtime).
+        print('[AUTOTRAIN] checking for an active goal before stopping aksumael...')
+        goal_state = _wait_for_goal_to_settle()
+        if _goal_is_active(goal_state):
+            print(f'[AUTOTRAIN] goal "{goal_state.get("current")}" still active '
+                  f'after {GOAL_WAIT_TIMEOUT_SEC}s wait — preserving it before stopping')
+            _preserve_goal_state(goal_state)
+        else:
+            print('[AUTOTRAIN] no active goal (idle/explore) — proceeding to stop')
 
-            return subprocess.run(
-                [python, train_script, 'train'],
-                capture_output=True, text=True, timeout=1800,  # 30 min max
-                env=train_env,
-            )
-        finally:
-            TRAIN_LOCK.unlink(missing_ok=True)
-            subprocess.run(['systemctl', '--user', 'start', 'mesh-llm'],
-                            timeout=15, capture_output=True)
-            _wait_for_mesh_llm_healthy()  # only start aksumael once mesh-llm actually answers
-            subprocess.run(['systemctl', '--user', 'start', 'aksumael'],
-                            timeout=15, capture_output=True)
+        restart_script = os.path.join(tools_dir, 'autotrain_restart.sh')
+        log_path = '/tmp/autotrain_restart.log'
+        print(f'[AUTOTRAIN] handing off stop/train/restart to {restart_script} '
+              f'(detached — log at {log_path})')
+        subprocess.Popen(
+            ['bash', '-c', f'nohup {restart_script} > {log_path} 2>&1 &'],
+            start_new_session=True,  # new session/cgroup — survives aksumael being killed
+        )
+        return True
 
     def _train_thread(self):
         try:
             print('[AUTOTRAIN] training in background (this takes a few minutes)...')
-            result = self.label_then_train()
-
-            if result.returncode == 0:
-                print('[AUTOTRAIN] training complete — hot-reloading weights')
-                self._yolo.reload_weights()
-                with self._lock:
-                    self._frames_since_train = 0
-                    self._last_train = time.time()
-                print('[AUTOTRAIN] new weights active')
+            handed_off = self.label_then_train()
+            if handed_off:
+                print('[AUTOTRAIN] handed off to autotrain_restart.sh — '
+                      'aksumael will restart once training completes')
             else:
-                print(f'[AUTOTRAIN] training failed:\n{result.stderr[-500:]}')
+                print('[AUTOTRAIN] training cycle skipped (lock already held)')
                 with self._lock:
-                    self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
+                    self._training = False
         except subprocess.TimeoutExpired:
-            print('[AUTOTRAIN] training timed out after 30 minutes')
+            print('[AUTOTRAIN] auto-labeling timed out after 30 minutes')
             with self._lock:
+                self._training = False
                 self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
         except Exception as e:
             print(f'[AUTOTRAIN] error: {e}')
             with self._lock:
-                self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
-        finally:
-            with self._lock:
                 self._training = False
+                self._last_train = time.time() - config.AUTO_TRAIN_COOLDOWN_SEC + FAILURE_COOLDOWN_SEC
