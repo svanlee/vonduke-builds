@@ -73,9 +73,9 @@ def _ask_local(frame, context: str, recent_history: str):
     """
     Query the on-box Mesh-LLM server (OpenAI-compatible /v1/chat/completions).
     Tries a multimodal request first (base64 JPEG + prompt); if the loaded
-    model rejects image content (HTTP 400 — text-only model), retries once
-    with a text-only prompt that relies on the YOLO-detections block already
-    folded into `context`.
+    model rejects image content (HTTP 400/422 — text-only model), retries
+    once with a text-only prompt that relies on the YOLO-detections block
+    already folded into `context`.
 
     Returns the raw JSON-observation string on success, or None on any
     failure (connection refused, timeout, non-200) — None is the fallback
@@ -127,13 +127,13 @@ Only output valid JSON, nothing else."""
     try:
         return _post(vision_payload)
     except urllib.error.HTTPError as e:
-        if e.code != 400:
+        if e.code not in (400, 422):
             return None   # non-recoverable (5xx, auth, etc.) — fall back
     except Exception:
         return None   # connection refused / timeout / malformed response
 
-    # Model rejected multimodal content (400) — retry text-only, relying on
-    # the YOLO-detections block already embedded in `context`.
+    # Model rejected multimodal content (400/422) — retry text-only, relying
+    # on the YOLO-detections block already embedded in `context`.
     text_payload = {
         "model": config.LOCAL_LLM_MODEL,
         "temperature": 0.2,
