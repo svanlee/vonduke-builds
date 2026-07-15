@@ -358,8 +358,16 @@ def run():
     def _read_f3_position_now():
         """Blocking open/OCR/close F3 cycle — used by TREE-FALLBACK to check
         whether walking actually moved the player (stuck-in-building check).
-        Returns (x, z), either of which may be None if OCR found nothing."""
+        Returns (x, z), either of which may be None if OCR found nothing.
+
+        Guarded the same way as the periodic F3 read below (only open F3
+        when the HUD is visible and no menu is open) — see 2026-07-15
+        incident where this ran unguarded while a menu was open, so F3
+        never actually rendered and OCR garbled the raw gameplay frame
+        into noise (facing=None biome=None on every attempt)."""
         nonlocal _f3_open
+        if not _hud_present or _menu_open or _f3_open:
+            return None, None
         _f3_open = True
         executor.execute({'key': 'f3'})
         time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
