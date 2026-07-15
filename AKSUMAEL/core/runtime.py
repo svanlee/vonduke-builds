@@ -812,6 +812,28 @@ def run():
                     executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
                     _last_tree_fallback_tick = tick
+                    action_dict = {'observation': 'tree-fallback burst (walk/rotate/jump/dig)',
+                                    'action': 'w', 'key': 'w', 'click': None,
+                                    'gamepad': None, 'confidence': 0.0}
+                    src_tag = 'TREE-FALLBACK'
+
+                elif (_goal_cat == 'tree' and not candidates
+                        and not replayer.is_active() and not _tree_in_view):
+                    # ── Continuous walk between TREE-FALLBACK bursts ──
+                    # TREE-FALLBACK above only fires once every
+                    # SCAN_COOLDOWN_TICKS (and the SCAN block holds the
+                    # character still for ~7.5s on top of that) — every tick
+                    # in between fell through to _idle() with no movement at
+                    # all, so AKSUMAEL was only walking ~2s out of every
+                    # ~60-90s (see 2026-07-15). Hold W every tick that isn't
+                    # otherwise claimed by a scan/fallback burst or a tree
+                    # already in view, so it's actually covering ground
+                    # while waiting for the next scan.
+                    executor.execute({'key': 'w', 'delay_ms': 500, 'source': 'tree_walk'})
+                    action_dict = {'observation': 'walking — scanning for trees',
+                                    'action': 'w', 'key': 'w', 'click': None,
+                                    'gamepad': None, 'confidence': 0.0}
+                    src_tag = 'TREE-WALK'
 
                 # ── Precondition gating (Voyager-style verification) ──
                 # Skills without preconditions always pass (old skills keep
@@ -1455,8 +1477,12 @@ def run():
             conf = action_dict.get('confidence', 0)
             ear_state = '🔊' if ear.enabled else '🔇'
             fsm_tag = fsm_state.value[:6] if fsm_state else '?'
+            # Actual detected labels, not just a count — added 2026-07-15 so
+            # it's visible from the log whether trees are ever entering view
+            # (deduped since the same label often repeats across boxes).
+            _yolo_labels = ','.join(sorted({o.get('label', '?') for o in objects}))
             print(f'[{tick:04d}] {elapsed}s {ear_state} | '
-                  f'yolo:{len(objects):2d} | {src_tag:<18} | fsm:{fsm_tag:<7} | '
+                  f'yolo:{len(objects):2d}[{_yolo_labels[:40]}] | {src_tag:<18} | fsm:{fsm_tag:<7} | '
                   f'conf:{conf:.2f} | r:{r:+.3f} | avg:{reward.average():+.3f} | '
                   f'{obs}')
 
