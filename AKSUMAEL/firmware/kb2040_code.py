@@ -14,7 +14,9 @@
 # ║  Types:                                                      ║
 # ║    0x01  Keyboard  [mod, 0x00, k1..k6]          8 bytes     ║
 # ║    0x02  Mouse rel [btn, dx+128, dy+128, whl+128] 4 bytes   ║
+# ║          -> relative MOUSE device (camera look)              ║
 # ║    0x03  Mouse abs [btn, x_hi, x_lo, y_hi, y_lo]  5 bytes  ║
+# ║          -> absolute pointer device (desktop clicks)         ║
 # ║    0xFF  Release all                              0 bytes    ║
 # ║                                                              ║
 # ║  Install: copy this file to CIRCUITPY as code.py            ║
@@ -30,9 +32,10 @@ import time
 uart = busio.UART(board.TX, board.RX, baudrate=115200, timeout=0)
 
 # ── HID devices ───────────────────────────────────────────────
-keyboard = None
-mouse    = None
-gamepad  = None
+keyboard  = None
+mouse     = None       # relative — camera look, TYPE_MOUSE_R
+gamepad   = None
+mouse_abs = None        # absolute pointer — desktop clicks, TYPE_MOUSE_A
 
 for dev in usb_hid.devices:
     if dev.usage == 0x06 and dev.usage_page == 0x01:
@@ -41,6 +44,10 @@ for dev in usb_hid.devices:
         mouse = dev      # Generic Desktop / Mouse
     if dev.usage == 0x05 and dev.usage_page == 0x01:
         gamepad = dev    # Generic Desktop / Gamepad
+    if dev.usage == 0x01 and dev.usage_page == 0x01:
+        mouse_abs = dev  # Generic Desktop / Pointer (see rp2040/boot.py)
+
+ABS_MAX = 32767
 
 # ── Packet parser state ───────────────────────────────────────
 HEADER_A = 0xAA
@@ -94,6 +101,23 @@ def send_mouse_relative(buttons, dx, dy, wheel=0):
     mouse.send_report(report)
 
 
+def send_mouse_absolute(buttons, x, y):
+    """Send an absolute-pointer HID report: [buttons, x_lo, x_hi, y_lo,
+    y_hi], little-endian — x/y already in the 0-32767 HID logical range
+    (see ABS_POINTER_REPORT_DESCRIPTOR in rp2040/boot.py)."""
+    if mouse_abs is None:
+        return
+    x = max(0, min(ABS_MAX, x))
+    y = max(0, min(ABS_MAX, y))
+    report = bytearray(5)
+    report[0] = buttons & 0x03
+    report[1] = x & 0xFF
+    report[2] = (x >> 8) & 0xFF
+    report[3] = y & 0xFF
+    report[4] = (y >> 8) & 0xFF
+    mouse_abs.send_report(report)
+
+
 def release_all():
     """Release all keys and mouse buttons."""
     if keyboard is not None:
@@ -127,14 +151,15 @@ def handle_packet(ptype, data):
                 send_mouse_relative(0, 0, 0, 0)   # release buttons
 
     elif ptype == TYPE_MOUSE_A:
-        # Absolute mouse — convert 16-bit big-endian x/y to report
-        if len(data) >= 5 and mouse is not None:
+        # True absolute positioning via the dedicated absolute-pointer HID
+        # device — x/y arrive already scaled to the 0-32767 HID logical
+        # range by uart.kb2040_packer.pack_mouse_absolute(), so this just
+        # forwards them, no relative-delta approximation.
+        if len(data) >= 5 and mouse_abs is not None:
             buttons = data[0]
             x = (data[1] << 8) | data[2]
             y = (data[3] << 8) | data[4]
-            dx = (x - 32768) >> 8
-            dy = (y - 32768) >> 8
-            send_mouse_relative(buttons, dx, dy)
+            send_mouse_absolute(buttons, x, y)
 
     elif ptype == TYPE_GAMEPAD:
         # Gamepad: [lx+128, ly+128, rx+128, ry+128, btn_lo, btn_hi, lt, rt, guide]

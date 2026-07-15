@@ -2,6 +2,12 @@
 # ║  AKSUMAEL v1.0.0 — Action Executor                    ║
 # ║  kb2040 | ch9329 | print                            ║
 # ╚══════════════════════════════════════════════════════╝
+#
+# A `click: [x_pct, y_pct]` in an action dict becomes a TYPE_MOUSE_A
+# packet (uart.kb2040_packer.pack_mouse_click_at) that the KB2040 lands
+# on its dedicated absolute-pointer HID device — see
+# rp2040/code.py::handle_mouse_abs() — not the relative MOUSE device used
+# for camera-look (`look: {dx, dy}` / TYPE_MOUSE_R).
 
 import config
 

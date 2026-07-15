@@ -9,8 +9,8 @@
 #
 # Types:
 #   0x01  Keyboard  [modifier, 0x00, k1..k6]        8 bytes
-#   0x02  Mouse rel [buttons, dx+128, dy+128, whl+128]  4 bytes
-#   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]   5 bytes
+#   0x02  Mouse rel [buttons, dx+128, dy+128, whl+128]  4 bytes  -> relative MOUSE device (camera look)
+#   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]   5 bytes  -> absolute pointer device (desktop clicks)
 #   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128,
 #                   btn_lo, btn_hi, lt, rt]           8 bytes
 #   0xFF  Release all                                 0 bytes
@@ -95,7 +95,11 @@ def pack_mouse_move(dx: int = 0, dy: int = 0) -> bytes:
 
 def pack_mouse_absolute(x_pct: float, y_pct: float,
                         buttons: int = 0) -> bytes:
-    """x_pct, y_pct: 0.0–100.0 percent of screen."""
+    """x_pct, y_pct: 0.0-100.0 percent of screen, scaled here to the
+    0-32767 HID logical range the firmware's absolute pointer device
+    expects (see rp2040/boot.py's ABS_POINTER_REPORT_DESCRIPTOR /
+    rp2040/code.py's handle_mouse_abs()) — the firmware forwards these
+    x/y values as-is, so this is the only place the scaling happens."""
     v = 32767
     x = int(max(0.0, min(100.0, x_pct)) / 100.0 * v)
     y = int(max(0.0, min(100.0, y_pct)) / 100.0 * v)
