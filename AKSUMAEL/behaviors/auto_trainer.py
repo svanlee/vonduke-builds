@@ -129,14 +129,17 @@ class AutoTrainer:
         the stop/train/restart sequence off to a detached external script.
 
         aksumael can't cleanly `systemctl stop` itself: systemd kills the
-        whole cgroup, including whatever thread issued the stop, so any
+        whole *cgroup*, including whatever thread issued the stop, so any
         restart logic that used to run afterward in *this* process never
-        executed — aksumael never came back after a training cycle. Instead
-        we preserve any in-progress goal, then launch
-        tools/autotrain_restart.sh with start_new_session=True so it lands
-        in its own session/cgroup and survives aksumael being torn down; it
-        does the stop -> train -> restart dance on its own. Returns True if
-        the handoff happened, False if this cycle was skipped.
+        executed — aksumael never came back after a training cycle.
+        start_new_session=True (setsid) only escapes the process *session*,
+        not the cgroup, so the restart script still died with the rest of
+        aksumael.service. Instead we preserve any in-progress goal, then
+        launch tools/autotrain_restart.sh via `systemd-run --user --scope`
+        into background.slice, which creates a brand-new transient
+        scope/cgroup outside aksumael.service's — that survives the stop.
+        It does the stop -> train -> restart dance on its own. Returns True
+        if the handoff happened, False if this cycle was skipped.
         """
         if TRAIN_LOCK.exists():
             print(f'[AUTOTRAIN] training already in progress ({TRAIN_LOCK.read_text().strip()}) — skipping this cycle')
@@ -177,10 +180,11 @@ class AutoTrainer:
         restart_script = os.path.join(tools_dir, 'autotrain_restart.sh')
         log_path = '/tmp/autotrain_restart.log'
         print(f'[AUTOTRAIN] handing off stop/train/restart to {restart_script} '
-              f'(detached — log at {log_path})')
+              f'(detached via systemd-run — log at {log_path})')
         subprocess.Popen(
-            ['bash', '-c', f'nohup {restart_script} > {log_path} 2>&1 &'],
-            start_new_session=True,  # new session/cgroup — survives aksumael being killed
+            ['systemd-run', '--user', '--scope', '--slice=background.slice',
+             'bash', restart_script],
+            stdout=open(log_path, 'w'), stderr=subprocess.STDOUT,
         )
         return True
 
