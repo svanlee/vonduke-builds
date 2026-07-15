@@ -8,6 +8,7 @@ import json
 import re
 import time
 
+import config
 from core.llm_router import route_llm_call, frame_to_b64
 
 
@@ -116,6 +117,12 @@ class InventoryReader:
 
     def _read_raw(self, force: bool = False) -> dict:
         """Return raw {item: {count, slot}} dict, refreshing cache if needed."""
+        if not config.INVENTORY_READER_ENABLED:
+            # See config.py's INVENTORY_READER_ENABLED comment — the local
+            # model's replies don't parse as inventory JSON right now, so
+            # every attempt was just burning up to ~60s per EXPLORE cycle
+            # for nothing. Skip opening the menu entirely until that's fixed.
+            return dict(self._cache)
         now = time.time()
         if not force and now - self._cache_ts < _CACHE_TTL_SEC:
             return dict(self._cache)

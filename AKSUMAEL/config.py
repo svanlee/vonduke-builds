@@ -18,6 +18,16 @@ LOCAL_LLM_TIMEOUT = 20      # seconds — vision calls on this model measure ~11
                             # 8s was cutting them off before a response ever came back
 LOCAL_LLM_ENABLED = True
 
+# Inventory reads ask the local vision model to return structured JSON, but
+# it's currently replying with unrelated object-detection-style output
+# ("[{'label': ...}]") that never parses — every attempt burns up to
+# max_tokens (1200) at ~30 tok/s before failing, which was adding 30-60s to
+# every EXPLORE cycle for a read that always comes back empty anyway. Off
+# until the underlying JSON-format issue is fixed — see behaviors/
+# inventory_reader.py's InventoryReader._read_raw(), which short-circuits to
+# an empty read while this is False.
+INVENTORY_READER_ENABLED = False
+
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.0-flash"   # current free-tier model
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
