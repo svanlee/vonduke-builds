@@ -9,6 +9,7 @@ import time
 import hashlib
 import threading
 import config
+from core.fsm import MINE_TARGETS, TREE_TARGETS
 
 # Minecraft-aware synonym groups for fuzzy trigger matching
 LABEL_SYNONYMS = {
@@ -322,8 +323,20 @@ class SkillSystem:
                 # with HUD labels or blocked false-positive labels.
                 # This catches stale junk files that survived earlier purges.
                 contaminated = (triggers & HUD_ALWAYS_VISIBLE) or (triggers & _BLOCKED_SKILL_TRIGGERS)
-                if contaminated:
-                    print(f'[SKILL] purging stale junk skill: {fn} (trigger={list(triggers)})')
+                # Also purge pre-existing no-click mine/tree skills mined
+                # before the 2026-07-15 fix to _mine_recent() — these were
+                # captured mid-"aiming" (before the FSM's MINE state ever
+                # reaches on-target and clicks) and can never break anything,
+                # but were winning find_candidates() and blocking the FSM's
+                # own MINE loop from getting a chance to actually click.
+                clickless_mine_skill = (
+                    bool(triggers & (MINE_TARGETS | TREE_TARGETS))
+                    and not any(step.get('action', {}).get('click')
+                                for step in data.get('steps', []))
+                )
+                if contaminated or clickless_mine_skill:
+                    reason = 'contaminated trigger' if contaminated else 'no click in any step'
+                    print(f'[SKILL] purging stale junk skill: {fn} (trigger={list(triggers)}, {reason})')
                     try:
                         os.remove(path)
                     except OSError as e:
@@ -389,6 +402,26 @@ class SkillSystem:
         # Don't create skills for YOLO false-positive labels (e.g. emerald_ore
         # outside mountain biomes) — they produce junk skills that loop forever.
         if set(trigger) & _BLOCKED_SKILL_TRIGGERS:
+            return None
+
+        # Don't mine a "chop/mine" skill with no click in it — see 2026-07-15.
+        # The FSM's MINE state assigns a high reward (~0.5-0.6) just for
+        # confidently *aiming* at a valid target, before it ever reaches
+        # on-target and starts clicking (see core/fsm.py's _do_mine — the
+        # 'aiming' phase has no ad['click'] at all). Since observe() mines a
+        # skill from the last SEQUENCE_LENGTH ticks the instant reward
+        # crosses MIN_REWARD_TO_MINE, a pure aim-in-progress window got
+        # captured and saved as a "successful" skill (confirmed: an existing
+        # leaves_tree_*.json had click:null on all 4 steps, yet
+        # success_count=17/failed_count=0) — one that only presses '2' and
+        # never clicks. It then kept winning find_candidates() and replaying
+        # instead of the FSM's own (already-fixed) MINE loop ever getting
+        # enough uninterrupted ticks to actually converge and click.
+        # A skill whose trigger requires an interaction to have any effect
+        # (mining/chopping) but contains zero clicks across every step can
+        # never accomplish anything — refuse to mine/reinforce it.
+        if (set(trigger) & (MINE_TARGETS | TREE_TARGETS)
+                and not any(step['action'].get('click') for step in window)):
             return None
 
         # Build timed steps — infer delay from actual tick timestamps
