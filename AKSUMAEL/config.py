@@ -14,6 +14,8 @@ VISION_PROVIDER = "local"
 
 LOCAL_LLM_URL     = "http://localhost:9337/v1"
 LOCAL_LLM_MODEL   = "auto"
+LOCAL_LLM_TIMEOUT = 20      # seconds — vision calls on this model measure ~11-15s;
+                            # 8s was cutting them off before a response ever came back
 LOCAL_LLM_ENABLED = True
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
