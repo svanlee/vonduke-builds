@@ -65,7 +65,7 @@ LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed
 # ── Scan / Identify / Pathfinder ──────────────────────────────
 LOOK_SCAN_STEP       = 80   # px per sweep position — wide arc, fast environmental scan
 LOOK_AIM_STEP        = 20   # px for fine threat zoom-in / targeting
-SCAN_COOLDOWN_TICKS  = 30   # min ticks between scan runs (~15s)
+SCAN_COOLDOWN_TICKS  = 8    # min ticks between scan runs (~4s)
 SCAN_MAX_THREATS     = 3    # max threats to zoom+identify per scan (keeps it fast)
 SCAN_LOG_DIR         = "data/scan_log"  # where identified threat frames are saved
 
