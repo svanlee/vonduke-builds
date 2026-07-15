@@ -7,9 +7,10 @@
 # aksumael can't `systemctl --user stop aksumael` from its own thread and
 # expect anything to run afterward — systemd kills the whole cgroup (every
 # thread in the process) the instant the stop lands. behaviors/auto_trainer.py
-# launches this script with start_new_session=True so it lands in its own
-# session/cgroup, survives that kill, and carries out the stop -> train ->
-# restart sequence on its own.
+# launches this script via `systemd-run --user --scope --slice=background.slice`
+# so it lands in its own transient scope/cgroup outside aksumael.service's,
+# survives that kill, and carries out the stop -> train -> restart sequence
+# on its own.
 
 set -uo pipefail
 
