@@ -355,6 +355,22 @@ def run():
     world_mem.chest_inv = getattr(world_mem, 'chest_inv', {})
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
+    def _read_f3_position_now():
+        """Blocking open/OCR/close F3 cycle — used by TREE-FALLBACK to check
+        whether walking actually moved the player (stuck-in-building check).
+        Returns (x, z), either of which may be None if OCR found nothing."""
+        nonlocal _f3_open
+        _f3_open = True
+        executor.execute({'key': 'f3'})
+        time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
+        f3_frame = pipeline.latest_raw_frame
+        f3_data  = read_f3(f3_frame) if f3_frame is not None else {'f3_active': False}
+        executor.execute({'key': 'f3'})
+        _f3_open = False
+        if f3_data['f3_active']:
+            world_mem.update_f3(f3_data)
+        return f3_data.get('x'), f3_data.get('z')
+
     try:
         while True:
             tick += 1
@@ -692,12 +708,38 @@ def run():
                 # or produce nothing usable — see 2026-07-15 "all LLM tiers
                 # failed" idle loop). Walk forward and pan the camera to
                 # scan for trees instead of freezing.
+                #
+                # Walking straight ahead is useless if AKSUMAEL is stuck
+                # inside a village building — see 2026-07-15 incident where
+                # it wedged itself in a house and kept walking into the same
+                # wall. Check F3 position before/after each walk attempt; if
+                # it hasn't moved, rotate 90° and try again before falling
+                # back to a jump (steps over a 1-block-high lip/slab).
                 if (_goal_cat == 'tree' and not candidates
                         and not replayer.is_active()
                         and (tick - _last_tree_fallback_tick) >= config.SCAN_COOLDOWN_TICKS):
                     print('[TREE-FALLBACK] no tree skills/candidates — '
-                          'walking forward + panning camera to scan for trees')
-                    executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
+                          'walking forward (rotating if stuck) to scan for trees')
+                    _fb_px, _fb_pz = world_mem.pos_x, world_mem.pos_z
+                    _fb_unstuck = False
+                    for _fb_attempt in range(3):
+                        if _fb_attempt > 0:
+                            executor.execute({'look': {'dx': 90, 'dy': 0}, 'source': 'tree_fallback'})
+                        executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
+                        _new_px, _new_pz = _read_f3_position_now()
+                        if (_new_px is not None and _fb_px is not None
+                                and ((_new_px - _fb_px) ** 2 + (_new_pz - _fb_pz) ** 2) ** 0.5 > 0.5):
+                            print(f'[TREE-FALLBACK] position changed — unstuck '
+                                  f'after {_fb_attempt + 1} attempt(s)')
+                            _fb_unstuck = True
+                            break
+                        print(f'[TREE-FALLBACK] stuck (position unchanged) '
+                              f'after attempt {_fb_attempt + 1}')
+                        _fb_px, _fb_pz = _new_px, _new_pz
+                    if not _fb_unstuck:
+                        print('[TREE-FALLBACK] still stuck — jumping + forward')
+                        executor.execute({'key': 'space', 'delay_ms': 300, 'source': 'tree_fallback'})
+                        executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
