@@ -740,6 +740,23 @@ def run():
                         print('[TREE-FALLBACK] still stuck — jumping + forward')
                         executor.execute({'key': 'space', 'delay_ms': 300, 'source': 'tree_fallback'})
                         executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
+                        _new_px, _new_pz = _read_f3_position_now()
+                        if (_new_px is not None and _fb_px is not None
+                                and ((_new_px - _fb_px) ** 2 + (_new_pz - _fb_pz) ** 2) ** 0.5 > 0.5):
+                            print('[TREE-FALLBACK] jump + forward unstuck it')
+                        else:
+                            # Jump+forward didn't clear it either — likely wedged
+                            # against a wall/door inside a building (see
+                            # 2026-07-15 incident, stuck at a fixed position with
+                            # W/rotate/jump all failing). Dig straight through
+                            # whatever's blocking by holding left-click (break)
+                            # at the crosshair, then try walking again.
+                            print('[TREE-FALLBACK] still stuck after jump — '
+                                  'digging out (holding left-click ~1.5s to '
+                                  'break block ahead)')
+                            executor.execute({'click': [50.0, 50.0], 'button': 'left',
+                                              'delay_ms': 1500, 'source': 'tree_fallback'})
+                            executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
