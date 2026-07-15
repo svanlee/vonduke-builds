@@ -388,6 +388,20 @@ def run():
         executor.execute({'key': 'f3'})   # close
         return f3_data
 
+    def _f3_says_moved(old_x, old_z, new_x, new_z) -> bool:
+        """True unless we have two successful, agreeing F3 reads proving the
+        character DIDN'T move. A None on either side means OCR failed —
+        treat that as "unknown, assume moved" rather than stuck, since
+        None == None is not a valid comparison and was making
+        TREE-FALLBACK report "stuck" on every single attempt whenever F3
+        OCR was broken (see 2026-07-15 — position never actually confirmed
+        either way, but the fallback kept declaring itself stuck and
+        escalating to jump/dig-out regardless of real movement). Only a
+        confirmed pair of matching reads should hold the walk back."""
+        if old_x is None or old_z is None or new_x is None or new_z is None:
+            return True
+        return ((new_x - old_x) ** 2 + (new_z - old_z) ** 2) ** 0.5 > 0.5
+
     def _read_f3_position_now():
         """Blocking open/OCR/close F3 cycle — used by TREE-FALLBACK to check
         whether walking actually moved the player (stuck-in-building check).
@@ -764,10 +778,10 @@ def run():
                             executor.execute({'look': {'dx': 90, 'dy': 0}, 'source': 'tree_fallback'})
                         executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
                         _new_px, _new_pz = _read_f3_position_now()
-                        if (_new_px is not None and _fb_px is not None
-                                and ((_new_px - _fb_px) ** 2 + (_new_pz - _fb_pz) ** 2) ** 0.5 > 0.5):
-                            print(f'[TREE-FALLBACK] position changed — unstuck '
-                                  f'after {_fb_attempt + 1} attempt(s)')
+                        if _f3_says_moved(_fb_px, _fb_pz, _new_px, _new_pz):
+                            print(f'[TREE-FALLBACK] position changed (or F3 read '
+                                  f'unavailable — assuming moved) after '
+                                  f'{_fb_attempt + 1} attempt(s)')
                             _fb_unstuck = True
                             break
                         print(f'[TREE-FALLBACK] stuck (position unchanged) '
@@ -778,9 +792,9 @@ def run():
                         executor.execute({'key': 'space', 'delay_ms': 300, 'source': 'tree_fallback'})
                         executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
                         _new_px, _new_pz = _read_f3_position_now()
-                        if (_new_px is not None and _fb_px is not None
-                                and ((_new_px - _fb_px) ** 2 + (_new_pz - _fb_pz) ** 2) ** 0.5 > 0.5):
-                            print('[TREE-FALLBACK] jump + forward unstuck it')
+                        if _f3_says_moved(_fb_px, _fb_pz, _new_px, _new_pz):
+                            print('[TREE-FALLBACK] jump + forward unstuck it '
+                                  '(or F3 read unavailable — assuming moved)')
                         else:
                             # Jump+forward didn't clear it either — likely wedged
                             # against a wall/door inside a building (see
