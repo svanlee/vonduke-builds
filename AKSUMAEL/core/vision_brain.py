@@ -92,6 +92,17 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
+        result = None
+
+    # The local model sometimes hallucinates a generic object-detection-style
+    # JSON array (e.g. "[{'label': 'arrow', 'bbox': [...]}]") instead of the
+    # requested action object — valid JSON, so json.loads() doesn't raise,
+    # but every caller of ask_vision() calls .get() on the result expecting
+    # a dict. That crashed the whole process (see 2026-07-15 —
+    # AttributeError: 'list' object has no attribute 'get' at
+    # runtime.py's `if action_dict.get('goal')`). Treat anything that isn't
+    # a dict the same as a parse failure.
+    if not isinstance(result, dict):
         result = {"observation": raw[:200], "action": "wait",
                   "key": None, "click": None, "confidence": 0.0}
 

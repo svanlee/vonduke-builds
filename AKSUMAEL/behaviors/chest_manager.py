@@ -145,6 +145,15 @@ class ChestManager:
             print(f'[CHEST] error parsing response: {e}')
             return {}, False
 
+        # The local model sometimes hallucinates a JSON array instead of the
+        # requested object — valid JSON, so it parses fine, but .get() below
+        # would crash the whole process (see core/vision_brain.py's
+        # 2026-07-15 fix for the same pattern in the main gameplay call).
+        if not isinstance(items, dict):
+            print(f'[CHEST] response parsed but was not a JSON object '
+                  f'({type(items).__name__})')
+            return {}, False
+
         if items.get('chest_closed'):
             print('[CHEST] LLM says chest was not open')
             return {}, False

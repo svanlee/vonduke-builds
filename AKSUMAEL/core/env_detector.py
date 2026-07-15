@@ -61,8 +61,15 @@ def _grab_frame(device_index: int | None = None, timeout: float = _GRAB_TIMEOUT_
 
 
 def _parse_llm_json(raw: str) -> dict | None:
+    # The local model sometimes hallucinates a JSON array instead of the
+    # requested object — valid JSON, so json.loads() doesn't raise, but
+    # every caller here calls .get() on the result expecting a dict (see
+    # core/vision_brain.py's 2026-07-15 fix for the same pattern in the
+    # main gameplay call, which did crash the process). Only ever return
+    # a dict or None.
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
     except (json.JSONDecodeError, TypeError):
         pass
     # Best-effort: pull the first {...} block out of a chatty response
@@ -71,7 +78,8 @@ def _parse_llm_json(raw: str) -> dict | None:
     if not match:
         return None
     try:
-        return json.loads(match.group(0))
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
     except json.JSONDecodeError:
         return None
 
