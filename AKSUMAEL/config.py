@@ -234,7 +234,15 @@ GAME_AUDIO_INDEX = 4
 
 # ── YOLO / Labeling ───────────────────────────────────────────
 YOLO_MODEL          = "data/models/aksumael_mc.pt"
-YOLO_CONF_THRESHOLD = 0.25
+# Also passed as conf= directly to the model call (vision/yolo.py) — that's
+# what actually controls which boxes Ultralytics returns at all; it's not
+# just a post-hoc filter here. Lowered from 0.25 — trees were clearly visible
+# in a captured frame but never appeared in detections at all, meaning real
+# confidence on this capture setup (compressed HDMI-capture frames, motion,
+# distance) was falling below the old threshold entirely. Note this also
+# means the below-threshold 'unknown' labeling queue in vision/yolo.py will
+# rarely trigger anymore, since nothing below this value reaches it either.
+YOLO_CONF_THRESHOLD = 0.15
 YOLO_LABEL_DB       = "data/yolo_labels.json"
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
