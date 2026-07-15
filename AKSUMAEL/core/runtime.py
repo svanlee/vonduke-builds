@@ -822,7 +822,17 @@ def run():
                     executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': -40 + _fb_turn, 'dy': 0}, 'source': 'tree_fallback'})
                     _last_tree_fallback_tick = tick
-                    _tree_walk_tick_count = 0
+                    # _tree_walk_tick_count deliberately NOT reset here —
+                    # SCAN_COOLDOWN_TICKS=8 means this burst consumes 1 tick
+                    # of every 8-tick cycle, leaving only 7 TREE-WALK ticks
+                    # per cycle. Resetting the counter on every burst would
+                    # cap it at 7 and the every-8-ticks turn below could
+                    # never fire (see 2026-07-15 — confirmed live: 0 turns
+                    # fired over 3 full cycles with a reset-on-burst version
+                    # of this). Letting it carry over across bursts means
+                    # the turn still lands roughly every 8 walking ticks, it
+                    # just spans cycle boundaries instead of restarting
+                    # inside each one.
                     action_dict = {'observation': 'tree-fallback burst (walk/rotate/jump/dig)',
                                     'action': 'w', 'key': 'w', 'click': None,
                                     'gamepad': None, 'confidence': 0.0}
