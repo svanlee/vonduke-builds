@@ -236,13 +236,20 @@ GAME_AUDIO_INDEX = 4
 YOLO_MODEL          = "data/models/aksumael_mc.pt"
 # Also passed as conf= directly to the model call (vision/yolo.py) — that's
 # what actually controls which boxes Ultralytics returns at all; it's not
-# just a post-hoc filter here. Lowered from 0.25 — trees were clearly visible
-# in a captured frame but never appeared in detections at all, meaning real
-# confidence on this capture setup (compressed HDMI-capture frames, motion,
-# distance) was falling below the old threshold entirely. Note this also
-# means the below-threshold 'unknown' labeling queue in vision/yolo.py will
-# rarely trigger anymore, since nothing below this value reaches it either.
-YOLO_CONF_THRESHOLD = 0.15
+# just a post-hoc filter here (confirmed still wired up as of 2026-07-15).
+# Lowered 0.25 -> 0.15 -> 0.10. NOTE: this does NOT fix tree detection —
+# direct testing (both current and pre-retrain-backup weights, several
+# tree-filled frames, down to conf=0.001) found zero log/leaves detections
+# at any confidence: the training set has zero labeled examples of either
+# class (0/4227 label files), so there's no learned signal to threshold
+# into view regardless of this value. Left low anyway since it may still
+# help borderline detections on classes that *are* trained (ore, mobs,
+# HUD). Tree detection is instead covered by the color-based fallback in
+# vision/color_detector.py ('log'/'leaves'/'birch_log' entries) until the
+# model gets real tree training data. Also means the below-threshold
+# 'unknown' labeling queue in vision/yolo.py will rarely trigger, since
+# nothing under this value reaches it either.
+YOLO_CONF_THRESHOLD = 0.10
 YOLO_LABEL_DB       = "data/yolo_labels.json"
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
