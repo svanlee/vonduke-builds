@@ -88,7 +88,8 @@ class Skill:
     def __init__(self, name, trigger_objects=None, steps=None,
                  avg_reward=0.0, uses=0, created=None,
                  preconditions=None, postconditions=None,
-                 success_count=0, failed_count=0, blacklisted=False):
+                 success_count=0, failed_count=0, blacklisted=False,
+                 universal=False):
         self.name            = name
         self.trigger_objects = trigger_objects or []
         self.steps           = steps or []          # list of SkillStep
@@ -104,6 +105,12 @@ class Skill:
         self.success_count   = success_count
         self.failed_count    = failed_count
         self.blacklisted     = blacklisted
+        # Cross-environment skill transfer (see core/skill_transfer.py):
+        # universal skills (navigate_menu, click_button, read_text,
+        # type_text, scroll) stay loaded regardless of which env_profile
+        # is active; everything else is env-specific and gets filtered by
+        # trigger_objects overlap with the active profile's yolo_classes.
+        self.universal       = universal
 
     @property
     def actions(self):
@@ -124,6 +131,7 @@ class Skill:
             'success_count':   self.success_count,
             'failed_count':    self.failed_count,
             'blacklisted':     self.blacklisted,
+            'universal':       self.universal,
         }
 
     @classmethod
@@ -148,6 +156,7 @@ class Skill:
             success_count=d.get('success_count', 0),
             failed_count=d.get('failed_count', 0),
             blacklisted=d.get('blacklisted', False),
+            universal=d.get('universal', False),
         )
         s.last_used = d.get('last_used')
         return s
@@ -284,7 +293,17 @@ class SkillSystem:
         self.dir      = config.SKILLS_DIR
         self._buffer  = []
         self._buffer_max = 60
+        # Session-only, never persisted: when set (via set_active_filter,
+        # see core/skill_transfer.py), find_best()/find_candidates() only
+        # consider skills whose name is in this set — lets an env_profile
+        # narrow the library to universal + env-relevant skills without
+        # touching any skill's on-disk blacklisted/universal flags. None
+        # (the default) means "no filtering", i.e. exactly the old behavior.
+        self._active_names = None
         self._load_all()
+
+    def set_active_filter(self, names: set | None) -> None:
+        self._active_names = names
 
     # ── Persistence ────────────────────────────────────────────
     def _load_all(self):
@@ -412,12 +431,15 @@ class SkillSystem:
         return sk
 
     # ── Matching ──────────────────────────────────────────────
+    def _is_active(self, sk) -> bool:
+        return self._active_names is None or sk.name in self._active_names
+
     def find_best(self, current_objects: list):
         """Return (Skill, match_score) or (None, 0.0)."""
         best_sk    = None
         best_value = 0.0
         for sk in self.skills.values():
-            if sk.blacklisted:
+            if sk.blacklisted or not self._is_active(sk):
                 continue
             match = sk.matches(current_objects)
             if match < self.MIN_MATCH_SCORE:
@@ -429,10 +451,10 @@ class SkillSystem:
         return best_sk if best_sk else (None, 0.0)
 
     def find_candidates(self, current_objects: list) -> list:
-        """Return all non-blacklisted skills matching >= MIN_MATCH_SCORE, as
-        (Skill, match_score) pairs."""
+        """Return all non-blacklisted, active skills matching >=
+        MIN_MATCH_SCORE, as (Skill, match_score) pairs."""
         return [(sk, match) for sk in self.skills.values()
-                if not sk.blacklisted
+                if not sk.blacklisted and self._is_active(sk)
                 and (match := sk.matches(current_objects)) >= self.MIN_MATCH_SCORE]
 
     def mark_used(self, skill: Skill):

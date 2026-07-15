@@ -33,6 +33,22 @@ CLAUDE_VISION_MODEL = "claude-haiku-4-5-20251001"             # main gameplay de
 ACTIVE_ENV     = "minecraft"
 AVAILABLE_ENVS = ["minecraft", "fallout76", "driving", "robocar"]
 
+# ── Environment Profile (game/OS-agnostic bootstrap) ─────────────
+# Opt-in: when True, core/runtime.py calls core/env_detector.py at startup
+# to capture a frame, ask mesh-llm what environment it's looking at, and
+# load/create the matching core/env_profile.py profile for the session —
+# its yolo_model_path overrides YOLO_MODEL below and its yolo_classes drive
+# core/skill_transfer.py's active-skill filter. False (default) skips all
+# of that and behaves exactly as before this existed: YOLO_MODEL as set
+# below, SkillSystem unfiltered.
+ENV_PROFILE_ENABLED = False
+
+# Requires ENV_PROFILE_ENABLED. Feeds YOLO's below-threshold detections
+# into core/label_queue.py for autonomous mesh-llm labeling + retraining,
+# scoped to the active env_profile's env_id.
+LABEL_QUEUE_ENABLED       = False
+LABEL_QUEUE_EVERY_N_TICKS = 20    # how often to run a labeling pass (LLM round-trips — off the hot path)
+
 
 # ── Agent Loop ────────────────────────────────────────────────
 LOOP_INTERVAL_SEC  = 0.25  # seconds between ticks — faster loop for responsive mining

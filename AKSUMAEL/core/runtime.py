@@ -128,6 +128,21 @@ def run():
           f'survey   : on (conf<{config.SURVEY_CONF_THRESH})')
     print()
 
+    # ── Environment detection (opt-in — see config.ENV_PROFILE_ENABLED) ──
+    # Runs before YOLODetector so a matched/created profile's
+    # yolo_model_path (if any) can override config.YOLO_MODEL before it's
+    # read at construction time. env_profile_obj stays None when disabled,
+    # which is the only state every check below treats as "behave exactly
+    # as before this existed".
+    env_profile_obj = None
+    if getattr(config, 'ENV_PROFILE_ENABLED', False):
+        from core import env_detector
+        env_profile_obj = env_detector.detect(fallback_env_id=config.ACTIVE_ENV)
+        config.YOLO_MODEL = env_profile_obj.effective_yolo_model(config.YOLO_MODEL)
+        print(f'[ENV_PROFILE] active: {env_profile_obj.env_id} '
+              f'(bootstrap={env_profile_obj.bootstrap}, '
+              f'yolo_model={config.YOLO_MODEL})')
+
     # ── Initialise all subsystems ──────────────────────────────
     yolo      = YOLODetector()
     world     = WorldModel()
@@ -149,6 +164,18 @@ def run():
     curriculum  = CurriculumGenerator(planner)
     rl        = RLPolicy()
     replayer  = SkillReplayer(executor)
+
+    # Cross-environment skill filter + adaptive self-labeling (opt-in — see
+    # env_profile_obj above). Both no-op when env_profile_obj is None.
+    label_queue_obj = None
+    if env_profile_obj is not None:
+        from core import skill_transfer
+        _active_skills = skill_transfer.apply_profile(skills, env_profile_obj)
+        print(f'[ENV_PROFILE] skill filter: '
+              f'{"unfiltered (no yolo_classes yet)" if _active_skills is None else f"{len(_active_skills)} active skill(s)"}')
+        if getattr(config, 'LABEL_QUEUE_ENABLED', False):
+            from core.label_queue import LabelQueue
+            label_queue_obj = LabelQueue()
 
     # Neural policy backbone (opt-in) — low-level learned action policy
     # that blends with the skill/FSM/LLM decision (core/policy_blender.py)
@@ -345,6 +372,14 @@ def run():
                     for d in _new:
                         print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
                 objects = merge_with_yolo(objects, _color_dets)
+
+            # ── Adaptive self-labeling queue (opt-in — see config.LABEL_QUEUE_ENABLED) ──
+            if label_queue_obj is not None:
+                label_queue_obj.maybe_queue(frame, objects, env_profile_obj.env_id)
+                if tick % config.LABEL_QUEUE_EVERY_N_TICKS == 0:
+                    label_queue_obj.label_pending(env_profile_obj.env_id)
+                    if label_queue_obj.should_retrain(env_profile_obj.env_id):
+                        label_queue_obj.trigger_retrain(env_profile_obj.env_id)
 
             # ── HUD / menu state ────────────────────────────────
             # Used to gate anything that would corrupt an open menu screen
