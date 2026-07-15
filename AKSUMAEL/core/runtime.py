@@ -7,6 +7,7 @@ import os
 import pathlib
 import random
 import re
+import signal
 import time
 import cv2
 import config
@@ -155,6 +156,20 @@ def run():
     cognitive   = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
+
+    # systemd sends SIGTERM on every `systemctl --user stop aksumael`
+    # (autotrain retraining cycles do this routinely). Python's default
+    # SIGTERM disposition kills the process immediately without running
+    # any except/finally cleanup — unlike SIGINT, which Python auto-
+    # converts to KeyboardInterrupt. If a SIGTERM lands mid F3-toggle
+    # (see the F3 debug overlay OCR block below), the closing keypress
+    # never fires and Minecraft's F3 overlay is left open indefinitely,
+    # since _f3_open is in-memory only and the next process has no idea
+    # it happened. Route SIGTERM through the same KeyboardInterrupt path
+    # so the existing finally-block cleanup (and the F3 force-close
+    # added there) actually runs.
+    signal.signal(signal.SIGTERM, lambda signum, frame: (_ for _ in ()).throw(KeyboardInterrupt))
+
     router    = ControllerRouter()
     tts       = TTSEngine()
     ear       = GameEar()          # graceful if no audio device
@@ -1356,6 +1371,12 @@ def run():
               f'avg_reward:{reward.average():.3f}  '
               f'skills:{len(skills.skills)}  '
               f'session:{world.session_num}')
+        if _f3_open:
+            # Shutting down mid F3-toggle (open sent, close not yet sent) —
+            # force the close now so the overlay doesn't stay stuck open
+            # in-game across the restart. See SIGTERM handler above.
+            print('[F3] was left open at shutdown — force-closing')
+            executor.execute({'key': 'f3'})
         replayer.stop()
         if rl_trainer is not None:
             rl_trainer.stop()
