@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import time
 import cv2
 import config
@@ -211,7 +212,7 @@ def run():
     from behaviors.chest_manager import ChestManager
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
-    from core.fsm import GameFSM, State, ORE_TARGETS
+    from core.fsm import GameFSM, State, ORE_TARGETS, TREE_TARGETS
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
     respawner = RespawnBehavior(executor, goals)
@@ -241,6 +242,16 @@ def run():
     skill_cooldown_name       = None   # skill name currently suppressed
     skill_cooldown_until_tick = 0      # tick at which suppression lifts
     SKILL_COOLDOWN_TICKS      = 30     # how long a spammed skill stays suppressed
+    # Skill-replay escape: a skill that keeps matching but scores near-zero
+    # confidence (avg_reward ~0) isn't accomplishing anything — track
+    # consecutive low-confidence fires of the SAME skill so we can give up
+    # on it and force a real LLM re-plan instead of looping forever.
+    low_conf_skill_name    = None
+    low_conf_skill_streak  = 0
+    LOW_CONF_SKILL_THRESH  = 0.1   # confidence at/below this counts as "not working"
+    LOW_CONF_SKILL_TICKS   = 4     # consecutive low-confidence fires before giving up
+    force_llm_reconsider   = False # set when a stuck/mismatched skill is aborted —
+                                    # bypasses FSM control + LLM cadence gating this tick
     last_action      = {}    # most recent Claude (LLM) response dict
     prev_objects     = []    # last tick's YOLO detections (for HUD-delta reward)
     _pending_neural_transition = None   # (obs, goal, action_idx, log_prob, value) awaiting this tick's reward
@@ -480,7 +491,24 @@ def run():
             else:
                 _hunger_frac = 1.0   # assume full when not visible
 
-            fsm_state, fsm_action = fsm.tick(objects, world_mem, _hunger_frac)
+            # Goal-aware FSM gating: the FSM has no notion of the active
+            # goal and always prefers ore over trees (see core/fsm.py
+            # priority order) — that's what let AKSUMAEL keep mining ore
+            # underground while its goal was find_and_chop_tree. When the
+            # goal wants a tree and none is in view this tick, hide ore
+            # detections from the FSM so it falls through to EXPLORE
+            # (walk + scan) instead of committing to an ore target.
+            _fsm_objects = objects
+            if _goal_category(goals.current_goal()) == 'tree':
+                _tree_in_view = any(
+                    o.get('label', '').lower() in TREE_TARGETS for o in objects)
+                if not _tree_in_view:
+                    _fsm_objects = [
+                        o for o in objects
+                        if o.get('label', '').lower() not in ORE_TARGETS
+                    ]
+
+            fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac)
 
             # Mining/chopping is driven per-tick by the FSM (continuous aim
             # correction) so the LLM doesn't need to think as often there —
@@ -591,6 +619,22 @@ def run():
                         print(f'[SKILL] goal={_cur_goal}: suppressed '
                               f'{_pre - len(candidates)} mining skill(s)')
 
+                # ── Goal-skill mismatch gating ────────────────────
+                # Drop any candidate whose target category is clearly
+                # unrelated to the active goal (e.g. an ore-mining skill
+                # while the goal is find_and_chop_tree) — see
+                # _goal_skill_mismatch for why this matters.
+                _goal_cat = _goal_category(_cur_goal)
+                if _goal_cat and candidates:
+                    _pre_gc = len(candidates)
+                    candidates = [
+                        (sk, m) for sk, m in candidates
+                        if not _goal_skill_mismatch(_cur_goal, sk)
+                    ]
+                    if len(candidates) < _pre_gc:
+                        print(f'[SKILL] goal={_cur_goal} (cat={_goal_cat}): dropped '
+                              f'{_pre_gc - len(candidates)} unrelated skill(s)')
+
                 # ── Precondition gating (Voyager-style verification) ──
                 # Skills without preconditions always pass (old skills keep
                 # working unchanged). Uses the cached inventory read — never
@@ -617,8 +661,45 @@ def run():
                 elif not _crafting_goal:
                     # No candidates after goal filter — fall through to FSM/LLM
                     skill, match = skills.find_best(objects)
+                    if skill and _goal_skill_mismatch(_cur_goal, skill):
+                        print(f'[SKILL] goal={_cur_goal}: {skill.name} is unrelated '
+                              f'to this goal — skipping, asking LLM to reconsider')
+                        skill, match = None, 0.0
+                        force_llm_reconsider = True
                 else:
                     skill, match = None, 0.0
+
+                # ── Skill-replay escape ───────────────────────────
+                # A skill that keeps matching but scores near-zero
+                # confidence (avg_reward ~0) isn't accomplishing anything —
+                # blindly replaying it in a loop is what left AKSUMAEL
+                # underground repeating a gold_ore skill forever. Track
+                # consecutive low-confidence fires of the SAME skill and
+                # give up on it after LOW_CONF_SKILL_TICKS, forcing a real
+                # LLM re-plan instead of repeating it again.
+                if skill:
+                    _fire_conf = min(0.95, skill.avg_reward)
+                    if skill.name == low_conf_skill_name and _fire_conf <= LOW_CONF_SKILL_THRESH:
+                        low_conf_skill_streak += 1
+                    elif _fire_conf <= LOW_CONF_SKILL_THRESH:
+                        low_conf_skill_name   = skill.name
+                        low_conf_skill_streak = 1
+                    else:
+                        low_conf_skill_name   = None
+                        low_conf_skill_streak = 0
+
+                    if low_conf_skill_streak >= LOW_CONF_SKILL_TICKS:
+                        print(f'[SKILL] {skill.name} stuck at <= {LOW_CONF_SKILL_THRESH} confidence '
+                              f'for {low_conf_skill_streak} ticks — aborting replay, '
+                              f'asking LLM to reconsider')
+                        skill_cooldown_name       = skill.name
+                        skill_cooldown_until_tick = tick + SKILL_COOLDOWN_TICKS
+                        skill, match          = None, 0.0
+                        low_conf_skill_name   = None
+                        low_conf_skill_streak = 0
+                        last_skill_name       = None
+                        same_skill_count      = 0
+                        force_llm_reconsider  = True
 
                 # A skill already serving a cooldown stays suppressed until
                 # skill_cooldown_until_tick, regardless of last_skill_name —
@@ -729,8 +810,11 @@ def run():
 
                 # Neural policy override — only reached when no skill fired
                 # and the blender (called above) decided the net was
-                # confident enough to act on its own this tick.
-                elif _neural_action_dict is not None:
+                # confident enough to act on its own this tick. Skipped when
+                # a skill/goal mismatch just forced an LLM reconsideration —
+                # that needs an actual fresh decision, not a low-level
+                # policy override.
+                elif not force_llm_reconsider and _neural_action_dict is not None:
                     action_dict = _neural_action_dict
                     src_tag = _neural_src_tag
 
@@ -743,17 +827,24 @@ def run():
                 # LLM as an occasional strategic check-in. In pure EXPLORE or
                 # EAT we fall through to the LLM every LLM_EVERY_N_TICKS so it
                 # can direct higher-level decisions.
-                elif fsm_state not in (State.EXPLORE, State.EAT) and (
+                elif not force_llm_reconsider and fsm_state not in (State.EXPLORE, State.EAT) and (
                         fsm_state != State.MINE or tick % _llm_interval != 0):
                     action_dict = fsm_action
                     src_tag = f'FSM:{fsm_state.value}'
 
                 # Fall back to LLM — EXPLORE/EAT every LLM_EVERY_N_TICKS, or
-                # MINE every LLM_EVERY_N_TICKS_MINE (see _llm_interval above)
-                elif tick % _llm_interval == 0:
+                # MINE every LLM_EVERY_N_TICKS_MINE (see _llm_interval above).
+                # force_llm_reconsider (skill-replay escape) bypasses both the
+                # cadence gate and the frame-diff skip below — a skill/goal
+                # mismatch was just aborted and needs an actual fresh decision,
+                # not the cached last_action reused verbatim.
+                elif force_llm_reconsider or tick % _llm_interval == 0:
+                    _reconsider = force_llm_reconsider
+                    force_llm_reconsider = False   # consume the one-shot flag
                     # Frame-diff gate: skip call if scene hasn't changed enough
                     _scene_changed = True
-                    if (_last_llm_frame is not None and frame is not None
+                    if (not _reconsider and _last_llm_frame is not None
+                            and frame is not None
                             and frame.shape == _last_llm_frame.shape):
                         _diff = cv2.absdiff(frame, _last_llm_frame)
                         if _diff.mean() < 8.0:
@@ -770,6 +861,13 @@ def run():
                                    + inventory.context_summary() + '\n'
                                    + goals.context_summary() + '\n'
                                    + world.recent_summary(n=3))
+
+                        if _reconsider:
+                            history += (
+                                '\nIMPORTANT: a learned skill was just aborted because it '
+                                'was stuck at ~0 confidence or unrelated to the current goal '
+                                '— whatever was just being repeated is not working. '
+                                'Reconsider your approach from scratch for the current goal.')
 
                         # Inner monologue (last real thought) — cheap, no
                         # extra API call here, just replays the last LLM
@@ -1262,6 +1360,81 @@ _MINE_SKILL_MARKERS = (
 def _is_mining_skill(name: str) -> bool:
     """True if a learned skill name looks like it mines/chops a block."""
     return bool(name) and any(marker in name for marker in _MINE_SKILL_MARKERS)
+
+
+# ── Goal-skill mismatch detection (skill-replay escape) ─────────────────
+# Coarse keyword categories so a skill whose trigger objects are clearly
+# unrelated to the active goal (e.g. a gold_ore mining skill firing while
+# the goal is find_and_chop_tree) never fires — matching skills purely on
+# YOLO objects with no goal awareness is what let AKSUMAEL replay ore
+# skills indefinitely underground while its goal needed a tree found on
+# the surface. Intentionally keyword-based rather than importing
+# core.fsm's label sets — this only needs to catch that class of mismatch,
+# not do full label classification.
+_GOAL_CATEGORY_KEYWORDS = {
+    'tree': ('tree', 'chop', 'wood', 'log'),
+    'ore':  ('ore', 'mine', 'diamond', 'coal', 'iron', 'gold',
+             'redstone', 'lapis', 'copper', 'emerald', 'stone'),
+}
+
+_SKILL_CATEGORY_KEYWORDS = {
+    'tree': ('tree', 'log', 'wood', 'oak', 'spruce', 'birch', 'jungle',
+             'acacia', 'sapling'),
+    'ore':  ('ore', 'diamond', 'coal', 'iron', 'gold', 'redstone',
+             'lapis', 'copper', 'emerald', 'debris', 'cobblestone',
+             'gravel'),
+}
+
+
+def _tokens(text: str) -> list:
+    """Split on non-alphanumeric boundaries, e.g. 'find_and_chop_tree' ->
+    ['find', 'and', 'chop', 'tree']. Used instead of raw substring matching
+    so e.g. the goal "explore" doesn't spuriously match the "ore" keyword
+    (it contains "ore" as a literal substring: expl-ORE)."""
+    return [t for t in re.split(r'[^a-z0-9]+', (text or '').lower()) if t]
+
+
+def _keyword_hits(tokens: list, keywords: tuple) -> bool:
+    """True if any token equals a keyword, or is a plural/suffixed form of
+    one (token startswith keyword, e.g. token 'diamonds' vs keyword
+    'diamond'). Never matches on a keyword being a mere substring of an
+    unrelated token (that's the "explore" vs "ore" trap)."""
+    return any(tok == kw or tok.startswith(kw) for tok in tokens for kw in keywords)
+
+
+def _goal_category(goal: str) -> str | None:
+    """Coarse category ('tree' | 'ore' | None) for a goal string, based on
+    whole-token keyword match. None means "no strong opinion" — never
+    treated as a mismatch against any skill."""
+    tokens = _tokens(goal)
+    for cat, keywords in _GOAL_CATEGORY_KEYWORDS.items():
+        if _keyword_hits(tokens, keywords):
+            return cat
+    return None
+
+
+def _skill_category(skill) -> str | None:
+    """Coarse category ('tree' | 'ore' | None) for a skill, based on its
+    trigger objects and name."""
+    tokens = []
+    for label in list(skill.trigger_objects) + [skill.name]:
+        tokens.extend(_tokens(label))
+    for cat, keywords in _SKILL_CATEGORY_KEYWORDS.items():
+        if _keyword_hits(tokens, keywords):
+            return cat
+    return None
+
+
+def _goal_skill_mismatch(goal: str, skill) -> bool:
+    """True if `skill` targets something clearly unrelated to `goal` — e.g.
+    a gold_ore mining skill while the goal is find_and_chop_tree. Only
+    fires when BOTH categories are known and they disagree; ambiguous
+    goals/skills are never blocked."""
+    if skill is None:
+        return False
+    gc = _goal_category(goal)
+    sc = _skill_category(skill)
+    return gc is not None and sc is not None and gc != sc
 
 
 def _hud_reward(objects: list, prev_objects: list) -> float:
