@@ -69,7 +69,14 @@ class YOLODetector:
         if self.model is None or frame is None:
             return []
         try:
-            results = self.model(frame, verbose=False)[0]
+            # conf= must be passed here — without it, Ultralytics applies
+            # its own internal default (0.25) to decide which boxes even
+            # reach results.boxes, before config.YOLO_CONF_THRESHOLD below
+            # ever sees them. Tuning YOLO_CONF_THRESHOLD alone (as a filter
+            # applied after this call) does nothing for anything Ultralytics
+            # already dropped — see 2026-07-15, trees clearly visible in a
+            # captured frame but never appearing in detections at all.
+            results = self.model(frame, verbose=False, conf=config.YOLO_CONF_THRESHOLD)[0]
             out = []
             for b in results.boxes:
                 conf  = round(float(b.conf), 2)

@@ -772,6 +772,17 @@ def run():
                         and (tick - _last_tree_fallback_tick) >= config.SCAN_COOLDOWN_TICKS):
                     print('[TREE-FALLBACK] no tree skills/candidates — '
                           'walking forward (rotating if stuck) to scan for trees')
+                    # Click screen center to grab Minecraft's window focus
+                    # before sending any movement keys — mouse-look worked
+                    # throughout the 2026-07-15 "not moving" incident (scan
+                    # sweeps visibly rotated the camera) while W never moved
+                    # the character at all, which points at the game window
+                    # having lost keyboard focus specifically. A left-click
+                    # on the game view re-focuses it; if something happens
+                    # to be at the crosshair it's just a normal attack tap,
+                    # same as any other left-click in this codebase.
+                    executor.execute({'click': [50.0, 50.0], 'button': 'left', 'source': 'focus_click'})
+                    time.sleep(0.2)
                     _fb_px, _fb_pz = world_mem.pos_x, world_mem.pos_z
                     _fb_unstuck = False
                     for _fb_attempt in range(3):
@@ -850,6 +861,10 @@ def run():
                     # otherwise claimed by a scan/fallback burst or a tree
                     # already in view, so it's actually covering ground
                     # while waiting for the next scan.
+                    # Re-focus the game window before W — see the matching
+                    # comment above in TREE-FALLBACK for why (2026-07-15).
+                    executor.execute({'click': [50.0, 50.0], 'button': 'left', 'source': 'focus_click'})
+                    time.sleep(0.2)
                     executor.execute({'key': 'w', 'delay_ms': 500, 'source': 'tree_walk'})
                     _tree_walk_tick_count += 1
                     _walk_obs = 'walking — scanning for trees'
