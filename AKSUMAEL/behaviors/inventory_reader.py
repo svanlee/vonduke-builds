@@ -5,6 +5,7 @@
 # ╚══════════════════════════════════════════════════════╝
 
 import json
+import re
 import time
 
 from core.llm_router import route_llm_call, frame_to_b64
@@ -12,6 +13,28 @@ from core.llm_router import route_llm_call, frame_to_b64
 
 # Cache TTL — don't re-open inventory more often than this
 _CACHE_TTL_SEC = 15.0
+
+_CODE_FENCE_RE = re.compile(r'^```(?:json)?\s*|\s*```$', re.IGNORECASE | re.MULTILINE)
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip ```json ... ``` / ``` ... ``` markdown fences some LLM tiers
+    wrap their JSON reply in, despite the prompt asking for raw JSON."""
+    return _CODE_FENCE_RE.sub('', text).strip()
+
+
+def _parse_json_response(raw) -> dict | list | None:
+    """Parse an LLM JSON reply, tolerating markdown code fences and
+    empty/None responses. Returns None (never raises) on any failure."""
+    if not raw or not raw.strip():
+        return None
+    cleaned = _strip_code_fences(raw)
+    if not cleaned:
+        return None
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
 
 
 _INVENTORY_PROMPT = """This is a screenshot from Minecraft Java Edition.
@@ -69,11 +92,15 @@ class InventoryReader:
 
     def read(self, force: bool = False) -> dict:
         """Return {item: count} — simple form for crafting decision logic."""
-        return {k: v['count'] for k, v in self._read_raw(force=force).items()}
+        raw = self._read_raw(force=force)
+        return {k: v['count'] for k, v in raw.items()
+                if isinstance(v, dict) and 'count' in v}
 
     def read_with_slots(self, force: bool = False) -> dict:
         """Return {item: {'count': N, 'slot': S}} — full form for pick-and-place."""
-        return dict(self._read_raw(force=force))
+        raw = self._read_raw(force=force)
+        return {k: v for k, v in raw.items()
+                if isinstance(v, dict) and 'slot' in v}
 
     def slot_of(self, item: str) -> int:
         """Return inventory slot index for item, or -1 if not found."""
@@ -146,13 +173,15 @@ class InventoryReader:
             timeout=45, local_retries=3)
         if raw is None:
             print('[INV] all LLM tiers failed')
-            return {}, False
+            return {'items': [], 'parse_error': True}, False
 
-        try:
-            items = json.loads(raw)
-        except json.JSONDecodeError as e:
-            print(f'[INV] error parsing response: {e}')
-            return {}, False
+        items = _parse_json_response(raw)
+        if items is None:
+            print(f'[INV] error parsing response: not valid JSON — raw={raw[:200]!r}')
+            return {'items': [], 'parse_error': True}, False
+        if not isinstance(items, dict):
+            print(f'[INV] response parsed but was not a JSON object ({type(items).__name__})')
+            return {'items': [], 'parse_error': True}, False
 
         # Inventory wasn't open — return empty rather than crash
         if items.get('inventory_closed'):
