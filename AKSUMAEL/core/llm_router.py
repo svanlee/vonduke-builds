@@ -140,6 +140,12 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
         content = _multimodal_content() if images else prompt
         payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
                    "max_tokens": max_tokens,
+                   # The loaded model (Qwen3.5) is a reasoning model that by
+                   # default spends its whole max_tokens budget on
+                   # <think>-style reasoning_content and never emits a
+                   # `content` reply (finish_reason=length, content="").
+                   # Disable that so max_tokens is spent on the actual answer.
+                   "chat_template_kwargs": {"enable_thinking": False},
                    "messages": [{"role": "user", "content": content}]}
         try:
             return _extract(_post_json(url, payload, headers, timeout))
@@ -148,6 +154,7 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                 # Loaded model rejected multimodal content — retry text-only.
                 text_payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
                                 "max_tokens": max_tokens,
+                                "chat_template_kwargs": {"enable_thinking": False},
                                 "messages": [{"role": "user", "content": prompt}]}
                 try:
                     return _extract(_post_json(url, text_payload, headers, timeout))
