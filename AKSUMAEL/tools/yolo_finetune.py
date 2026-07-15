@@ -198,7 +198,40 @@ def annotate_from_label_db():
 
 
 # ── Trainer ───────────────────────────────────────────────────
-def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
+MAX_TRAIN_FRAMES = 800
+
+
+def _cap_recent_frames(max_frames: int = MAX_TRAIN_FRAMES):
+    """
+    Keep only the most recently modified `max_frames` images in the
+    training set (and drop their orphaned label files), so the training
+    set stays bounded as frame collection continues indefinitely.
+    """
+    train_img_dir = f'{IMAGES_DIR}/train'
+    train_lbl_dir = f'{LABELS_DIR}/train'
+    if not os.path.exists(train_img_dir):
+        return
+
+    img_exts = ('.jpg', '.jpeg', '.png')
+    images = [f for f in os.listdir(train_img_dir) if f.lower().endswith(img_exts)]
+    if len(images) <= max_frames:
+        print(f'[TRAIN] rolling window: {len(images)} frames <= cap of {max_frames}, nothing dropped')
+        return
+
+    images.sort(key=lambda f: os.path.getmtime(os.path.join(train_img_dir, f)), reverse=True)
+    dropped = images[max_frames:]
+
+    for fname in dropped:
+        os.remove(os.path.join(train_img_dir, fname))
+        stem = os.path.splitext(fname)[0]
+        lbl_path = os.path.join(train_lbl_dir, f'{stem}.txt')
+        if os.path.exists(lbl_path):
+            os.remove(lbl_path)
+
+    print(f'[TRAIN] rolling window: kept {max_frames} newest frames, dropped {len(dropped)} older frames')
+
+
+def train(epochs: int = 30, imgsz: int = 320, batch: int = 8):
     """
     Fine-tune aksumael_mc.pt (or bootstrap from yolov8n.pt if it doesn't
     exist yet) on the labeled Minecraft dataset in data/yolo_dataset.
@@ -218,6 +251,8 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     if not os.path.exists(yaml_path):
         print(f'[TRAIN] {yaml_path} not found — run tools/prep_new_frames.py first.')
         return
+
+    _cap_recent_frames()
 
     train_dir = f'{IMAGES_DIR}/train'
     img_exts  = ('.jpg', '.jpeg', '.png')
@@ -246,7 +281,7 @@ def train(epochs: int = 30, imgsz: int = 640, batch: int = 8):
     # opening a second CUDA context on top of that is what was tearing
     # down the training subprocess's stdout/stderr pipe mid-run.
     _workers  = 0
-    _batch    = 16 if _has_cuda else batch
+    _batch    = batch
     print(f'[TRAIN] device={_device}  amp={_amp}  workers={_workers}  batch={_batch}')
 
     TRAIN_LOCK.write_text(str(os.getpid()))
