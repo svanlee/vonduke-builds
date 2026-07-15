@@ -210,5 +210,20 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
     if result["facing"] is None or result["biome"] is None:
         snippet = text[:300].replace('\n', ' | ')
         print(f"[F3-DEBUG] facing={result['facing']} biome={result['biome']} raw_ocr={snippet!r}")
+        # Diagnostic frame dump, added 2026-07-15 while chasing a run where F3
+        # OCR failed on every attempt. The dump showed the raw frame was
+        # plain gameplay with no debug overlay rendered at all — even a
+        # retried keypress (see core/runtime.py's _open_read_close_f3())
+        # produced the same result — so the 'f3' keystroke itself isn't
+        # reaching the game (not an OCR/regex/timing bug). Likely causes to
+        # check on the target PC: something intercepting F3 (capture/overlay
+        # software hotkey), or the F3 keybind having been changed/unbound in
+        # Minecraft's controls. Cheap to leave on (two small JPEGs,
+        # overwritten each failure) and useful until that's tracked down.
+        try:
+            cv2.imwrite('/tmp/f3_debug_raw.jpg', frame_bgr)
+            cv2.imwrite('/tmp/f3_debug_preprocessed.jpg', img)
+        except Exception:
+            pass
 
     return result
