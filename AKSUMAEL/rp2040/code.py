@@ -9,8 +9,8 @@
 #
 # Types:
 #   0x01  Keyboard  [modifier, 0x00, k1, k2, k3, k4, k5, k6]
-#   0x02  Mouse rel [buttons, dx+128, dy+128, wheel+128]
-#   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]
+#   0x02  Mouse rel [buttons, dx+128, dy+128, wheel+128]  -> relative MOUSE device
+#   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]      -> absolute pointer device
 #   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128, btn_lo, btn_hi, lt, rt]
 #   0xFF  Release all
 #
@@ -27,8 +27,18 @@ from adafruit_hid.gamepad           import Gamepad
 
 # ── HID devices ───────────────────────────────────────────────
 kbd      = Keyboard(usb_hid.devices)
-mouse    = Mouse(usb_hid.devices)
+mouse    = Mouse(usb_hid.devices)          # relative — camera look, TYPE_MOUSE_R
 gamepad  = Gamepad(usb_hid.devices)
+
+# Absolute pointer (see rp2040/boot.py) — no adafruit_hid wrapper for this
+# report shape, so find it directly by usage_page/usage. Usage 0x01
+# (Pointer) rather than 0x02 (Mouse) so it doesn't collide with the
+# relative Mouse device above.
+mouse_abs = None
+for _dev in usb_hid.devices:
+    if _dev.usage_page == 0x01 and _dev.usage == 0x01:
+        mouse_abs = _dev
+        break
 
 # ── UART (FTDI USB-TTL adapter → KB2040) ────────────────────────
 # KB2040 UART0: TX=D0 (GP0), RX=D1 (GP1)
@@ -102,25 +112,57 @@ def handle_mouse_rel(data):
         pass
 
 
+def _send_abs_report(buttons: int, x: int, y: int):
+    """Build and send a 5-byte report on the absolute-pointer HID device:
+    [buttons, x_lo, x_hi, y_lo, y_hi] — x/y are little-endian per the
+    16-bit Input items in ABS_POINTER_REPORT_DESCRIPTOR (rp2040/boot.py)."""
+    if mouse_abs is None:
+        return
+    x = max(0, min(ABS_MAX, int(x)))
+    y = max(0, min(ABS_MAX, int(y)))
+    report = bytearray(5)
+    report[0] = buttons & 0x03
+    report[1] = x & 0xFF
+    report[2] = (x >> 8) & 0xFF
+    report[3] = y & 0xFF
+    report[4] = (y >> 8) & 0xFF
+    try:
+        mouse_abs.send_report(report)
+    except Exception:
+        pass
+
+
+def mouse_abs_move(x: int, y: int, screen_w: int = 1920, screen_h: int = 1080):
+    """Move the absolute-pointer cursor to pixel (x, y) on a screen_w x
+    screen_h display — scales pixel coords to the HID logical range
+    (0-32767) and sends via the absolute pointer device."""
+    lx = int(max(0, min(screen_w, x)) / screen_w * ABS_MAX)
+    ly = int(max(0, min(screen_h, y)) / screen_h * ABS_MAX)
+    _send_abs_report(0, lx, ly)
+
+
+def mouse_abs_click(x: int, y: int, button: int = 1,
+                     screen_w: int = 1920, screen_h: int = 1080):
+    """Move to pixel (x, y) then press+release `button` (1=left, 2=right)
+    via the absolute pointer device."""
+    lx = int(max(0, min(screen_w, x)) / screen_w * ABS_MAX)
+    ly = int(max(0, min(screen_h, y)) / screen_h * ABS_MAX)
+    _send_abs_report(button, lx, ly)
+    _send_abs_report(0, lx, ly)
+
+
 def handle_mouse_abs(data):
-    # Absolute mouse: move to percentage of screen
-    # Host laptop sends x/y as 0-32767 (16-bit, big-endian)
+    # True absolute positioning via the dedicated absolute-pointer HID
+    # device (see rp2040/boot.py) — the host (uart.kb2040_packer) already
+    # scales x/y to the 0-32767 HID logical range before sending, so this
+    # just forwards them as-is. buttons reflects the current packet's
+    # press state; the host sends a press packet followed by a release
+    # packet for a click (see pack_mouse_click_at()), matching how
+    # handle_mouse_rel() handles clicks.
     buttons = data[0]
     x = (data[1] << 8) | data[2]
     y = (data[3] << 8) | data[4]
-    # Convert to signed relative move — approximate for now
-    # True absolute requires OS-level calibration; this gets close
-    # TODO: replace with proper absolute HID descriptor if needed
-    try:
-        mouse.move(0, 0)  # release momentum
-        # Scale to a reasonable relative move from centre
-        # This is imprecise — use relative mouse for accurate clicks
-        if buttons & 0x01:
-            mouse.click(Mouse.LEFT_BUTTON)
-        if buttons & 0x02:
-            mouse.click(Mouse.RIGHT_BUTTON)
-    except Exception:
-        pass
+    _send_abs_report(buttons, x, y)
 
 
 def handle_gamepad(data):

@@ -1,8 +1,17 @@
 # KB2040 Mouse HID — current state & upgrade plan
 
-Documentation only, per the env_profile architecture task — no firmware
-changes are made here. See `rp2040/` and `firmware/` for the actual
-CircuitPython source.
+**Status: implemented.** The upgrade path below has been applied to both
+firmware copies (`rp2040/boot.py`+`rp2040/code.py` and
+`firmware/kb2040_code.py`) — a dedicated absolute-pointer HID device now
+handles `TYPE_MOUSE_A`, and no relative-delta approximation remains.
+`rp2040/code.py` also exposes `mouse_abs_move(x, y, screen_w, screen_h)`
+and `mouse_abs_click(x, y, button)` helpers for pixel-coordinate use.
+The two firmware copies were left as separate files rather than
+de-duplicated (item 4 below) — that refactor is still open.
+
+The rest of this document is kept as a record of the original
+investigation. See `rp2040/` and `firmware/` for the actual CircuitPython
+source.
 
 ## Where the firmware actually lives
 
