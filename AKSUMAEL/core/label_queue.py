@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 
@@ -219,13 +221,15 @@ class LabelQueue:
         """Kick off a background retrain for `env_id` once
         retrain_batch_size new labels have accumulated since the last one.
 
-        `retrain_fn(env_id)` does the actual training work — pass the real
-        per-env pipeline once one exists (e.g. a thin wrapper around
-        behaviors.auto_trainer.AutoTrainer for env_id == config.ACTIVE_ENV,
-        or a new fine-tune entry point for a freshly-detected environment).
-        With no `retrain_fn`, this just drops a retrain_requested.json flag
-        file so the signal isn't silently lost. Returns True if a retrain
-        was started (False if one was already in flight for this env_id).
+        `retrain_fn(env_id)` does the actual training work — defaults to
+        self._launch_background_train, which hands off to
+        tools/yolo_finetune.py's generic per-env trainer
+        (train(env_id=...)) via a detached systemd-run scope, same as
+        behaviors/auto_trainer.py does for the Minecraft training loop.
+        Pass a different retrain_fn to override that (e.g. tests, or a
+        hand-written adapter for env_id == config.ACTIVE_ENV). Returns True
+        if a retrain was started (False if one was already in flight for
+        this env_id).
         """
         with self._lock:
             if env_id in self._retraining:
@@ -233,13 +237,11 @@ class LabelQueue:
             self._retraining.add(env_id)
 
         count_before = self.label_count(env_id)
+        fn = retrain_fn or self._launch_background_train
 
         def _run():
             try:
-                if retrain_fn is not None:
-                    retrain_fn(env_id)
-                else:
-                    self._write_retrain_flag(env_id, count_before)
+                fn(env_id)
             finally:
                 # Persist state before releasing the in-flight marker, so a
                 # should_retrain() call that sees this env_id as no longer
@@ -252,6 +254,28 @@ class LabelQueue:
         threading.Thread(target=_run, daemon=True, name=f'retrain_{env_id[:16]}').start()
         print(f'[LABEL_QUEUE] {env_id}: retrain triggered ({count_before} labels accumulated)')
         return True
+
+    def _launch_background_train(self, env_id: str):
+        """Default retrain_fn — launch tools/yolo_finetune.py's `train`
+        command for this env_id in its own transient systemd-run scope
+        (background.slice), the same detachment pattern
+        behaviors/auto_trainer.py uses: training shares the GPU/CUDA
+        context with whatever's already running, so it needs to be a
+        separate process, not just a background thread in this one."""
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            script    = os.path.join(repo_root, 'tools', 'yolo_finetune.py')
+            log_path  = f'/tmp/aksumael_retrain_{env_id}.log'
+            subprocess.Popen(
+                ['systemd-run', '--user', '--scope', '--slice=background.slice',
+                 sys.executable, script, 'train', '30', env_id],
+                stdout=open(log_path, 'w'), stderr=subprocess.STDOUT,
+                cwd=repo_root,
+            )
+            print(f'[LABEL_QUEUE] {env_id}: launched background training via systemd-run (log: {log_path})')
+        except OSError as e:
+            print(f'[LABEL_QUEUE] {env_id}: systemd-run launch failed ({e}) — writing retrain flag instead')
+            self._write_retrain_flag(env_id, self.label_count(env_id))
 
     def _write_retrain_flag(self, env_id: str, label_count: int):
         os.makedirs(self._env_dir(env_id), exist_ok=True)

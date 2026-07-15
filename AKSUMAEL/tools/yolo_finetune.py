@@ -197,18 +197,54 @@ def annotate_from_label_db():
             seen.add(label)
 
 
+# ── Dataset YAML ──────────────────────────────────────────────
+def write_dataset_yaml():
+    yaml_path = f'{DATASET_DIR}/minecraft.yaml'
+    lines = [
+        f'path: {os.path.abspath(DATASET_DIR)}',
+        'train: images/train',
+        'val:   images/val',
+        f'nc: {len(MC_CLASSES)}',
+        f'names: {MC_CLASSES}',
+    ]
+    with open(yaml_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    print(f'[TRAIN] dataset YAML written: {yaml_path}')
+    return yaml_path
+
+
+def _write_env_dataset_yaml(classes: list, dataset_dir: str) -> str:
+    """Generate data.yaml for a generic (non-Minecraft) env profile's
+    dataset. Unlike data/yolo_dataset/data.yaml (hand-maintained), this is
+    regenerated from the profile's yolo_classes every train() call, since
+    that list is the actual source of truth for a fresh env profile."""
+    os.makedirs(dataset_dir, exist_ok=True)
+    yaml_path = f'{dataset_dir}/data.yaml'
+    lines = [
+        f'path: {os.path.abspath(dataset_dir)}',
+        'train: images/train',
+        'val: images/val',
+        f'nc: {len(classes)}',
+        f'names: {classes}',
+    ]
+    with open(yaml_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    return yaml_path
+
+
 # ── Trainer ───────────────────────────────────────────────────
 MAX_TRAIN_FRAMES = 800
 
 
-def _cap_recent_frames(max_frames: int = MAX_TRAIN_FRAMES):
+def _cap_recent_frames(train_img_dir: str = None, train_lbl_dir: str = None,
+                        max_frames: int = MAX_TRAIN_FRAMES):
     """
     Keep only the most recently modified `max_frames` images in the
     training set (and drop their orphaned label files), so the training
     set stays bounded as frame collection continues indefinitely.
     """
-    train_img_dir = f'{IMAGES_DIR}/train'
-    train_lbl_dir = f'{LABELS_DIR}/train'
+    train_img_dir = train_img_dir or f'{IMAGES_DIR}/train'
+    train_lbl_dir = train_lbl_dir or f'{LABELS_DIR}/train'
     if not os.path.exists(train_img_dir):
         return
 
@@ -231,11 +267,22 @@ def _cap_recent_frames(max_frames: int = MAX_TRAIN_FRAMES):
     print(f'[TRAIN] rolling window: kept {max_frames} newest frames, dropped {len(dropped)} older frames')
 
 
-def train(epochs: int = 30, imgsz: int = 320, batch: int = 8):
+def train(epochs: int = 30, imgsz: int = 320, batch: int = 8,
+          env_id: str = 'minecraft_survival'):
     """
-    Fine-tune aksumael_mc.pt (or bootstrap from yolov8n.pt if it doesn't
-    exist yet) on the labeled Minecraft dataset in data/yolo_dataset.
+    Fine-tune a YOLO detector on the labeled dataset for `env_id`.
     Trains on the RTX 4050 GPU when available; falls back to CPU otherwise.
+
+    env_id='minecraft_survival' (the default) preserves the original
+    hardcoded behavior for backward compatibility with existing callers —
+    the CLI and behaviors/auto_trainer.py — training against
+    data/yolo_dataset / MC_CLASSES and saving to data/models/aksumael_mc.pt.
+
+    Any other env_id trains against that env's own profile (see
+    core/env_profile.py): its yolo_classes for the class list, a dataset
+    at data/env_profiles/<env_id>/dataset, and weights saved to
+    data/env_profiles/<env_id>/models/best.pt — after which the profile's
+    yolo_model_path is updated so it's picked up automatically.
     """
     if TRAIN_LOCK.exists():
         print(f'[TRAIN] another training run is already in progress ({TRAIN_LOCK.read_text().strip()}) — aborting.')
@@ -247,29 +294,48 @@ def train(epochs: int = 30, imgsz: int = 320, batch: int = 8):
         print('ultralytics not installed: pip install ultralytics')
         return
 
-    yaml_path = f'{DATASET_DIR}/data.yaml'
-    if not os.path.exists(yaml_path):
-        print(f'[TRAIN] {yaml_path} not found — run tools/prep_new_frames.py first.')
-        return
+    profile = None
+    if env_id == 'minecraft_survival':
+        train_img_dir = f'{IMAGES_DIR}/train'
+        train_lbl_dir = f'{LABELS_DIR}/train'
+        model_out     = MODEL_OUT
+        run_project, run_name = 'data/models', 'aksumael_mc'
 
-    _cap_recent_frames()
+        yaml_path = f'{DATASET_DIR}/data.yaml'
+        if not os.path.exists(yaml_path):
+            print(f'[TRAIN] {yaml_path} not found — run tools/prep_new_frames.py first.')
+            return
+        _cap_recent_frames(train_img_dir, train_lbl_dir)
+    else:
+        from core import env_profile
+        profile = env_profile.get_or_create(env_id)
+        if not profile.yolo_classes:
+            print(f'[TRAIN] profile "{env_id}" has no yolo_classes yet — nothing to train against.')
+            return
+        dataset_dir   = os.path.join(profile.dir, 'dataset')
+        train_img_dir = f'{dataset_dir}/images/train'
+        train_lbl_dir = f'{dataset_dir}/labels/train'
+        model_out     = os.path.join(profile.dir, 'models', 'best.pt')
+        run_project, run_name = os.path.join(profile.dir, 'runs'), 'train'
 
-    train_dir = f'{IMAGES_DIR}/train'
-    img_exts  = ('.jpg', '.jpeg', '.png')
-    total = (len([f for f in os.listdir(train_dir) if f.lower().endswith(img_exts)])
-             if os.path.exists(train_dir) else 0)
-    print(f'[TRAIN] dataset: {total} images in {train_dir}')
+        yaml_path = _write_env_dataset_yaml(profile.yolo_classes, dataset_dir)
+        _cap_recent_frames(train_img_dir, train_lbl_dir)
+
+    img_exts = ('.jpg', '.jpeg', '.png')
+    total = (len([f for f in os.listdir(train_img_dir) if f.lower().endswith(img_exts)])
+             if os.path.exists(train_img_dir) else 0)
+    print(f'[TRAIN] dataset: {total} images in {train_img_dir}')
 
     if total < MIN_IMAGES:
         print(f'[TRAIN] only {total} images — need at least {MIN_IMAGES}.')
         print('        Keep playing with collect mode on to gather more data.')
         return
 
-    os.makedirs('data/models', exist_ok=True)
+    os.makedirs(os.path.dirname(model_out), exist_ok=True)
 
-    base_weights = MODEL_OUT if os.path.exists(MODEL_OUT) else 'yolov8s.pt'
+    base_weights = model_out if os.path.exists(model_out) else 'yolov8s.pt'
     print(f'[TRAIN] starting fine-tune from {base_weights}: '
-          f'epochs={epochs} imgsz={imgsz} batch={batch}')
+          f'epochs={epochs} imgsz={imgsz} batch={batch} env_id={env_id}')
     print()
 
     import torch
@@ -292,8 +358,8 @@ def train(epochs: int = 30, imgsz: int = 320, batch: int = 8):
             epochs=epochs,
             imgsz=imgsz,
             batch=_batch,
-            project='data/models',
-            name='aksumael_mc',
+            project=run_project,
+            name=run_name,
             exist_ok=True,
             verbose=True,
             workers=_workers,
@@ -310,9 +376,14 @@ def train(epochs: int = 30, imgsz: int = 320, batch: int = 8):
     # instead of directly at <project>/<name>.
     best = str(results.save_dir / 'weights' / 'best.pt')
     if os.path.exists(best):
-        shutil.copy(best, MODEL_OUT)
-        print(f'\n[TRAIN] done. Best model saved to {MODEL_OUT}')
-        print(f'        To use it: set YOLO_MODEL = "{MODEL_OUT}" in config.py')
+        shutil.copy(best, model_out)
+        print(f'\n[TRAIN] done. Best model saved to {model_out}')
+        if profile is not None:
+            profile.yolo_model_path = model_out
+            profile.bootstrap = False
+            profile.save()
+        else:
+            print(f'        To use it: set YOLO_MODEL = "{model_out}" in config.py')
     else:
         print(f'[TRAIN] training finished but {best} not found — check logs')
 
@@ -347,6 +418,7 @@ Commands:
   python3 tools/yolo_finetune.py train            — train (30 epochs)
   python3 tools/yolo_finetune.py train 10         — quick train (10 epochs)
   python3 tools/yolo_finetune.py train 50 --gpu   — full train on GPU machine
+  python3 tools/yolo_finetune.py train 30 <env_id> — train a non-Minecraft env profile
 
 To collect training data: set COLLECT_FRAMES=True in config.py
 and run AKSUMAEL normally — frames are saved automatically during gameplay.
@@ -365,6 +437,7 @@ if __name__ == '__main__':
         annotate_from_label_db()
     elif cmd == 'train':
         epochs = int(sys.argv[2]) if len(sys.argv) > 2 else 30
-        train(epochs=epochs)
+        env_id = sys.argv[3] if len(sys.argv) > 3 else 'minecraft_survival'
+        train(epochs=epochs, env_id=env_id)
     else:
         print(USAGE)
