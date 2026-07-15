@@ -23,6 +23,10 @@ class ControllerState:
         self.rt = 0        # right trigger
         self.buttons = 0   # 16-bit bitmask
         self.keys = []     # keyboard keys held
+        self.click = None      # [x_pct, y_pct] absolute click, or None
+        self.button = None     # 'left'/'right' for click, or None (defaults to left)
+        self.look = None       # {'dx':.., 'dy':..} relative mouse-look, or None
+        self.delay_ms = None   # ms to hold key/click, or None (executor default)
         self.source = 'none'   # which source last wrote this
         self.ts = 0.0          # timestamp of last update
 
@@ -41,6 +45,10 @@ class ControllerState:
         self.lt = self.rt = 0
         self.buttons = 0
         self.keys = []
+        self.click = None
+        self.button = None
+        self.look = None
+        self.delay_ms = None
 
 
 # ── Evdev reader (real controller plugged into the laptop) ─────
@@ -340,6 +348,22 @@ class ControllerRouter:
         if key and key not in ('null', 'none', None, 'wait'):
             s.keys = [str(key).lower()]
 
+        # click/look/delay_ms/button — see 2026-07-15 fix: this method used
+        # to only carry key+gamepad through to resolve()/_state_to_action(),
+        # silently dropping click/look/delay_ms for every action that (like
+        # core/fsm.py's MINE state) is dispatched solely through
+        # update_aksumael()->resolve()->executor.execute() with no earlier
+        # direct executor.execute() call of its own. That meant MINE's
+        # left-click and its per-tick aim-correction 'look' were computed
+        # correctly but never actually reached the KB2040 — looked exactly
+        # like a lost-focus/uncaptured-cursor problem (aim never converged,
+        # clicks never landed) but was really just this router discarding
+        # the data before it got anywhere near hardware.
+        s.click    = action_dict.get('click')
+        s.button   = action_dict.get('button')
+        s.look     = action_dict.get('look')
+        s.delay_ms = action_dict.get('delay_ms')
+
         gp = action_dict.get('gamepad') or {}
         s.lx = gp.get('lx', 0)
         s.ly = gp.get('ly', 0)
@@ -387,6 +411,15 @@ class ControllerRouter:
                 merged.rt = max(h.rt, a.rt)
                 merged.buttons = h.buttons | a.buttons
                 merged.keys = list(set(h.keys + a.keys))
+                # Human sources never populate click/look/delay_ms today
+                # (only lx/ly/rx/ry/buttons/keys — see EvdevController /
+                # I2CJoystick below), so this is effectively "always
+                # aksumael's", but prefer human's if a future source ever
+                # sets one, same precedence as keys above.
+                merged.click    = h.click    if h.click    is not None else a.click
+                merged.button   = h.button   if h.button   is not None else a.button
+                merged.look     = h.look     if h.look     is not None else a.look
+                merged.delay_ms = h.delay_ms if h.delay_ms is not None else a.delay_ms
                 merged.source = 'blend'
                 return self._state_to_action(merged)
             return self._state_to_action(a)
@@ -396,9 +429,10 @@ class ControllerRouter:
     @staticmethod
     def _state_to_action(s: ControllerState) -> dict:
         key = s.keys[0] if s.keys else None
-        return {
+        ad = {
             'key': key,
-            'click': None,
+            'click': s.click,
+            'look': s.look,
             'gamepad': {
                 'lx': s.lx, 'ly': s.ly,
                 'rx': s.rx, 'ry': s.ry,
@@ -407,6 +441,15 @@ class ControllerRouter:
             },
             'source': s.source,
         }
+        if s.button is not None:
+            ad['button'] = s.button
+        # Only set delay_ms when the state actually specified one — an
+        # explicit None here would override executor._execute_hid()'s
+        # ad.get('delay_ms', config.KEY_HOLD_MS) default (a present key
+        # with value None is not the same as an absent key to .get()).
+        if s.delay_ms is not None:
+            ad['delay_ms'] = s.delay_ms
+        return ad
 
     @staticmethod
     def _idle() -> dict:
