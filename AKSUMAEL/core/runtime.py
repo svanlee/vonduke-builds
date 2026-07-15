@@ -355,6 +355,39 @@ def run():
     world_mem.chest_inv = getattr(world_mem, 'chest_inv', {})
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
+    def _open_read_close_f3():
+        """Press F3, OCR the overlay, press F3 again to close — the shared
+        primitive behind both the periodic F3 read and TREE-FALLBACK's
+        on-demand position check. Returns the f3_data dict from read_f3()
+        (f3_active is False if OCR never found the XYZ line).
+
+        The KB2040 talks to the target PC over a physical UART link, which
+        can drop a keypress packet — see 2026-07-15 incident where the
+        'open' press silently failed to register (confirmed via a raw-frame
+        dump: plain gameplay, no debug text at all) and every subsequent
+        read kept returning facing=None/biome=None. If the first attempt
+        finds no XYZ line, press F3 again and retry once — if the first
+        press actually landed just before the game rendered it, or if it
+        dropped and the overlay is still closed, this second press either
+        catches the render or opens it fresh. Either way the close press
+        below still balances out to an even number of toggles, so a failed
+        retry can't leave the overlay stuck open for the rest of the
+        session."""
+        f3_data = {'f3_active': False}
+        for attempt in range(2):
+            executor.execute({'key': 'f3'})
+            time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
+            f3_frame = pipeline.latest_raw_frame
+            f3_data  = read_f3(f3_frame) if f3_frame is not None else {'f3_active': False}
+            if f3_data['f3_active']:
+                break
+            if attempt == 0:
+                print('[F3] overlay did not render on first press — retrying once')
+                executor.execute({'key': 'f3'})   # undo the failed toggle before retrying
+                time.sleep(0.3)
+        executor.execute({'key': 'f3'})   # close
+        return f3_data
+
     def _read_f3_position_now():
         """Blocking open/OCR/close F3 cycle — used by TREE-FALLBACK to check
         whether walking actually moved the player (stuck-in-building check).
@@ -369,11 +402,7 @@ def run():
         if not _hud_present or _menu_open or _f3_open:
             return None, None
         _f3_open = True
-        executor.execute({'key': 'f3'})
-        time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
-        f3_frame = pipeline.latest_raw_frame
-        f3_data  = read_f3(f3_frame) if f3_frame is not None else {'f3_active': False}
-        executor.execute({'key': 'f3'})
+        f3_data = _open_read_close_f3()
         _f3_open = False
         if f3_data['f3_active']:
             world_mem.update_f3(f3_data)
@@ -1392,11 +1421,7 @@ def run():
                 f3_countdown = max(config.F3_READ_EVERY_N_TICKS, 60)
                 if frame is not None:
                     _f3_open = True
-                    executor.execute({'key': 'f3'})                    # open
-                    time.sleep(config.F3_KEY_WAIT_TICKS * 0.2)
-                    f3_frame = pipeline.latest_raw_frame               # full-res frame
-                    f3_data  = read_f3(f3_frame)
-                    executor.execute({'key': 'f3'})                    # close
+                    f3_data  = _open_read_close_f3()
                     _f3_open = False
                     if f3_data['f3_active']:
                         world_mem.update_f3(f3_data)
