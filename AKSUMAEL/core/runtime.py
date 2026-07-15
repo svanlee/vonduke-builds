@@ -302,6 +302,7 @@ def run():
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
+    _last_tree_fallback_tick = -config.SCAN_COOLDOWN_TICKS  # tree-goal walk+pan fallback
     _last_chest_tick    = -1000   # tick of last chest interaction
     CHEST_COOLDOWN_TICKS = 200    # min ticks between chest opens (avoid spamming Claude)
     BASE_X, BASE_Z        = -6, -3   # spawn / base coordinates
@@ -654,21 +655,38 @@ def run():
                         print(f'[SKILL] goal={_cur_goal}: suppressed '
                               f'{_pre - len(candidates)} mining skill(s)')
 
-                # ── Goal-skill mismatch gating ────────────────────
-                # Drop any candidate whose target category is clearly
-                # unrelated to the active goal (e.g. an ore-mining skill
-                # while the goal is find_and_chop_tree) — see
-                # _goal_skill_mismatch for why this matters.
+                # ── Goal-skill allow-list gating ──────────────────
+                # Drop any candidate that isn't positively tied to the
+                # active goal's category (e.g. an ore-mining skill while
+                # the goal is find_and_chop_tree) — see
+                # _skill_allowed_for_goal for why this matters.
                 _goal_cat = _goal_category(_cur_goal)
                 if _goal_cat and candidates:
                     _pre_gc = len(candidates)
                     candidates = [
                         (sk, m) for sk, m in candidates
-                        if not _goal_skill_mismatch(_cur_goal, sk)
+                        if _skill_allowed_for_goal(_cur_goal, sk)
                     ]
                     if len(candidates) < _pre_gc:
                         print(f'[SKILL] goal={_cur_goal} (cat={_goal_cat}): dropped '
                               f'{_pre_gc - len(candidates)} unrelated skill(s)')
+
+                # ── Tree-goal fallback: forward momentum while LLM thinks ──
+                # No tree skills learned yet + no candidates left standing
+                # still every tick waiting on mesh-llm (which can be slow
+                # or produce nothing usable — see 2026-07-15 "all LLM tiers
+                # failed" idle loop). Walk forward and pan the camera to
+                # scan for trees instead of freezing.
+                if (_goal_cat == 'tree' and not candidates
+                        and not replayer.is_active()
+                        and (tick - _last_tree_fallback_tick) >= config.SCAN_COOLDOWN_TICKS):
+                    print('[TREE-FALLBACK] no tree skills/candidates — '
+                          'walking forward + panning camera to scan for trees')
+                    executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
+                    executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
+                    executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
+                    executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
+                    _last_tree_fallback_tick = tick
 
                 # ── Precondition gating (Voyager-style verification) ──
                 # Skills without preconditions always pass (old skills keep
@@ -696,7 +714,7 @@ def run():
                 elif not _crafting_goal:
                     # No candidates after goal filter — fall through to FSM/LLM
                     skill, match = skills.find_best(objects)
-                    if skill and _goal_skill_mismatch(_cur_goal, skill):
+                    if skill and not _skill_allowed_for_goal(_cur_goal, skill):
                         print(f'[SKILL] goal={_cur_goal}: {skill.name} is unrelated '
                               f'to this goal — skipping, asking LLM to reconsider')
                         skill, match = None, 0.0
@@ -790,6 +808,19 @@ def run():
                                     _neural['log_prob'], _value)
                     except Exception as e:
                         print(f'[NEURAL_POLICY] tick error: {e}')
+
+                # Hard gate, re-checked immediately before execution — every
+                # path above that can set `skill` (candidates, RL choice,
+                # find_best fallback) already filters on the goal, but this
+                # is the one check that actually blocks a replay/code-skill
+                # from firing, rather than just warning about it. This is
+                # what closes the "warns then executes anyway" gap: any
+                # future selection path that forgets to goal-filter still
+                # can't get a mismatched skill onto the executor.
+                if skill and not _skill_allowed_for_goal(_cur_goal, skill):
+                    print(f'[SKILL] goal={_cur_goal}: blocking replay of '
+                          f'{skill.name} — fails goal-skill hard gate')
+                    skill, match = None, 0.0
 
                 if skill and match >= skills.MIN_MATCH_SCORE:
                     same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
@@ -1407,14 +1438,14 @@ def _is_mining_skill(name: str) -> bool:
 # core.fsm's label sets — this only needs to catch that class of mismatch,
 # not do full label classification.
 _GOAL_CATEGORY_KEYWORDS = {
-    'tree': ('tree', 'chop', 'wood', 'log'),
+    'tree': ('tree', 'chop', 'wood', 'log', 'axe', 'lumber'),
     'ore':  ('ore', 'mine', 'diamond', 'coal', 'iron', 'gold',
              'redstone', 'lapis', 'copper', 'emerald', 'stone'),
 }
 
 _SKILL_CATEGORY_KEYWORDS = {
     'tree': ('tree', 'log', 'wood', 'oak', 'spruce', 'birch', 'jungle',
-             'acacia', 'sapling'),
+             'acacia', 'sapling', 'chop', 'axe', 'lumber'),
     'ore':  ('ore', 'diamond', 'coal', 'iron', 'gold', 'redstone',
              'lapis', 'copper', 'emerald', 'debris', 'cobblestone',
              'gravel'),
@@ -1460,16 +1491,28 @@ def _skill_category(skill) -> str | None:
     return None
 
 
-def _goal_skill_mismatch(goal: str, skill) -> bool:
-    """True if `skill` targets something clearly unrelated to `goal` — e.g.
-    a gold_ore mining skill while the goal is find_and_chop_tree. Only
-    fires when BOTH categories are known and they disagree; ambiguous
-    goals/skills are never blocked."""
+def _skill_allowed_for_goal(goal: str, skill) -> bool:
+    """Hard allow/deny gate — the single source of truth for whether `skill`
+    may be selected or replayed while `goal` is active. This is an allow-list,
+    not a mismatch check: once the goal has a known category (tree/ore), a
+    skill must positively match that category (or be a cross-goal `universal`
+    skill) to run. A skill with NO recognized category (e.g. it hits neither
+    the tree nor ore keyword sets) is blocked too — the previous "only block
+    on a clear category conflict" logic let uncategorized skills (and, once a
+    goal's category flipped mid-episode, stale-category skills) slip through
+    the candidates filter, warn, and still fire on replay (e.g. a gold_ore
+    skill replaying while goal=find_and_chop_tree). Goals with no recognized
+    category (None/idle/explore/craft_*/etc.) impose no restriction — every
+    skill passes through unchanged, so the fallback for goal=None/idle never
+    breaks."""
     if skill is None:
-        return False
+        return True
+    if getattr(skill, 'universal', False):
+        return True
     gc = _goal_category(goal)
-    sc = _skill_category(skill)
-    return gc is not None and sc is not None and gc != sc
+    if gc is None:
+        return True
+    return _skill_category(skill) == gc
 
 
 def _hud_reward(objects: list, prev_objects: list) -> float:
