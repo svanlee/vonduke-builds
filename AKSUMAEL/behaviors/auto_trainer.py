@@ -13,6 +13,29 @@ from memory.goals import GOALS_PATH
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
 PRESERVED_GOALS_PATH = 'data/preserved_goals.json'
 
+# Cooldown timestamp persists here because the training cycle itself
+# restarts the whole aksumael process (see label_then_train) — an
+# in-memory-only _last_train would reset to 0 on every restart, letting
+# AUTO_TRAIN_COOLDOWN_SEC be bypassed every time and re-triggering another
+# training run as soon as AUTO_TRAIN_AFTER_FRAMES new frames came in
+# (minutes later), producing a runaway train/restart loop.
+LAST_TRAIN_PATH = pathlib.Path('data/last_train.json')
+
+
+def _read_last_train() -> float:
+    try:
+        return json.loads(LAST_TRAIN_PATH.read_text()).get('last_train', 0.0)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return 0.0
+
+
+def _write_last_train(ts: float):
+    try:
+        LAST_TRAIN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LAST_TRAIN_PATH.write_text(json.dumps({'last_train': ts}))
+    except OSError as e:
+        print(f'[AUTOTRAIN] failed to persist last_train timestamp: {e}')
+
 # Goals that count as "nothing important in progress" — safe to interrupt
 # without preserving. Mirrors the baseline states in memory.goals.GOAL_PRIORITIES.
 _TRIVIAL_GOALS = {'idle', 'explore'}
@@ -90,7 +113,7 @@ class AutoTrainer:
     def __init__(self, yolo_detector):
         self._yolo      = yolo_detector
         self._frames_since_train = 0
-        self._last_train = 0.0
+        self._last_train = _read_last_train()
         self._training   = False
         self._lock       = threading.Lock()
 
@@ -163,6 +186,13 @@ class AutoTrainer:
         # this process (or a stray restart) sees training in progress and
         # skips instead of racing the detached script for GPU.
         TRAIN_LOCK.write_text(str(os.getpid()))
+
+        # Persist now, before the handoff kills this process — the next
+        # aksumael process reads this on startup so the cooldown actually
+        # holds across the restart training itself causes.
+        with self._lock:
+            self._last_train = time.time()
+        _write_last_train(self._last_train)
 
         # Don't yank aksumael out from under an in-progress goal — give it
         # up to GOAL_WAIT_TIMEOUT_SEC to reach idle/explore on its own, and
