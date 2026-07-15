@@ -2,16 +2,20 @@
 # ║  AKSUMAEL — Shared LLM Router                         ║
 # ║  Single choke point for every local/Gemini/Claude     ║
 # ║  call in the codebase. Routing policy:                ║
-# ║    1. Local mesh-llm (localhost:9337) is primary for  ║
-# ║       every call.                                     ║
-# ║    2. Gemini is pinged in the background every Nth    ║
-# ║       call that local serves successfully — purely to ║
-# ║       monitor availability/diversity. It never blocks ║
-# ║       and never replaces a successful local response. ║
-# ║    3. If local fails, Gemini is tried for real as the ║
-# ║       synchronous fallback.                           ║
-# ║    4. If both local and Gemini fail, Claude is the    ║
-# ║       emergency backup.                               ║
+# ║    1. Local mesh-llm (localhost:9337) handles every   ║
+# ║       gameplay call. This is the only tier used by    ║
+# ║       route_llm_call() by default.                    ║
+# ║    2. Gemini/Claude are NEVER used as automatic       ║
+# ║       fallbacks during gameplay. If local fails during ║
+# ║       a gameplay call, the error is logged and a safe  ║
+# ║       default (None) is returned — callers must not    ║
+# ║       fall through to a cloud API.                     ║
+# ║    3. Gemini/Claude are only reachable via             ║
+# ║       route_llm_call(..., use_cloud=True) or the       ║
+# ║       llm_train_call() wrapper, for explicit           ║
+# ║       training-related work (label generation,         ║
+# ║       reflection summaries, dataset annotation) — not  ║
+# ║       for the gameplay loop.                            ║
 # ╚══════════════════════════════════════════════════════╝
 
 import base64
@@ -253,10 +257,22 @@ def _ping_gemini_diversity(prompt: str, max_tokens: int, images: list, call_num:
 
 
 def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
-                    timeout: float = 45.0, local_retries: int = 1):
+                    timeout: float = 45.0, local_retries: int = 1,
+                    use_cloud: bool = False):
     """
-    Route a single-turn LLM prompt through the 3-tier policy described at the
-    top of this module.
+    Route a single-turn LLM prompt.
+
+    By default (use_cloud=False — the gameplay path) this ONLY calls local
+    mesh-llm. Gemini and Claude are never invoked as automatic fallbacks
+    during gameplay: if local fails, the failure is logged and (None, None)
+    is returned so the caller falls back to its own safe default (e.g. an
+    empty inventory, a 'wait' action) instead of silently hitting a cloud
+    API.
+
+    Cloud providers are only reachable when the caller explicitly opts in
+    with use_cloud=True (see also llm_train_call()), for training-related
+    work such as label generation, reflection summaries, or dataset
+    annotation — never for routine gameplay inference.
 
     Args:
         prompt:        the text prompt (already includes any context/detections).
@@ -265,12 +281,15 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
                        frame_to_b64()) for multimodal calls.
         timeout:       per-request timeout in seconds for the local tier.
         local_retries: number of local-tier attempts before falling back.
+        use_cloud:     if True, allow Gemini/Claude as fallbacks when local
+                       fails. Reserved for explicit training calls — must
+                       stay False for gameplay inference.
 
     Returns:
         (text, provider) — provider is 'local', 'gemini', 'claude', or None
-        if every tier failed. `text` is None iff provider is None.
+        if every allowed tier failed. `text` is None iff provider is None.
     """
-    global _call_counter
+    global _call_counter, _last_provider
     with _lock:
         _call_counter += 1
         call_num = _call_counter
@@ -278,11 +297,18 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
     result = _try_local(prompt, max_tokens, images, timeout, local_retries)
     if result is not None:
         _record('local')
-        if call_num % GEMINI_INTERVAL == 0:
+        if use_cloud and call_num % GEMINI_INTERVAL == 0:
             _ping_gemini_diversity(prompt, max_tokens, images, call_num)
         return result, 'local'
 
-    # Local failed — real (synchronous) fallback to Gemini.
+    if not use_cloud:
+        print('[LLM_ROUTER] local mesh-llm failed on gameplay call — '
+              'cloud fallback disabled, returning safe default')
+        _last_provider = None
+        return None, None
+
+    # Local failed on an explicit training call — real (synchronous)
+    # fallback to Gemini.
     _GEMINI_LIMITER.acquire()
     result = _try_gemini(prompt, max_tokens, images)
     if result is not None:
@@ -296,7 +322,6 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
         _record('claude')
         return result, 'claude'
 
-    global _last_provider
     _last_provider = None
     return None, None
 
@@ -316,3 +341,17 @@ def try_claude(prompt: str, max_tokens: int = 1024, images: list = None,
     if result is not None:
         _record('claude')
     return result
+
+
+def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
+                    timeout: float = 45.0, local_retries: int = 1):
+    """
+    Explicit entry point for training-related LLM work (label generation,
+    reflection summaries, dataset annotation) that is allowed to fall back
+    to Gemini/Claude when local mesh-llm fails. Do not call this from the
+    gameplay loop — use route_llm_call() (use_cloud defaults to False)
+    there instead.
+    """
+    return route_llm_call(prompt, max_tokens=max_tokens, images=images,
+                           timeout=timeout, local_retries=local_retries,
+                           use_cloud=True)
