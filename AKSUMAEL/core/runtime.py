@@ -318,6 +318,7 @@ def run():
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
     _last_tree_fallback_tick = -config.SCAN_COOLDOWN_TICKS  # tree-goal walk+pan fallback
+    _tree_walk_tick_count    = 0    # consecutive TREE-WALK ticks since last turn/burst
     _last_chest_tick    = -1000   # tick of last chest interaction
     CHEST_COOLDOWN_TICKS = 200    # min ticks between chest opens (avoid spamming Claude)
     BASE_X, BASE_Z        = -6, -3   # spawn / base coordinates
@@ -808,10 +809,20 @@ def run():
                             executor.execute({'click': [50.0, 50.0], 'button': 'left',
                                               'delay_ms': 1500, 'source': 'tree_fallback'})
                             executor.execute({'key': 'w', 'delay_ms': 2000, 'source': 'tree_fallback'})
+                    # Pan left-right to scan, but land on a net ±45° turn
+                    # instead of returning to center — a pure scan-and-recenter
+                    # sweep never changes the walking direction, so a character
+                    # colliding with the same obstacle every burst just kept
+                    # walking straight into it again next cycle (see
+                    # 2026-07-15: 28+ TREE-WALK ticks with only HUD labels in
+                    # view — walking dead straight with no way to route around
+                    # whatever it was hitting).
+                    _fb_turn = random.choice([-45, 45])
                     executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
                     executor.execute({'look': {'dx': 80, 'dy': 0}, 'source': 'tree_fallback'})
-                    executor.execute({'look': {'dx': -40, 'dy': 0}, 'source': 'tree_fallback'})
+                    executor.execute({'look': {'dx': -40 + _fb_turn, 'dy': 0}, 'source': 'tree_fallback'})
                     _last_tree_fallback_tick = tick
+                    _tree_walk_tick_count = 0
                     action_dict = {'observation': 'tree-fallback burst (walk/rotate/jump/dig)',
                                     'action': 'w', 'key': 'w', 'click': None,
                                     'gamepad': None, 'confidence': 0.0}
@@ -830,7 +841,22 @@ def run():
                     # already in view, so it's actually covering ground
                     # while waiting for the next scan.
                     executor.execute({'key': 'w', 'delay_ms': 500, 'source': 'tree_walk'})
-                    action_dict = {'observation': 'walking — scanning for trees',
+                    _tree_walk_tick_count += 1
+                    _walk_obs = 'walking — scanning for trees'
+                    if _tree_walk_tick_count >= 8:
+                        # Walking dead straight for a long stretch with
+                        # nothing but HUD labels in view usually means it's
+                        # colliding with something out of frame (a tree
+                        # trunk, a rock, terrain) rather than genuinely open
+                        # ground — see 2026-07-15. Turn every 8 ticks so the
+                        # camera sweeps a wider arc AND the walking direction
+                        # actually changes instead of plowing into the same
+                        # obstacle indefinitely.
+                        _walk_turn = random.choice([-45, 45])
+                        executor.execute({'look': {'dx': _walk_turn, 'dy': 0}, 'source': 'tree_walk'})
+                        _tree_walk_tick_count = 0
+                        _walk_obs = f'walking — turning {_walk_turn:+d}° to sweep/reroute'
+                    action_dict = {'observation': _walk_obs,
                                     'action': 'w', 'key': 'w', 'click': None,
                                     'gamepad': None, 'confidence': 0.0}
                     src_tag = 'TREE-WALK'
