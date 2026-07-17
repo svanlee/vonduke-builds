@@ -30,6 +30,7 @@ TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import config
+from core.class_registry import load_classes, get_or_add_class
 
 DATASET_DIR = 'data/yolo_dataset'
 IMAGES_DIR  = f'{DATASET_DIR}/images'
@@ -39,54 +40,20 @@ MODEL_OUT   = 'data/models/aksumael_mc.pt'
 MIN_IMAGES  = 30    # minimum before training makes sense
 
 
-# ── Minecraft class list ───────────────────────────────────────
-# Ordered list — index becomes the YOLO class ID.
-# Must match data/yolo_dataset/data.yaml exactly (that file is the
-# source of truth for training; this list backs collect/annotate).
-MC_CLASSES = [
-    'health_bar', 'hunger_bar', 'armor_bar', 'xp_bar', 'hotbar',
-    'crosshair', 'fire_hazard', 'chest_row', 'bed', 'torch',
-    'furnace', 'water', 'coal_ore', 'redstone_ore', 'emerald_ore',
-    'copper_ore', 'creeper', 'diamond_ore',
-    'iron_ore',       # 18
-    'gold_ore',       # 19
-    'lapis_ore',      # 20
-    'log',            # 21 - tree trunk
-    'leaves',         # 22 - tree leaves
-    'zombie',         # 23
-    'skeleton',       # 24
-    'spider',         # 25
-    'crafting_table', # 26
-    'grass',          # 27
-    # ── Extended classes (v1.1) ──────────────────────────────────
-    'cow',            # 28
-    'sheep',          # 29
-    'pig',            # 30
-    'chicken',        # 31
-    'fish',           # 32
-    'fishing_bobber', # 33
-    'wheat',          # 34
-    'carrot',         # 35
-    'potato',         # 36
-    'sugar_cane',     # 37
-    'pumpkin',        # 38
-    'melon',          # 39
-    'villager',       # 40
-    'sheep_wool',     # 41 - white/shearable sheep
-    'iron_ingot',     # 42
-    'diamond',        # 43
-]
-
-
-def class_id(label: str) -> int:
-    """Map label string to YOLO class ID. Adds new classes dynamically."""
-    from skills.skill_system import _canonical
-    canon = _canonical(label.lower().strip())
-    if canon in MC_CLASSES:
-        return MC_CLASSES.index(canon)
-    # Unknown class → add it
-    MC_CLASSES.append(canon)
-    return len(MC_CLASSES) - 1
+def class_id(label: str) -> int | None:
+    """Map a label string to its stable YOLO class ID via the shared
+    core.class_registry (data/yolo_dataset/data.yaml is the single source
+    of truth — see that module's docstring for why the old hardcoded
+    MC_CLASSES list here, and its reuse of skills.skill_system._canonical
+    for "canonicalization", were both real bugs: MC_CLASSES had drifted
+    stale relative to the real, deployed data.yaml, and _canonical()
+    collapses e.g. 'creeper'/'zombie'/'skeleton' all down to the shared
+    synonym-group name 'mob', which is correct for fuzzy skill-trigger
+    matching but silently misfiled every mob detection under one wrong
+    class id instead of its own trained one. Adds a new class
+    automatically if the label hasn't been seen before. Returns None if
+    the label doesn't normalize to a sane class name."""
+    return get_or_add_class(label, source='frame_collector')
 
 
 def _box_to_yolo(box: list, img_w: int, img_h: int) -> str:
@@ -144,7 +111,9 @@ class FrameCollector:
 
         lines = []
         for obj in known:
-            cid  = class_id(obj['label'])
+            cid = class_id(obj['label'])
+            if cid is None:
+                continue   # label didn't normalize to a sane class name — skip this box
             yolo = _box_to_yolo(obj['box'], fw, fh)
             lines.append(f'{cid} {yolo}')
 
@@ -177,7 +146,9 @@ class FrameCollector:
 
         lines = []
         for obj in known:
-            cid  = class_id(obj['label'])
+            cid = class_id(obj['label'])
+            if cid is None:
+                continue   # label didn't normalize to a sane class name — skip this box
             yolo = _box_to_yolo(obj['box'], fw, fh)
             lines.append(f'{cid} {yolo}')
 
@@ -221,24 +192,9 @@ def annotate_from_label_db():
     for label in db.values():
         cid = class_id(label)
         if label not in seen:
-            print(f'  {cid:3d} → {label}')
+            tag = f'{cid:3d}' if cid is not None else '  ?'
+            print(f'  {tag} → {label}')
             seen.add(label)
-
-
-# ── Dataset YAML ──────────────────────────────────────────────
-def write_dataset_yaml():
-    yaml_path = f'{DATASET_DIR}/minecraft.yaml'
-    lines = [
-        f'path: {os.path.abspath(DATASET_DIR)}',
-        'train: images/train',
-        'val:   images/val',
-        f'nc: {len(MC_CLASSES)}',
-        f'names: {MC_CLASSES}',
-    ]
-    with open(yaml_path, 'w') as f:
-        f.write('\n'.join(lines) + '\n')
-    print(f'[TRAIN] dataset YAML written: {yaml_path}')
-    return yaml_path
 
 
 # ── Trainer ───────────────────────────────────────────────────
@@ -331,7 +287,7 @@ def status():
     col  = FrameCollector()
     stats = col.stats()
     print(f'Dataset: {stats}')
-    print(f'Classes: {len(MC_CLASSES)}')
+    print(f'Classes: {len(load_classes())}')
     needed = MIN_IMAGES - stats["total"]
     ready  = 'yes' if stats['total'] >= MIN_IMAGES else f'no (need {needed} more images)'
     print(f'Ready to train: {ready}')

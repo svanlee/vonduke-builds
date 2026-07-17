@@ -299,3 +299,20 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
     global _last_provider
     _last_provider = None
     return None, None
+
+
+def try_claude(prompt: str, max_tokens: int = 1024, images: list = None,
+                timeout: float = 15.0) -> str | None:
+    """Claude only — skips the local/Gemini tiers entirely. For callers
+    where output quality matters more than cost and call volume is low
+    (e.g. tools/claude_autolabel.py generating training-data labels,
+    where a bad label silently poisons the dataset rather than just
+    costing one wasted tick). Shares the same rate limiter, retry/
+    backoff, and call-count bookkeeping as the Claude tier inside
+    route_llm_call(). Returns the raw text response, or None on
+    failure — never raises."""
+    _CLAUDE_LIMITER.acquire()
+    result = _try_claude(prompt, max_tokens, images, timeout)
+    if result is not None:
+        _record('claude')
+    return result
