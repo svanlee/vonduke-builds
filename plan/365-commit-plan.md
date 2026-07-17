@@ -19,8 +19,8 @@ The daily-nudge Action reads this table — keep the `| N | ... |` row format.
 | Day | Date | Project | Commit Title | Artifact |
 |---|---|---|---|---|
 | 1 | Jul 3 | Launch | `day-1: init VonDuke Builds` | Repo, DEVLOG, RoboCar README + IMU publisher + ekf.yaml |
-| 2 | Jul 4 | Stacktrack | `feat: Stacktrack v2.1 — precious metals intelligence` | `stacktrack/index.html` |
-| 3 | Jul 5 | SlabScout | `feat: SlabScout — Pokémon card grading & sell intelligence v1.0` | `slabscout/index.html` |
+| 2 | Jul 4 | _(external)_ | Stacktrack v2.1 shipped in its own separate repo, not part of this plan | — |
+| 3 | Jul 5 | _(external)_ | SlabScout v1.0 shipped in its own separate repo, not part of this plan | — |
 | 4 | Jul 6 | AKSUMAEL | `docs: AKSUMAEL cognitive architecture overview` | `aksumael/README.md` — five-component diagram |
 | 5 | Jul 7 | AKSUMAEL | `feat: belief state schema v1 — track_id → world model` | `aksumael/belief_state.json` |
 | 6 | Jul 8 | RoboCar | `data: i2cdetect scan log — GY-521 confirmed at 0x68` | `robocar/logs/i2c_scan.txt` |
