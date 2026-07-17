@@ -21,8 +21,8 @@ The daily-nudge Action reads this table — keep the `| N | ... |` row format.
 | 1 | Jul 3 | Launch | `day-1: init VonDuke Builds` | Repo, DEVLOG, RoboCar README + IMU publisher + ekf.yaml |
 | 2 | Jul 4 | _(external)_ | Stacktrack v2.1 shipped in its own separate repo, not part of this plan | — |
 | 3 | Jul 5 | _(external)_ | SlabScout v1.0 shipped in its own separate repo, not part of this plan | — |
-| 4 | Jul 6 | AKSUMAEL | `docs: AKSUMAEL cognitive architecture overview` | `aksumael/README.md` — five-component diagram |
-| 5 | Jul 7 | AKSUMAEL | `feat: belief state schema v1 — track_id → world model` | `aksumael/belief_state.json` |
+| 4 | Jul 6 | _(superseded)_ | Planned "five-component cognitive architecture" doc — never committed; the actual Jul 12 architecture overhaul (`82fad8c`) took a different shape (goal stack in `memory/goals.py`, episode memory in `core/episode_memory.py`, inner monologue in `core/cognitive.py`) | — |
+| 5 | Jul 7 | _(superseded)_ | Planned belief-state schema — never committed. A `BeliefState` class was added later (part of the Jul 12 overhaul) but turned out to be write-only dead code (nothing ever read it back) and was deleted Jul 17 — see DEVLOG | — |
 | 6 | Jul 8 | RoboCar | `data: i2cdetect scan log — GY-521 confirmed at 0x68` | `robocar/logs/i2c_scan.txt` |
 | 7 | Jul 9 | General | `docs: week 1 recap` | DEVLOG.md weekly entry |
 
@@ -43,7 +43,7 @@ The daily-nudge Action reads this table — keep the `| N | ... |` row format.
 | Day | Date | Project | Commit Title | Artifact |
 |---|---|---|---|---|
 | 15 | Jul 17 | AKSUMAEL | `feat: migrate predict() → track() with ByteTrack` | `aksumael/vision/tracker.py` |
-| 16 | Jul 18 | AKSUMAEL | `feat: track_id → entity_id belief state bridge` | `aksumael/cognition/belief_state.py` |
+| 16 | Jul 18 | _(superseded)_ | Planned belief-state bridge — same concept as Day 5, never built this way; see that row | — |
 | 17 | Jul 19 | AKSUMAEL | `feat: trajectory history — defaultdict(track_id → [(x,y)])` | `aksumael/cognition/trajectories.py` |
 | 18 | Jul 20 | AKSUMAEL | `feat: HUD renderer — label + confidence overlay` | `aksumael/vision/hud.py` |
 | 19 | Jul 21 | AKSUMAEL | `data: Train-6 results — mAP50 comparison vs Train-4` | `aksumael/training/train6_results.md` |

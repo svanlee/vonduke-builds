@@ -2,3 +2,17 @@ venv/
 data/cognitive/
 data/live.log
 bus.jpg
+
+# Training-run byproducts (per-epoch checkpoints/plots/curves) — the
+# actual deployed model is data/models/aksumael_mc.pt, copied out of
+# here by tools/yolo_finetune.py train() when a run finishes. Discarded
+# once already (see findings.md, 2026-07-08 reconciliation) but kept
+# recurring because nothing stopped it from being re-committed.
+runs/
+*.cache
+
+# Stock pretrained base weights — auto-downloaded by ultralytics on
+# demand, not meant to be committed (same 2026-07-08 decision).
+yolov8*.pt
+yolo11*.pt
+yolo26*.pt
