@@ -8,8 +8,6 @@ from neural_policy.py so the feature layout can evolve (new object
 classes, new goal types) without touching the network itself.
 """
 
-import os
-
 import config
 from core.neural_policy import ACTION_SPACE
 
@@ -33,19 +31,8 @@ _FALLBACK_CLASSES = [
 
 
 def _load_object_classes() -> list[str]:
-    path = os.path.join('data', 'yolo_dataset', 'data.yaml')
-    try:
-        import yaml
-        with open(path) as f:
-            data = yaml.safe_load(f)
-        names = data.get('names')
-        if isinstance(names, dict):
-            return [names[k] for k in sorted(names, key=int)]
-        if isinstance(names, list):
-            return list(names)
-    except Exception:
-        pass
-    return list(_FALLBACK_CLASSES)
+    from core.class_registry import load_classes
+    return load_classes() or list(_FALLBACK_CLASSES)
 
 
 OBJECT_CLASSES = _load_object_classes()
