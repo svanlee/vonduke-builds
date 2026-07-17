@@ -66,6 +66,7 @@ def _restore_preserved_goals():
     PRESERVED_GOALS_PATH.unlink(missing_ok=True)
 
 from core.capture            import VideoCapturePipeline
+from core.aim                import bbox_to_mouse_delta, is_on_target
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
@@ -317,6 +318,24 @@ def run():
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
+    # Aim-stall watchdog (2026-07-17) — counts consecutive ticks the FSM
+    # spends aiming without ever landing a click. The goal-gated DIRECT-CHOP
+    # override below only fires when goals.current_goal() is tree-category,
+    # but the reactive goal system (core/cognitive.py GoalStack) can push a
+    # higher-priority goal like mine_emerald into ITS OWN separate stack
+    # while memory.goals sits on something unrelated (e.g. return_to_base) —
+    # the two goal stacks aren't synced, so DIRECT-CHOP silently never fires
+    # and the FSM just re-aims forever with no progress.
+    _aim_stall_ticks = 0
+    _AIM_STALL_THRESHOLD = 6
+    # DIRECT-CHOP hold state (2026-07-17) — Minecraft's block-break progress
+    # resets the instant the left button releases. The old per-tick
+    # click-then-release-then-reclick pattern meant progress never
+    # accumulated past a single tick's worth. Track whether the button is
+    # currently held so we send exactly one button-down when DIRECT-CHOP
+    # starts and one button-up when it stops, instead of a click every tick.
+    _mining_hold_active = False
+    _night_triggered = False   # frame-brightness night/darkness override latch
     _last_tree_fallback_tick = -config.SCAN_COOLDOWN_TICKS  # tree-goal walk+pan fallback
     _tree_walk_tick_count    = 0    # consecutive TREE-WALK ticks since last turn/burst
     _last_chest_tick    = -1000   # tick of last chest interaction
@@ -440,6 +459,67 @@ def run():
                 tts.say_line('no_frame', priority=True)
                 time.sleep(1)
                 continue
+
+            # ── On-demand debug snapshot (2026-07-17) ──────────
+            # /dev/video2 only supports one exclusive open, so an outside
+            # process (ffmpeg, a second cv2.VideoCapture) can't grab a
+            # frame while this loop owns the capture card — drop a touch
+            # file and this loop dumps the current full-res raw frame to
+            # disk itself on the next tick instead.
+            if os.path.exists('data/.snapshot_trigger'):
+                _raw = pipeline.latest_raw_frame
+                if _raw is not None:
+                    cv2.imwrite('data/debug_snapshot.jpg', _raw)
+                    print('[SNAPSHOT] wrote data/debug_snapshot.jpg')
+                os.remove('data/.snapshot_trigger')
+
+            # ── On-demand action injection (2026-07-17) ────────
+            # Same rationale as the snapshot trigger above — lets an
+            # outside operator queue a one-off HID sequence (e.g. a
+            # focus-recovery click) through the running process's own
+            # executor instead of racing it for the capture/serial
+            # devices. data/.action_injection_trigger.json:
+            #   {"actions": [{action_dict}, ...]}
+            # Each dict is passed straight to executor.execute(); a
+            # "sleep_ms" key (not itself part of action_dict) pauses
+            # after that step before the next one. A dict of exactly
+            # {"reset_kb2040": true} calls executor.reset_device() instead
+            # of execute() — see actions/executor.py / kb2040_packer.py.
+            if os.path.exists('data/.action_injection_trigger.json'):
+                try:
+                    with open('data/.action_injection_trigger.json') as _f:
+                        _inj = json.load(_f)
+                    for _step in _inj.get('actions', []):
+                        _sleep_ms = _step.pop('sleep_ms', None)
+                        if _step.get('reset_kb2040'):
+                            print('[INJECT] resetting KB2040')
+                            executor.reset_device()
+                        else:
+                            print(f'[INJECT] executing: {_step}')
+                            executor.execute(_step)
+                        if _sleep_ms:
+                            time.sleep(_sleep_ms / 1000.0)
+                    print('[INJECT] sequence complete')
+                except Exception as e:
+                    print(f'[INJECT] error: {e}')
+                os.remove('data/.action_injection_trigger.json')
+
+            # ── Night / darkness detection (2026-07-17) ────────
+            # Cheap backstop against mob deaths, independent of the
+            # game_tick heuristic day-cycle counter behaviors/night_survival.py
+            # relies on — reads actual on-screen darkness (night sky or a
+            # cave) straight from the capture frame instead.
+            avg_brightness = frame.mean()
+            if (avg_brightness < config.NIGHT_BRIGHTNESS_DARK and not _night_triggered
+                    and goals.current_goal() not in ('find_shelter', 'return_to_base')):
+                print(f'[NIGHT] frame brightness {avg_brightness:.1f} < {config.NIGHT_BRIGHTNESS_DARK} — pushing return_to_base')
+                goals.push('return_to_base')
+                _night_triggered = True
+            elif (avg_brightness > config.NIGHT_BRIGHTNESS_DAWN and _night_triggered
+                    and goals.current_goal() == 'return_to_base'):
+                print(f'[NIGHT] frame brightness {avg_brightness:.1f} > {config.NIGHT_BRIGHTNESS_DAWN} — popping return_to_base')
+                goals.pop()
+                _night_triggered = False
 
             # ── YOLO detection (from YOLOThread) ───────────────
             # YOLOThread runs YOLO at GPU speed; we read its latest results.
@@ -612,22 +692,112 @@ def run():
 
             # Goal-aware FSM gating: the FSM has no notion of the active
             # goal and always prefers ore over trees (see core/fsm.py
-            # priority order) — that's what let AKSUMAEL keep mining ore
-            # underground while its goal was find_and_chop_tree. When the
-            # goal wants a tree and none is in view this tick, hide ore
-            # detections from the FSM so it falls through to EXPLORE
-            # (walk + scan) instead of committing to an ore target.
+            # priority order: `mine_obj = ore_obj or tree_obj or ...`) —
+            # that's what let AKSUMAEL keep mining ore underground while
+            # its goal was find_and_chop_tree. Originally this only hid
+            # ore detections when no tree was in view, but the FSM's own
+            # ore-first priority meant ore won again the instant a tree
+            # *also* entered frame (e.g. a color-detected redstone_ore
+            # false-positive next to the tree we're standing at) — hide
+            # ore from the FSM for the whole duration of a tree goal, not
+            # just while no tree is visible (2026-07-17).
+            _tree_in_view = any(
+                o.get('label', '').lower() in TREE_TARGETS for o in objects)
             _fsm_objects = objects
             if _goal_category(goals.current_goal()) == 'tree':
-                _tree_in_view = any(
-                    o.get('label', '').lower() in TREE_TARGETS for o in objects)
-                if not _tree_in_view:
-                    _fsm_objects = [
-                        o for o in objects
-                        if o.get('label', '').lower() not in ORE_TARGETS
-                    ]
+                _fsm_objects = [
+                    o for o in objects
+                    if o.get('label', '').lower() not in ORE_TARGETS
+                ]
 
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac)
+
+            # Aim-stall tracking — see _aim_stall_ticks comment above. Tracks
+            # the FSM's own action regardless of which goal is currently
+            # gating DIRECT-CHOP below.
+            _fsm_action_str = (fsm_action.get('action', '') if isinstance(fsm_action, dict)
+                                else str(fsm_action or ''))
+            if _fsm_action_str.startswith('aim') or fsm_state == State.APPROACH:
+                _aim_stall_ticks += 1
+            else:
+                _aim_stall_ticks = 0
+
+            # ── DIRECT CHOP override ──────────────────────────────
+            # When goal=tree and color detection sees a log/leaves, bypass
+            # all skill/FSM/aim complexity and just left-click center screen.
+            # The character is already standing next to the tree; the crosshair
+            # is naturally pointed at it. This fires instead of the broken
+            # FSM aiming pipeline (2026-07-15).
+            #
+            # Also fires on an aim-stall regardless of the active goal
+            # (2026-07-17) — the goal-category gate alone left AKSUMAEL stuck
+            # aiming at a tree with no click for many ticks whenever a
+            # reactive goal (e.g. mine_emerald, pushed via the separate
+            # core/cognitive.py goal stack) preempted memory.goals' current
+            # goal away from tree-category. Wood is always worth grabbing
+            # when it's right in front of the crosshair.
+            _DIRECT_CHOP_LABELS = {'log', 'leaves', 'birch_log', 'oak_log'}
+            _trees_visible = any(o.get('label', '').lower() in _DIRECT_CHOP_LABELS
+                                  for o in objects)
+            _goal_wants_tree = _goal_category(goals.current_goal()) == 'tree'
+            _aim_stalled = _aim_stall_ticks >= _AIM_STALL_THRESHOLD
+            _direct_chop_active = (
+                not replayer.is_active()
+                and _trees_visible
+                and (_goal_wants_tree or _aim_stalled)
+            )
+            if _direct_chop_active:
+                if not _mining_hold_active:
+                    if _aim_stalled and not _goal_wants_tree:
+                        print(f'[CHOP] aim-stall override ({_aim_stall_ticks} ticks, '
+                              f'goal={goals.current_goal()}) — holding left-click on tree')
+                    else:
+                        print('[CHOP] holding left-click on tree')
+                    executor.execute({'mouse_hold': 'down', 'mouse_button_name': 'left',
+                                      'source': 'direct_chop'})
+                    _mining_hold_active = True
+
+                # Keep correcting aim toward the tree while the click is held
+                # (2026-07-17) — this used to be a blind click at screen centre
+                # on the assumption the crosshair was "naturally" already on
+                # the tree, but that left the crosshair stuck tens of pixels
+                # off-target with nothing ever nudging it back (the held-click
+                # fix confirmed 'look' packets no longer release mouse_hold,
+                # so it's safe to send them every tick here too). Pick the
+                # largest/most-confident chop-target box each tick — that's
+                # the trunk/canopy nearest the crosshair, not a distant tree.
+                _chop_objs = [o for o in objects
+                              if o.get('label', '').lower() in _DIRECT_CHOP_LABELS
+                              and o.get('box') and len(o['box']) == 4]
+                if _chop_objs:
+                    _chop_box = max(_chop_objs,
+                                     key=lambda o: (o['box'][2] - o['box'][0])
+                                                  * (o['box'][3] - o['box'][1]))['box']
+                    _fw, _fh = frame.shape[1], frame.shape[0]
+                    _cdx, _cdy = bbox_to_mouse_delta(_chop_box, _fw, _fh)
+                else:
+                    _cdx, _cdy = 0, 0
+                # Dispatched directly (not just stuffed into action_dict) —
+                # the '── Decision ──' block below unconditionally does
+                # `action_dict = _idle()` a few lines after this, which wiped
+                # out DIRECT-CHOP's action_dict (click/look/observation) every
+                # single tick. Only this block's mouse_hold call above ever
+                # reached hardware; the aim correction never did, which is
+                # why the crosshair sat frozen off-target no matter what was
+                # computed here (2026-07-17).
+                if _cdx or _cdy:
+                    executor.execute({'look': {'dx': _cdx, 'dy': _cdy},
+                                      'source': 'direct_chop_aim'})
+                action_dict = {'observation': 'direct-chop tree (holding)',
+                               'action': 'left_click', 'click': [50.0, 50.0],
+                               'look': {'dx': _cdx, 'dy': _cdy},
+                               'key': None, 'gamepad': None, 'confidence': 0.9}
+                src_tag = 'DIRECT-CHOP'
+            elif _mining_hold_active:
+                print('[CHOP] releasing held left-click (tree gone / goal changed)')
+                executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
+                                  'source': 'direct_chop'})
+                _mining_hold_active = False
 
             # Mining/chopping is driven per-tick by the FSM (continuous aim
             # correction) so the LLM doesn't need to think as often there —
@@ -705,10 +875,11 @@ def run():
                 # the UI. Stay idle until the menu is closed.
                 src_tag = 'MENU'
 
-            elif (_night_ad := night_survival.update(
+            elif config.NIGHT_SURVIVAL_ENABLED and (_night_ad := night_survival.update(
                     world_mem,
                     inv_reader.read(force=False) if inv_reader._cache_ts > 0 else {},
-                    tick)) is not None:
+                    tick,
+                    avg_brightness)) is not None:
                 # Dusk/night handling (pillar up / dig in / wait for dawn /
                 # descend) pre-empts skills/FSM/LLM entirely — it already
                 # dispatched its own key/click actions directly.
@@ -769,6 +940,7 @@ def run():
                 # back to a jump (steps over a 1-block-high lip/slab).
                 if (_goal_cat == 'tree' and not candidates
                         and not replayer.is_active()
+                        and fsm_state not in (State.APPROACH, State.MINE)
                         and (tick - _last_tree_fallback_tick) >= config.SCAN_COOLDOWN_TICKS):
                     print('[TREE-FALLBACK] no tree skills/candidates — '
                           'walking forward (rotating if stuck) to scan for trees')
@@ -863,28 +1035,42 @@ def run():
                     # while waiting for the next scan.
                     # Re-focus the game window before W — see the matching
                     # comment above in TREE-FALLBACK for why (2026-07-15).
-                    executor.execute({'click': [50.0, 50.0], 'button': 'left', 'source': 'focus_click'})
-                    time.sleep(0.2)
-                    executor.execute({'key': 'w', 'delay_ms': 500, 'source': 'tree_walk'})
-                    _tree_walk_tick_count += 1
-                    _walk_obs = 'walking — scanning for trees'
-                    if _tree_walk_tick_count >= 8:
-                        # Walking dead straight for a long stretch with
-                        # nothing but HUD labels in view usually means it's
-                        # colliding with something out of frame (a tree
-                        # trunk, a rock, terrain) rather than genuinely open
-                        # ground — see 2026-07-15. Turn every 8 ticks so the
-                        # camera sweeps a wider arc AND the walking direction
-                        # actually changes instead of plowing into the same
-                        # obstacle indefinitely.
-                        _walk_turn = random.choice([-45, 45])
-                        executor.execute({'look': {'dx': _walk_turn, 'dy': 0}, 'source': 'tree_walk'})
-                        _tree_walk_tick_count = 0
-                        _walk_obs = f'walking — turning {_walk_turn:+d}° to sweep/reroute'
-                    action_dict = {'observation': _walk_obs,
-                                    'action': 'w', 'key': 'w', 'click': None,
-                                    'gamepad': None, 'confidence': 0.0}
-                    src_tag = 'TREE-WALK'
+                    if _direct_chop_active:
+                        # DIRECT-CHOP already landed a click on a tree/leaves
+                        # block this tick (see above) — don't also walk, or
+                        # the character never stands still long enough for
+                        # consecutive hits to land on the same block
+                        # (2026-07-17: click-then-walk every tick meant
+                        # mining progress reset before a single block ever
+                        # broke).
+                        _walk_obs = 'holding position — direct-chop landed this tick'
+                        action_dict = {'observation': _walk_obs,
+                                        'action': 'wait', 'key': None, 'click': None,
+                                        'gamepad': None, 'confidence': 0.0}
+                        src_tag = 'CHOP-HOLD'
+                    else:
+                        executor.execute({'click': [50.0, 50.0], 'button': 'left', 'source': 'focus_click'})
+                        time.sleep(0.2)
+                        executor.execute({'key': 'w', 'delay_ms': 500, 'source': 'tree_walk'})
+                        _tree_walk_tick_count += 1
+                        _walk_obs = 'walking — scanning for trees'
+                        if _tree_walk_tick_count >= 8:
+                            # Walking dead straight for a long stretch with
+                            # nothing but HUD labels in view usually means it's
+                            # colliding with something out of frame (a tree
+                            # trunk, a rock, terrain) rather than genuinely open
+                            # ground — see 2026-07-15. Turn every 8 ticks so the
+                            # camera sweeps a wider arc AND the walking direction
+                            # actually changes instead of plowing into the same
+                            # obstacle indefinitely.
+                            _walk_turn = random.choice([-45, 45])
+                            executor.execute({'look': {'dx': _walk_turn, 'dy': 0}, 'source': 'tree_walk'})
+                            _tree_walk_tick_count = 0
+                            _walk_obs = f'walking — turning {_walk_turn:+d}° to sweep/reroute'
+                        action_dict = {'observation': _walk_obs,
+                                        'action': 'w', 'key': 'w', 'click': None,
+                                        'gamepad': None, 'confidence': 0.0}
+                        src_tag = 'TREE-WALK'
 
                 # ── Precondition gating (Voyager-style verification) ──
                 # Skills without preconditions always pass (old skills keep
