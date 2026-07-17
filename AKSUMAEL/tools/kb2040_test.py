@@ -120,7 +120,6 @@ def main():
             test_gamepad(ser)
             print('\n── All tests sent ──')
             print('If all three worked, the full HID chain is validated.')
-            print('Next: python3 tools/joystick_harness.py')
         else:
             print(__doc__)
     finally:

@@ -181,7 +181,7 @@ PLATFORM_TARGET = "pc"
 
 # ── Controller Input ──────────────────────────────────────────
 ENABLE_EVDEV   = True    # real controller plugged into the laptop
-ENABLE_I2C_JOY = True    # mini I2C joystick fallback (0x5A)
+ENABLE_I2C_JOY = False   # mini I2C joystick module no longer physically connected
 I2C_JOY_ADDR   = 0x5A
 I2C_BUS        = 1
 I2C_DEADZONE   = 15
