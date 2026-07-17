@@ -4,11 +4,13 @@
 # ║  descend at dawn                                       ║
 # ╚══════════════════════════════════════════════════════╝
 #
-# world_mem.game_tick is a heuristic day-cycle counter (wraps at
-# config.MC_DAY_TICKS — see WorldMemory.update). We can't read the real
-# MC clock, so this fires once per approximated day: when game_tick
-# crosses NIGHT_APPROACH_TICK we haven't already handled this day, we
-# shelter until world_mem.is_daytime() reports true again.
+# Darkness is judged from the live captured frame's average brightness
+# (see core.runtime's avg_brightness = frame.mean()), not the synthetic
+# game_tick day-cycle counter — that counter is real uptime mod
+# config.MC_DAY_TICKS and drifts from the actual in-game clock over a
+# long session. We shelter once brightness drops below
+# config.NIGHT_BRIGHTNESS_DARK, and stay sheltered until it climbs back
+# above config.NIGHT_BRIGHTNESS_DAWN.
 #
 # Building-block availability is judged from the InventoryReader cache
 # (real screen-read counts) when it's warm; if it's cold/empty we
@@ -46,7 +48,6 @@ class NightSurvivalBehavior:
         self._goals     = goals
 
         self._state          = 'idle'
-        self._last_night_day = -1     # approximated day index last handled
         self._pillar_count   = 0
         self._wait_ticks      = 0
         self._dug_in          = False  # True if we fell back to the dig-in strategy
@@ -59,22 +60,15 @@ class NightSurvivalBehavior:
             return True   # unknown — don't block shelter on a cold cache
         return any(inv_snapshot.get(item, 0) > 0 for item in _BLOCK_ITEMS)
 
-    def update(self, world_mem, inv_snapshot: dict, tick: int):
+    def update(self, world_mem, inv_snapshot: dict, tick: int, avg_brightness: float):
         """
         Call every tick. Returns an action_dict to force this tick, or
         None if night survival isn't engaged (caller falls through to
         skills/FSM/LLM as usual).
         """
-        approaching_night = (
-            world_mem.game_tick > config.NIGHT_APPROACH_TICK
-            and not world_mem.is_daytime()
-        )
-        day_index = world_mem.total_ticks // config.MC_DAY_TICKS
-
         if self._state == 'idle':
-            if not (approaching_night and self._last_night_day != day_index):
+            if avg_brightness >= config.NIGHT_BRIGHTNESS_DARK:
                 return None
-            self._last_night_day = day_index
             self._goals.push('find_shelter')
             if self._has_blocks(inv_snapshot):
                 print('[NIGHT] dusk detected — pillaring up')
@@ -94,7 +88,7 @@ class NightSurvivalBehavior:
             return self._do_dig_in()
 
         if self._state == 'waiting':
-            return self._do_wait(world_mem)
+            return self._do_wait(avg_brightness)
 
         if self._state == 'descend':
             return self._do_descend()
@@ -142,14 +136,14 @@ class NightSurvivalBehavior:
             self._wait_ticks = 0
         return ad
 
-    def _do_wait(self, world_mem) -> dict:
+    def _do_wait(self, avg_brightness: float) -> dict:
         ad = _idle()
         ad['action']      = 'night:waiting_for_dawn'
         ad['observation'] = 'Sheltering — waiting for dawn'
         ad['confidence']  = 0.7
         self._wait_ticks  += 1
 
-        if world_mem.is_daytime() or self._wait_ticks >= config.NIGHT_MAX_WAIT_TICKS:
+        if avg_brightness > config.NIGHT_BRIGHTNESS_DAWN or self._wait_ticks >= config.NIGHT_MAX_WAIT_TICKS:
             print(f'[NIGHT] dawn (or timeout after {self._wait_ticks} ticks) — descending')
             if self._dug_in:
                 # Dig-in fallback has nothing to descend through — just leave.

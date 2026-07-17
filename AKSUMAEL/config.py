@@ -274,7 +274,16 @@ MC_DAY_TICKS       = 24000   # Minecraft day cycle
 DAYTIME_SAFE_RANGE = (0, 13000)   # ticks 0-13000 are daylight
 
 # ── Night Survival ────────────────────────────────────────────
-NIGHT_APPROACH_TICK  = 11000   # start sheltering once game_tick passes this (dusk warning)
+# Darkness is judged from the live captured frame (avg_brightness =
+# frame.mean()), not the synthetic game_tick counter — that counter is
+# real uptime mod MC_DAY_TICKS (see the Day/Night Cycle comment above)
+# and drifts from the actual in-game clock over a long session. Flip to
+# False to disable night-shelter behavior entirely (e.g. to test
+# mining/chopping without it preempting every tick) — re-enable before
+# any unattended/long-running session.
+NIGHT_SURVIVAL_ENABLED = True
+NIGHT_BRIGHTNESS_DARK = 35     # avg frame brightness (0-255) below which it's night/dark
+NIGHT_BRIGHTNESS_DAWN = 60     # avg frame brightness above which it's day again
 PILLAR_HEIGHT        = 6       # blocks to pillar up when caught in the open at night
 BLOCK_SLOT           = '4'     # hotbar slot assumed to hold building blocks (cobblestone/dirt)
 NIGHT_MAX_WAIT_TICKS = 3000    # safety cap on waiting out the night (~12.5 min at 0.25s/tick)
