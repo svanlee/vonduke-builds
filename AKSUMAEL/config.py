@@ -14,7 +14,6 @@ VISION_PROVIDER = "local"
 
 LOCAL_LLM_URL     = "http://localhost:9337/v1"
 LOCAL_LLM_MODEL   = "auto"
-LOCAL_LLM_TIMEOUT = 8       # seconds — if local takes longer, fall back to Gemini
 LOCAL_LLM_ENABLED = True
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
