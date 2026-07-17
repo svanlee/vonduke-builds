@@ -56,6 +56,79 @@ SlabScout rows as external, not owed here).
 
 ---
 
+### Fri Jul 17 2026 (cont'd)
+**[FEAT] — Open-vocabulary auto-labeling + single class-registry source of truth**
+
+What: `tools/claude_autolabel.py` — the labeler AutoTrainer's automatic
+retrain cycle actually calls — forced Claude to pick a class from a
+frozen, already-stale 43-class snapshot (the real deployed
+`data/yolo_dataset/data.yaml` had 53), so a genuinely new object had no
+path to becoming a trainable class; it also called `api.anthropic.com`
+directly with its own separate key file, the one call site in the whole
+codebase not going through `core/llm_router.py`. Rewrote it to route
+through a new `core.llm_router.try_claude()` and to propose a new class
+name when nothing on the known list fits, instead of forcing a bad
+match. While fixing that, found a second, currently-live bug:
+`tools/yolo_finetune.py`'s `class_id()` canonicalized labels through
+`skills.skill_system._canonical()` — a function built for fuzzy
+skill-trigger matching that intentionally collapses synonyms (e.g.
+`creeper`/`zombie`/`skeleton` all map to the shared group name `mob`).
+Reused for class-ID resolution, it silently misfiled every mob
+detection under a nonexistent `mob` class instead of its own real
+trained id, corrupting labels on every survey-saved frame containing
+one — confirmed and regression-tested against the fix. Consolidated
+three separate, drifted-apart copies of the class list (the stale
+hardcoded one, `claude_autolabel.py`'s import of it, and a fallback
+snapshot in `core/feature_extractor.py`) into one real source of truth:
+new `core/class_registry.py`, backed directly by `data.yaml`.
+
+Why it matters: this is what actually answers "can it learn about
+things it's never seen" — before this, the answer was no, structurally,
+regardless of how well the survey/retrain loop ran. It still isn't
+"detects blazes next session" — a class discovered from one encounter
+has a handful of examples, nowhere near enough to generalize, and needs
+repeated exposure across sessions like every one of the current 53
+classes did. And it doesn't create Nether/End exposure on its own; the
+agent still has to actually get there.
+
+File(s): `AKSUMAEL/core/class_registry.py` (new), `AKSUMAEL/core/llm_router.py`,
+`AKSUMAEL/tools/claude_autolabel.py`, `AKSUMAEL/tools/yolo_finetune.py`,
+`AKSUMAEL/core/feature_extractor.py`.
+
+---
+
+### Fri Jul 17 2026 (cont'd)
+**[CLEANUP] — Removed Raspberry Pi / 7" monitor / I2C joystick references**
+
+What: The rig migrated from a Raspberry Pi 4 to a laptop (HP Victus,
+RTX 4050) a while back — `config.py`'s own header already documented
+this — but `AKSUMAEL/README.md`, `install.sh`, and `config.py` still
+described the old Pi-based setup: GPIO-pin UART wiring, `raspi-config`/
+`/boot/config.txt` steps, a 7" Pi display for the labeling UI, and an
+I2C joystick fallback, none of which are physically present anymore.
+Set `ENABLE_I2C_JOY = False` in `config.py` (the code already handles
+it being off cleanly — no logic change needed). Rewrote the
+architecture diagram, hardware table, and wiring section in
+`AKSUMAEL/README.md` to describe the actual current path (capture card
++ FTDI USB-TTL adapter → laptop → KB2040); dropped the Pi setup and
+joystick steps from the Day 1 test plan and the 7" monitor claim from
+the labeling UI section. Trimmed the same dead steps out of
+`install.sh` (raspi-config/UART-enable, serial0/ttyS0 fix, gpio/i2c
+group grants, i2c-tools package, I2C joystick hardware check) and
+renumbered it. Deleted `tools/joystick_harness.py` (manual test script
+for hardware that's gone) and its dangling "what to run next" reference
+in `tools/kb2040_test.py`.
+
+Why it matters: docs and an installer that describe hardware you don't
+have are worse than no docs — they actively mislead the next setup
+attempt (or the next re-read of this repo) into chasing wiring/config
+steps that don't apply to the actual rig.
+
+File(s): `AKSUMAEL/config.py`, `AKSUMAEL/README.md`, `AKSUMAEL/install.sh`,
+`AKSUMAEL/tools/kb2040_test.py`; deleted `AKSUMAEL/tools/joystick_harness.py`.
+
+---
+
 ### Tue Jul 14 2026
 **[FIX/REFACTOR] — Train/inference VRAM race fixed, LLM routing centralized**
 
