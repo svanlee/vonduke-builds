@@ -710,7 +710,8 @@ def run():
                     if o.get('label', '').lower() not in ORE_TARGETS
                 ]
 
-            fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac)
+            fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
+                                              goal=goals.current_goal())
 
             # Aim-stall tracking — see _aim_stall_ticks comment above. Tracks
             # the FSM's own action regardless of which goal is currently
