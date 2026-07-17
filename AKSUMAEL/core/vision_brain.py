@@ -70,8 +70,16 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
 
     global _last_provider
     raw, provider = route_llm_call(
-        prompt, max_tokens=400, images=[frame_to_b64(frame)],
-        timeout=config.LOCAL_LLM_TIMEOUT)
+        # Generous budget/timeout — the local model 'thinks' before
+        # answering, often burning 200-300+ tokens on hidden reasoning
+        # before the actual JSON reply (see inventory_reader.py /
+        # chest_manager.py, which hit and fixed this same issue). This is
+        # the highest-frequency, highest-stakes call in the whole loop —
+        # starving it caused the response to get cut off mid-thought,
+        # fail to parse, and silently fall back to a 'wait'/confidence:0.0
+        # no-op almost every tick.
+        prompt, max_tokens=1200, images=[frame_to_b64(frame)],
+        timeout=45, local_retries=3)
 
     if provider is not None:
         _call_counts[provider] += 1
