@@ -73,6 +73,11 @@ ORE_PRIORITY = [
 TREE_TARGETS = {
     'log', 'oak_log', 'spruce_log', 'birch_log', 'jungle_log',
     'acacia_log', 'dark_oak_log', 'mangrove_log', 'cherry_log', 'wood', 'tree',
+    'leaves',  # color-fallback detector reports leaves when YOLO can't see
+               # logs at all (see vision/color_detector.py) — without this,
+               # EXPLORE's tree_obj dispatch (below) never fires on a
+               # leaves-only detection and the FSM gets stuck in EXPLORE
+               # forever (2026-07-17).
 }
 
 PASSIVE_MOBS = {
@@ -160,6 +165,16 @@ def _pick_best(objects: list, label_set: set, min_conf: float = MIN_CONF):
     return max(hits, key=lambda o: o.get('conf', 0.0)) if hits else None
 
 
+def _pick_by_label(objects: list, label: str, min_conf: float = MIN_CONF):
+    """Return the highest-confidence detection matching an exact label."""
+    hits = [
+        o for o in objects
+        if o.get('label', '').lower() == label
+        and o.get('conf', 0.0) >= min_conf
+    ]
+    return max(hits, key=lambda o: o.get('conf', 0.0)) if hits else None
+
+
 def _pick_best_ore(objects: list, min_conf: float = MIN_CONF):
     """
     Pick the highest-priority ore detection.
@@ -222,6 +237,11 @@ class GameFSM:
         self._mine_timeout_label = None  # label being timed out on
         self._mine_absent_ticks = 0    # consecutive ticks with NO detection at all
         self._mine_last_box     = None  # last known box, held onto through low-conf flicker
+        # Target lock: once MINE begins, only detections of this label update
+        # the aim point — prevents flip-flopping between simultaneously
+        # visible labels (e.g. leaves/log/birch_log) each tick, which kept
+        # aim from ever converging on one block.
+        self._mine_target       = None  # {'label': str, 'box': [..]} or None
         # Ore blacklist: {label: expire_tick} — suppress re-targeting after give-up
         self._ore_blacklist      = {}
         self._ore_blacklist_strikes = {}   # {label: times blacklisted} — for exponential backoff
@@ -248,7 +268,7 @@ class GameFSM:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0):
+    def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0, goal: str = None):
         """
         Evaluate one FSM tick.
 
@@ -256,6 +276,7 @@ class GameFSM:
             objects:     YOLO detection list.  Each item: {label, conf, box}.
             world_mem:   WorldMemory instance (may be None).
             hunger_frac: Hunger bar fullness 0.0–1.0 (1.0 = full).
+            goal:        Active goal name (e.g. 'find_and_chop_tree'), or None.
 
         Returns:
             (State, action_dict)
@@ -291,6 +312,10 @@ class GameFSM:
         _ore_conf_floor = MINE_HOLD_CONF if self.state == State.MINE else MIN_CONF
         ore_obj      = _pick_best_ore(non_blacklisted, min_conf=_ore_conf_floor)
         tree_obj     = _pick_best(objects, TREE_TARGETS)
+        if (tree_obj is not None and world_mem is not None
+                and getattr(world_mem, 'pos_x', None) is not None
+                and getattr(world_mem, 'pos_z', None) is not None):
+            world_mem.record_tree_sighting(world_mem.pos_x, world_mem.pos_z)
         mine_obj     = ore_obj or tree_obj or _pick_best(objects, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
         animal_obj   = _pick_best(objects, PASSIVE_MOBS)
@@ -310,6 +335,15 @@ class GameFSM:
             return self._do_collect()
 
         elif s == State.MINE:
+            # Target-locked: while a label is locked in, only accept
+            # detections of that same label — ignore other simultaneously
+            # visible targets so aim can actually converge.
+            if self._mine_target is not None:
+                locked_obj = _pick_by_label(
+                    objects, self._mine_target['label'], min_conf=MINE_HOLD_CONF)
+                if locked_obj is not None:
+                    self._mine_target['box'] = locked_obj.get('box', self._mine_target['box'])
+                return self._do_mine(locked_obj, fw, fh)
             return self._do_mine(mine_obj, fw, fh)
 
         elif s == State.APPROACH:
@@ -353,11 +387,56 @@ class GameFSM:
             # Priority 7: farm
             if crop_obj:
                 return self._goto(State.FARM, self._begin_farm())
-            return self._do_explore()
+            return self._do_explore(world_mem, goal)
 
     # ── State handlers ────────────────────────────────────────────────────────
 
-    def _do_explore(self):
+    def _do_explore(self, world_mem=None, goal: str = None):
+        """Walk forward, then pan left/right, repeat — unless a tree goal
+        is active and none is on screen, in which case head toward the
+        nearest remembered tree location instead of scanning blind."""
+        if goal == 'find_and_chop_tree' and world_mem is not None:
+            nav_ad = self._navigate_to_known_tree(world_mem)
+            if nav_ad is not None:
+                return self.state, nav_ad
+        return self._do_explore_sweep()
+
+    # Cardinal facing (from F3 OCR, world_mem.facing) expressed as degrees,
+    # matching the atan2(dx, -dz) convention used below (north=0, clockwise).
+    _CARDINAL_DEG = {'north': 0, 'east': 90, 'south': 180, 'west': 270}
+
+    def _navigate_to_known_tree(self, world_mem):
+        """Return an action_dict biasing walk/look toward the nearest
+        known_trees entry, or None if we can't (no fix, no facing, no
+        remembered tree, or already close enough to let vision take over)."""
+        px = getattr(world_mem, 'pos_x', None)
+        pz = getattr(world_mem, 'pos_z', None)
+        facing = getattr(world_mem, 'facing', None)
+        cardinal_deg = self._CARDINAL_DEG.get(facing)
+        if px is None or pz is None or cardinal_deg is None:
+            return None
+        tree = world_mem.nearest_known_tree(px, pz)
+        if tree is None:
+            return None
+        dx, dz = tree['x'] - px, tree['z'] - pz
+        if (dx * dx + dz * dz) ** 0.5 < 3.0:
+            return None  # close enough — let normal detection take over
+
+        target_bearing = math.degrees(math.atan2(dx, -dz)) % 360
+        diff = (target_bearing - cardinal_deg + 180) % 360 - 180
+
+        ad = _idle()
+        ad['key'] = 'w'
+        if diff > 20:
+            ad['look'] = {'dx': config.LOOK_SENSITIVITY, 'dy': 0}
+        elif diff < -20:
+            ad['look'] = {'dx': -config.LOOK_SENSITIVITY, 'dy': 0}
+        ad['action']      = 'explore:known_tree'
+        ad['observation'] = f'Heading toward remembered tree at ({tree["x"]:.0f},{tree["z"]:.0f})'
+        ad['confidence']  = 0.5
+        return ad
+
+    def _do_explore_sweep(self):
         """Walk forward, then pan left/right, repeat."""
         ad = _idle()
 
@@ -421,6 +500,8 @@ class GameFSM:
         self._mine_ticks        = 0
         self._mine_absent_ticks = 0
         self._mine_last_box     = target.get('box')
+        self._mine_target       = {'label': target.get('label', '').lower(),
+                                    'box':   target.get('box')}
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         ad = _idle()
@@ -726,6 +807,8 @@ class GameFSM:
         """Transition to a new state (or stay if already there)."""
         if new_state != self.state:
             print(f'[FSM] {self.state.value} → {new_state.value}')
+            if self.state == State.MINE and new_state != State.MINE:
+                self._mine_target = None   # clear target lock on any MINE exit/timeout
             self.state        = new_state
             self._state_ticks = 0
         return self.state, action

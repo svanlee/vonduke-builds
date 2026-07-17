@@ -45,6 +45,10 @@ class WorldMemory:
         self.scan_threats  = []         # [{bearing, label, identified, img_path, tick}]
         self._last_scan_tick = 0
         self.scan_path     = {}         # most recent pathfinder output
+        # Tree sightings, keyed by nothing — just a pruned list of
+        # {x, z, timestamp} so EXPLORE can head toward a remembered tree
+        # instead of scanning blind when none is currently on screen.
+        self.known_trees   = []
         self._load()
 
     def _load(self):
@@ -67,6 +71,7 @@ class WorldMemory:
                 self.animals_seen  = d.get('animals_seen', {})
                 self.near_water    = d.get('near_water', False)
                 self.llm_calls     = d.get('llm_calls', 0)
+                self.known_trees   = d.get('known_trees', [])
             except Exception:
                 pass
 
@@ -89,6 +94,7 @@ class WorldMemory:
             'animals_seen':  self.animals_seen,
             'near_water':    self.near_water,
             'llm_calls':     self.llm_calls,
+            'known_trees':   self.known_trees,
             'last_saved':    time.strftime('%Y-%m-%d %H:%M:%S'),
         }
         with open(MEMORY_FILE, 'w') as f:
@@ -225,6 +231,31 @@ class WorldMemory:
     def is_daytime(self) -> bool:
         lo, hi = config.DAYTIME_SAFE_RANGE
         return lo <= self.game_tick <= hi
+
+    KNOWN_TREE_MAX_AGE_SEC  = 600   # prune sightings older than 10 minutes
+    KNOWN_TREE_DEDUP_RADIUS = 3.0   # skip a new entry this close to an existing one
+
+    def _prune_known_trees(self):
+        cutoff = time.time() - self.KNOWN_TREE_MAX_AGE_SEC
+        self.known_trees = [t for t in self.known_trees if t.get('timestamp', 0) >= cutoff]
+
+    def record_tree_sighting(self, x: float, z: float):
+        """Remember a tree's last-known position (from F3/belief-state XZ)
+        so EXPLORE can navigate back to it later if none is on screen."""
+        self._prune_known_trees()
+        for t in self.known_trees:
+            if ((t['x'] - x) ** 2 + (t['z'] - z) ** 2) ** 0.5 < self.KNOWN_TREE_DEDUP_RADIUS:
+                t['timestamp'] = time.time()   # refresh instead of duplicating
+                return
+        self.known_trees.append({'x': x, 'z': z, 'timestamp': time.time()})
+
+    def nearest_known_tree(self, x: float, z: float) -> dict:
+        """Closest still-fresh remembered tree to (x, z), or None."""
+        self._prune_known_trees()
+        if not self.known_trees:
+            return None
+        return min(self.known_trees,
+                   key=lambda t: (t['x'] - x) ** 2 + (t['z'] - z) ** 2)
 
     def set_hunger_fraction(self, frac: float):
         """frac: current hunger_bar bbox width / expected full-bar width."""
