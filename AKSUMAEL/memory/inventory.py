@@ -6,6 +6,14 @@ import json, os
 
 INVENTORY_PATH = "data/inventory.json"
 
+# Low-value blocks worth dropping once the inventory is full.
+JUNK_ITEMS = ("cobblestone", "dirt", "gravel")
+
+# This tracker has no per-slot model of the real 36-slot inventory (27 main
+# + 9 hotbar) — it only counts inferred item gains. Treat total tracked
+# count exceeding this as a rough proxy for "probably full."
+FULL_INVENTORY_SLOTS = 27
+
 class InventoryTracker:
     def __init__(self):
         self.items = defaultdict(int)
@@ -33,10 +41,50 @@ class InventoryTracker:
             "mine_gold_ore": ("gold_ore", 1),
             "mine_lapis_ore": ("lapis", 6),
             "chop_tree": ("oak_log", 1),
+            "chop_birch_tree": ("birch_log", 1),
         }
         if skill_name in gains:
             item, qty = gains[skill_name]
+            before = self.items[item]
             self.items[item] += qty
+            print(f'[INV] {item}: {before} -> {self.items[item]} (+{qty} from {skill_name})')
+            # 'wood' is a species-agnostic aggregate every log gain rolls
+            # into, so the threshold logic in wood_subgoal() doesn't need to
+            # enumerate every log variant name.
+            if item.endswith('_log') or item == 'wood':
+                before_wood = self.items['wood']
+                self.items['wood'] += qty
+                print(f'[INV] wood: {before_wood} -> {self.items["wood"]}')
+
+    def wood_count(self) -> int:
+        """Total logs across every tracked wood key."""
+        return (self.items.get('wood', 0) + self.items.get('oak_log', 0)
+                + self.items.get('birch_log', 0))
+
+    def wood_subgoal(self):
+        """Return the next crafting sub-goal implied by current wood-chain
+        stock, or None if nothing is due yet. Checked from the far end of
+        the chain backward so the highest-value pending step wins (e.g. if
+        we already have enough for a crafting table, that beats
+        re-suggesting sticks)."""
+        planks = self.items.get('planks', 0) + self.items.get('oak_planks', 0)
+        sticks = self.items.get('stick', 0)
+        if sticks >= 4 and planks >= 3:
+            return 'craft_crafting_table'
+        if planks >= 8:
+            return 'craft_sticks'
+        if self.wood_count() >= 8:
+            return 'craft_planks'
+        return None
+
+    def should_drop_junk(self) -> bool:
+        """True once total tracked item count exceeds a full inventory."""
+        return sum(self.items.values()) > FULL_INVENTORY_SLOTS
+
+    def junk_to_drop(self) -> list:
+        """Junk item names (cobblestone/dirt/gravel) currently held, in the
+        order they should be dropped."""
+        return [item for item in JUNK_ITEMS if self.items.get(item, 0) > 0]
 
     def context_summary(self) -> str:
         if not self.items:

@@ -37,7 +37,12 @@ HUD_ALWAYS_VISIBLE = {'health_bar', 'armor_bar', 'hunger_bar', 'xp_bar', 'hotbar
 
 # Labels that are YOLO false positives in the current environment — don't
 # create skills triggered by these (emerald_ore only spawns in mountain biomes).
-_BLOCKED_SKILL_TRIGGERS = frozenset({'emerald_ore'})
+# 'tree' is blocked because hand-crafted `chop_tree` already handles all
+# log/birch/oak/leaves + tree combos — dynamically mined tree skills only
+# capture approach/aim steps that press pickaxe hotkey on leaves instead of
+# actually breaking logs, and they loop forever competing with chop_tree.
+# 'leaves' is blocked for the same reason (it's always visible near any tree).
+_BLOCKED_SKILL_TRIGGERS = frozenset({'emerald_ore', 'tree', 'leaves'})
 
 def _canonical(label: str) -> str:
     """Map any label to its canonical group name, or itself."""

@@ -82,6 +82,7 @@ from core                    import policy_blender
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
+from memory.hud_reader       import HudReader
 from memory.goals            import GoalStack, INJECTED_GOALS_PATH
 from memory.goal_interpreter import GoalInterpreter
 from memory.progression      import ProgressionTracker
@@ -150,6 +151,7 @@ def run():
     world     = WorldModel()
     world_mem = WorldMemory()
     inventory = InventoryTracker()
+    hud_reader = HudReader()
     goals       = GoalStack()
     _restore_preserved_goals()
     progression = ProgressionTracker()
@@ -252,6 +254,7 @@ def run():
     from behaviors.torch_placement import TorchBehavior
     from behaviors.crafting import CraftingBehavior
     from behaviors.inventory_reader import InventoryReader
+    from behaviors.junk_dropper import JunkDropper
     from behaviors.chest_manager import ChestManager
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
@@ -265,6 +268,7 @@ def run():
     torch_behavior  = TorchBehavior(executor)
     inv_reader = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
     crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
+    junk_dropper = JunkDropper(executor, inventory_reader=inv_reader)
     chest_mgr = ChestManager()
     goal_interp = GoalInterpreter(goals, crafting_behavior)
     scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
@@ -510,8 +514,16 @@ def run():
             # game_tick heuristic day-cycle counter behaviors/night_survival.py
             # relies on — reads actual on-screen darkness (night sky or a
             # cave) straight from the capture frame instead.
+            #
+            # Gated on NIGHT_SURVIVAL_ENABLED (2026-07-18): this pushed
+            # return_to_base and pre-empted goals like find_and_chop_tree
+            # even with the flag off, since it lives here rather than in
+            # behaviors/night_survival.py. There's no danger on peaceful,
+            # so skip the override entirely while the flag is off.
             avg_brightness = frame.mean()
-            if (avg_brightness < config.NIGHT_BRIGHTNESS_DARK and not _night_triggered
+            if not config.NIGHT_SURVIVAL_ENABLED:
+                pass
+            elif (avg_brightness < config.NIGHT_BRIGHTNESS_DARK and not _night_triggered
                     and goals.current_goal() not in ('find_shelter', 'return_to_base')):
                 print(f'[NIGHT] frame brightness {avg_brightness:.1f} < {config.NIGHT_BRIGHTNESS_DARK} — pushing return_to_base')
                 goals.push('return_to_base')
@@ -580,6 +592,14 @@ def run():
                 print(f'[LAUNCH] HUD not detected at tick {tick} — triggering launch sequence')
                 launcher.run(tick)
                 continue
+
+            # ── HUD pixel read (health/hunger) ─────────────────
+            # Independent of YOLO's health_bar/hunger_bar boxes — samples
+            # fixed HUD-row pixel colors directly (see memory/hud_reader.py).
+            world_mem.health_pct, world_mem.hunger_pct = hud_reader.update(frame)
+            if world_mem.hunger_pct < 0.30 and not goals.has_goal('eat'):
+                print(f'[HUD] hunger_pct={world_mem.hunger_pct:.0%} < 30% — pushing eat goal')
+                goals.push('eat')
 
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory, tick)
@@ -711,8 +731,20 @@ def run():
                     if o.get('label', '').lower() not in ORE_TARGETS
                 ]
 
+            # rebuild_fort params (e.g. explicit {"coords": [x, y, z]}) from
+            # an injected goal (see memory/goals.py check_injected_goals) —
+            # attach to world_mem so core/fsm.py's _resolve_fort_coords can
+            # prefer them over the spawn-point fallback. No-op when the
+            # queued goal didn't carry params (fort resolver falls back to
+            # spawn_x/y/z in that case).
+            _fort_params = goals.goal_params.get('rebuild_fort')
+            if _fort_params:
+                _fort_coords = _fort_params.get('coords') or _fort_params.get('location')
+                if _fort_coords and len(_fort_coords) == 3:
+                    world_mem.fort_location = list(_fort_coords)
+
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
-                                              goal=goals.current_goal())
+                                              goal=goals.current_goal(), frame=frame)
 
             # Aim-stall tracking — see _aim_stall_ticks comment above. Tracks
             # the FSM's own action regardless of which goal is currently
@@ -846,7 +878,15 @@ def run():
             if (not replayer.is_active()
                     and not _menu_open
                     and not _f3_open
+                    and fsm_state == State.EXPLORE
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
+                # EXPLORE-only (see EnvironmentScanner docstring): the sweep
+                # yanks the camera off whatever's on-screen for several
+                # seconds, which used to fire mid-APPROACH too and knock the
+                # color-detector lock off the target — losing the detection
+                # for a tick sent APPROACH straight back to EXPLORE before
+                # it ever reached MINE (2026-07-18).
+                #
                 # Moving forward ('w' held) and not stuck → narrower 270°
                 # sweep centered on the heading. Standing still, moving in
                 # any other direction, or stuck (low-reward streak building)
@@ -1479,6 +1519,10 @@ def run():
             elif (not replayer.is_active()
                     and crafting_behavior.should_trigger_2x2()):
                 crafting_behavior.run(objects=objects)
+
+            # ── Drop junk when inventory is full ─────────────────
+            if not replayer.is_active() and not _menu_open:
+                junk_dropper.maybe_run(inventory)
 
             # ── Chest interaction at base ────────────────────────
             # Only in EXPLORE, only near base, only when a chest is actually

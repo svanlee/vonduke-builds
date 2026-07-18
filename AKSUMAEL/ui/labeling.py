@@ -77,6 +77,12 @@ class LabelingUI:
         self._enabled = self._init_window()
 
     def _init_window(self) -> bool:
+        # Headless rigs (no monitor — see config.ENABLE_DISPLAY_UI) have no
+        # GTK/Qt/Cocoa backend for cv2 to open a window against; skip the
+        # attempt entirely instead of trying-and-catching a guaranteed
+        # failure on every single restart.
+        if not getattr(config, 'ENABLE_DISPLAY_UI', False):
+            return False
         try:
             cv2.namedWindow(self.WINDOW, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(self.WINDOW, WIN_W, WIN_H)

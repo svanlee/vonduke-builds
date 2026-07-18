@@ -14,6 +14,7 @@ import threading
 import queue
 import time
 import cv2
+import config
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,8 +307,14 @@ class VideoCapturePipeline:
                 self.display.quit = True
                 return False
             key = self._safe_wait_key()
-        else:
+        elif config.ENABLE_DISPLAY_UI:
+            # Plain fallback window when no LabelingUI was given at all.
+            # Gated the same way as LabelingUI — headless rigs (no monitor;
+            # see config.ENABLE_DISPLAY_UI) have no GTK/Qt/Cocoa backend for
+            # cv2.imshow to open a window against.
             cv2.imshow(window_name, frame)
+            key = self._safe_wait_key()
+        else:
             key = self._safe_wait_key()
 
         if key == ord('q'):
@@ -317,9 +324,13 @@ class VideoCapturePipeline:
 
     @staticmethod
     def _safe_wait_key() -> int:
-        """cv2.waitKey requires a GUI backend (GTK/Qt/Cocoa); this build of
-        OpenCV is headless, so treat that as 'no key pressed' instead of
-        crashing the whole process every tick."""
+        """cv2.waitKey requires a GUI backend (GTK/Qt/Cocoa); on a headless
+        rig (see config.ENABLE_DISPLAY_UI) there's no window to poll for a
+        keypress at all, so skip the call rather than attempt-then-catch it
+        every single tick. The try/except stays as a defensive fallback for
+        the case a display IS enabled but the backend still isn't there."""
+        if not config.ENABLE_DISPLAY_UI:
+            return 0xFF   # 'no key pressed'
         try:
             return cv2.waitKey(1) & 0xFF
         except cv2.error:

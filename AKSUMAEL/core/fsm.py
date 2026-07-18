@@ -34,6 +34,7 @@ import enum
 import time
 import config
 from core.aim import bbox_to_mouse_delta, is_on_target
+from vision.color_detector import sample_box_pixel_count
 
 
 # ── Target label sets ─────────────────────────────────────────────────────────
@@ -47,9 +48,11 @@ MINE_TARGETS = {
     # Wood / logs — same left-click mechanic as mining
     'oak_log', 'spruce_log', 'birch_log', 'jungle_log', 'acacia_log',
     'dark_oak_log', 'mangrove_log', 'cherry_log', 'wood', 'log', 'tree',
-    'leaves',  # break leaves for saplings / apples
     # General stone (lower priority, good for tunnelling)
     'stone', 'cobblestone', 'gravel',
+    # NOTE: 'leaves' intentionally excluded — leaves are a navigation proxy
+    # (TREE_TARGETS), not a mine target. Mining leaves wastes time and doesn't
+    # yield wood; the FSM should keep approaching until a log is visible.
 }
 
 # High-value ore subset — preferred over tree-chopping in priority
@@ -101,6 +104,23 @@ HOSTILE_MOBS = {
     'mob', 'enemy',
 }
 
+# ── FLEE (2026-07-18) ───────────────────────────────────────────────────
+# Pre-empts everything (even COMBAT's plain back-away) when a hostile is
+# genuinely dangerous: health is low, or a creeper is close enough to blow
+# up. Sprints backward for FLEE_TICKS ticks (~2s at LOOP_INTERVAL_SEC=0.25),
+# then hands control back to whatever state/goal was active before the
+# scare — see GameFSM._flee_return_state.
+FLEE_TICKS              = 8      # ~2s at config.LOOP_INTERVAL_SEC=0.25
+LOW_HEALTH_FRAC         = 0.50   # health_pct below this counts as "health < 10/20"
+CREEPER_CLOSE_BBOX_AREA = 8000   # px^2 — creeper bbox this large is close enough to detonate
+
+
+def _bbox_area(box) -> float:
+    if not box or len(box) != 4:
+        return 0.0
+    return max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+
+
 # Minimum YOLO confidence to act on a detection
 MIN_CONF = 0.50
 
@@ -113,20 +133,138 @@ MINE_HOLD_CONF = 0.30
 # consecutive ticks before we treat it as broken and move to COLLECT.
 MINE_ABSENT_TICKS_TO_BREAK = 3
 
+# Direct pixel-cluster break check for color-sourced MINE targets (see
+# vision.color_detector.sample_box_pixel_count). Re-samples the LOCKED
+# target's own last-known bbox region every tick — a same-labeled block
+# elsewhere in frame can't mask a real break here the way waiting for
+# detect_ores_by_color() to stop reporting the label anywhere at all can.
+# Requires a reasonably solid baseline sample (COLOR_BREAK_MIN_BASELINE_PX)
+# before trusting the ratio, so a target that starts out barely qualifying
+# for its own min_px threshold doesn't trip a false break on ordinary pixel
+# jitter between ticks.
+COLOR_BREAK_MIN_BASELINE_PX = 40
+COLOR_BREAK_FRACTION        = 0.25   # cluster shrunk below this fraction of baseline = broken
+
 # Ore labels permanently excluded from targeting regardless of blacklist state.
 # emerald_ore only generates in mountain biomes — we're not in one, so every
 # YOLO detection of it is a false positive. Hard-blocked here (not just the
 # blacklist) so the FSM never re-targets it even after blacklist expiry.
 _UNSUPPORTED_ORE_LABELS = frozenset({'emerald_ore'})
 
+# Container/interactable blocks that must NEVER be a MINE target, regardless
+# of source (YOLO or color-proxy) or confidence. These belong in
+# INTERACT_TARGETS only (right-click, not break). Hard-blocked here as
+# defense-in-depth — never let one reach ore_obj/tree_obj/mine_obj selection
+# even if a future edit accidentally adds one to MINE_TARGETS.
+# (2026-07-18: bot destroyed a chest — root cause traced to
+# vision/color_detector.py's 'log' HSV range matching chest wood color and
+# mislabeling it as a log; see color_detector.py note near ORE_COLOR_RANGES.)
+PROTECTED_BLOCKS = frozenset({
+    'chest', 'trapped_chest', 'ender_chest', 'barrel', 'shulker_box',
+})
+
+# Color-proxy detections (vision/color_detector.py, source == 'color') have no
+# shape/texture discrimination — they're an HSV blob match, and wood-colored
+# containers (chests) can fall inside the 'log' HSV window and get mislabeled.
+# Restrict what a color-sourced detection may ever become a MINE target as,
+# to just the tree labels the color detector exists to cover. This disables
+# color-based ore targeting (diamond/gold/redstone/emerald via color) as a
+# deliberate side effect of this safety fix — YOLO-sourced ore detection is
+# unaffected.
+SAFE_COLOR_MINE_LABELS = frozenset({'log', 'leaves', 'birch_log'})
+
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
 
 APPROACH_TICKS   = 8     # ticks in APPROACH before switching to MINE
-MINE_MAX_TICKS   = 40    # give up and re-approach after this many MINE ticks (40×0.5s=20s)
+MINE_MAX_TICKS   = 60    # give up and re-approach after this many MINE ticks (60×0.5s=30s)
 COLLECT_TICKS    = 4     # walk forward this long after block breaks
-EXPLORE_WALK     = 12    # ticks walking before each pan
-EXPLORE_PAN      = 6     # ticks of each directional pan
+EXPLORE_WALK     = 12    # ticks walking before each sector-scan sweep
+
+# ── Sector-scan EXPLORE sweep ────────────────────────────────────────────
+# Instead of a blind left/right pan, divide the horizontal FOV into discrete
+# sectors and dwell in each one long enough for vision to actually register
+# whatever's there, sweeping the full arc in one direction then reversing
+# next time. A target found mid-sweep pre-empts this entirely — tick()
+# checks ore/tree/animal/interact/etc. targets before ever calling
+# _do_explore(), so "lock on immediately" falls out of the existing
+# priority order for free.
+EXPLORE_SECTORS      = 5   # far-left, left, center, right, far-right
+EXPLORE_SECTOR_DWELL = 8   # ticks to hold aim in each sector before advancing
+EXPLORE_SECTOR_STEP  = 3   # multiplier on config.LOOK_SENSITIVITY per sector hop
+_SECTOR_NAMES = ['far-left', 'left', 'center', 'right', 'far-right']
+
+# Color-based detection (vision/color_detector.py) can't tell crafted oak
+# planks/wood blocks apart from real logs — they share nearly identical HSV.
+# Within this many blocks of spawn/base (where the player's own structure
+# lives), color detections are untrustworthy; only real YOLO detections are
+# allowed to trigger APPROACH/MINE there. (2026-07-18: bot mined through its
+# own fort wall after color-detecting planks as 'log'.)
+BASE_EXCLUSION_RADIUS = 30
+
+# APPROACH stall guard: if a target's bbox isn't growing (i.e. we're not
+# actually closing distance — likely snagged on a ledge, root, or other small
+# terrain lip), try jumping in place for a few ticks before giving up
+# entirely. Give up only after STALL_TICKS_TO_ABORT non-progressing ticks
+# instead of sliding into MINE against whatever is blocking us. Must be
+# < APPROACH_TICKS to actually pre-empt the MINE transition.
+STALL_TICKS_TO_JUMP   = 4
+STALL_TICKS_TO_ABORT  = 12
+STALL_AREA_GROWTH_MIN = 1.05   # bbox area must grow at least 5% to count as progress
+
+# Color-only detections don't participate in the bbox-growth stall guard
+# (their box stays roughly fixed-size regardless of real distance), so they
+# get a flat tick budget instead — long enough to physically walk up to a
+# nearby tree even if MINE never triggers (e.g. stuck on a leaves lock).
+APPROACH_COLOR_TICKS_TO_ABORT = 60
+
+# APPROACH target lock: once we've locked onto a log mid-approach, per-tick
+# re-evaluation must not flip the target to leaves just because the log's
+# confidence dipped below MIN_CONF for a frame or two (2026-07-18: leaves
+# routinely out-scores a thin/flickering log bbox and briefly wins the
+# _pick_tree_target() race even though a log is right there). Only release
+# the lock if the log is completely undetected for this many consecutive
+# ticks, or a different log clearly outscores the locked one.
+APPROACH_LOG_LOSS_TICKS    = 3     # consecutive fully-absent ticks before releasing the lock
+APPROACH_LOG_SWITCH_MARGIN = 0.15  # a different log must beat the locked one by this much conf to steal the lock
+
+# ── No-dig-straight-down guard (2026-07-18) ────────────────────────────────
+# AKSUMAEL has no raycast / world-space (x, y, z) for a YOLO mine target —
+# only a 2-D pixel bbox, plus a periodic F3 OCR fix for the player's OWN
+# position (world_mem.pos_x/pos_z/y_level, refreshed roughly every 300
+# ticks, not every tick). There's no live target (x, y, z) to diff against
+# the player the way a world-aware bot would. The closest available proxy
+# for "the block about to be mined is directly beneath the player" is: the
+# bbox sitting dead-centre horizontally and low in frame (straight down,
+# not off to a side) while the camera is already pitched steeply downward
+# (cumulative_pitch_dy — see _dampen_pitch_dy). Ore/tree targets are exempt
+# — legitimately reaching those sometimes requires looking down at a ledge.
+STRAIGHT_DOWN_PITCH_MIN = 80      # cumulative_pitch_dy above this = looking steeply down
+STRAIGHT_DOWN_X_FRAC    = 0.15    # bbox horizontal centre must be within this of frame centre
+STRAIGHT_DOWN_Y_FRAC    = 0.70    # bbox vertical centre must be below this fraction of frame height
+STRAIGHT_DOWN_EXEMPT    = ORE_TARGETS | TREE_TARGETS
+
+# Fall detection: an F3 Y read that dropped more than this since the
+# previous F3 read means we just fell into a hole/shaft/lava pocket. Jump
+# for a couple of ticks to try to climb back out, pre-empting whatever
+# state the FSM was in (set as world_mem.fall_detected by
+# memory/world_memory.py's update_f3()).
+FALL_JUMP_TICKS = 2
+
+# ── rebuild_fort (2026-07-18) ───────────────────────────────────────────
+# Fallback-scope implementation of the injectable rebuild_fort goal: this
+# bot has no live "expected vs actual block" comparison (that needs a real
+# block-presence read, which doesn't exist here), so instead of a full HTN
+# wall-repair it navigates to the remembered fort/base point and places
+# cobblestone at a fixed 3x3 floor pattern around it.
+FORT_APPROACH_DIST  = 2.0   # stop navigating once within this many blocks
+FORT_FLOOR_OFFSETS  = [(dx, dz) for dx in (-1, 0, 1) for dz in (-1, 0, 1)
+                       if not (dx == 0 and dz == 0)]   # 8 cells around centre
+# Hotbar slot assumed to hold cobblestone for placement. The FSM has no
+# live hotbar-slot read (only behaviors/inventory_reader.py does, and it's
+# a runtime-level behavior, not available inside core/fsm.py) — hardcoded
+# per the rebuild_fort fallback spec; adjust if cobblestone sits elsewhere.
+FORT_COBBLESTONE_SLOT = '3'
 
 
 # ── State enum ────────────────────────────────────────────────────────────────
@@ -138,6 +276,7 @@ class State(enum.Enum):
     COMBAT   = 'COMBAT'
     INTERACT = 'INTERACT'
     EAT      = 'EAT'
+    FLEE     = 'FLEE'
     COLLECT  = 'COLLECT'
     FISH     = 'FISH'
     HUNT     = 'HUNT'
@@ -198,6 +337,105 @@ def _pick_best_ore(objects: list, min_conf: float = MIN_CONF):
     return max(hits.values(), key=lambda o: o.get('conf', 0.0))
 
 
+def _pick_tree_target(objects: list, min_conf: float = MIN_CONF):
+    """Pick a tree-chopping target, preferring log bboxes over leaves, and
+    real YOLO detections over color-detector ones at each tier.
+
+    Leaves are a canopy nav-proxy only (see TREE_TARGETS comment above) —
+    if ANY log-labelled detection is visible this tick, it always wins
+    regardless of confidence, so EXPLORE/APPROACH never lock onto a
+    higher-confidence leaves bbox while an actual log sits right next to
+    it (2026-07-18: bot stalled in APPROACH(leaves) forever because leaves
+    routinely out-score the thin log bbox on confidence).
+    Falls back to the general TREE_TARGETS pick (which includes leaves)
+    only when no log is visible at all.
+
+    Color-detector hits (vision/color_detector.py; conf fixed at 0.75,
+    source='color') are valid candidates at both tiers — otherwise EXPLORE
+    never fires an APPROACH transition on a color-only sighting and the bot
+    wanders in TREE-FALLBACK circles forever whenever YOLO can't see logs at
+    all (2026-07-18). But a real YOLO detection is trusted more than a color
+    guess, so within each tier a non-color hit always wins over a color one
+    regardless of confidence.
+    """
+    def _area(o):
+        box = o.get('box')
+        if not box or len(box) != 4:
+            return 0
+        return max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+
+    def _best(cands):
+        return max(cands, key=lambda o: (o.get('conf', 0.0), _area(o))) if cands else None
+
+    logs = [
+        o for o in objects
+        if 'log' in o.get('label', '').lower()
+        and o.get('conf', 0.0) >= min_conf
+    ]
+    if logs:
+        real_logs = [o for o in logs if o.get('source') != 'color']
+        return _best(real_logs) or _best(logs)
+
+    candidates = [
+        o for o in objects
+        if o.get('label', '').lower() in TREE_TARGETS
+        and o.get('conf', 0.0) >= min_conf
+    ]
+    real_candidates = [o for o in candidates if o.get('source') != 'color']
+    return _best(real_candidates) or _best(candidates)
+
+
+def _near_base(world_mem) -> bool:
+    """True if current F3 position is within BASE_EXCLUSION_RADIUS of the
+    stored spawn/base location. No position fix yet (F3 never read this
+    session) counts as NOT near base — we only suppress color detections
+    once we can actually confirm proximity."""
+    if world_mem is None:
+        return False
+    px = getattr(world_mem, 'pos_x', None)
+    pz = getattr(world_mem, 'pos_z', None)
+    if px is None or pz is None:
+        return False
+    bx = getattr(world_mem, 'spawn_x', 0.0)
+    bz = getattr(world_mem, 'spawn_z', 0.0)
+    return ((px - bx) ** 2 + (pz - bz) ** 2) ** 0.5 <= BASE_EXCLUSION_RADIUS
+
+
+def _resolve_fort_coords(world_mem):
+    """Fort/base centre coordinates for the rebuild_fort goal, in priority
+    order: an explicitly remembered fort_location/base_coords/home (see
+    memory/world_memory.py — settable externally or read from
+    data/world_memory.json if present), else the session's spawn point.
+    Returns (x, y, z) or None if nothing is available."""
+    if world_mem is None:
+        return None
+    for attr in ('fort_location', 'base_coords', 'home'):
+        val = getattr(world_mem, attr, None)
+        if val and len(val) == 3:
+            return tuple(val)
+    sx = getattr(world_mem, 'spawn_x', None)
+    sz = getattr(world_mem, 'spawn_z', None)
+    if sx is not None and sz is not None:
+        sy = getattr(world_mem, 'spawn_y', 64)
+        return (sx, sy, sz)
+    return None
+
+
+def _is_straight_down(box, fw: int, fh: int, world_mem) -> bool:
+    """True if `box` sits at the bottom-centre of frame (i.e. roughly at the
+    player's own feet) while cumulative pitch shows the camera is already
+    looking steeply down — see STRAIGHT_DOWN_* constants above."""
+    if not box:
+        return False
+    cum_pitch = getattr(world_mem, 'cumulative_pitch_dy', 0) if world_mem is not None else 0
+    if cum_pitch < STRAIGHT_DOWN_PITCH_MIN:
+        return False
+    cx = (box[0] + box[2]) / 2.0
+    cy = (box[1] + box[3]) / 2.0
+    x_off = abs(cx - fw / 2.0) / (fw / 2.0)
+    return x_off < STRAIGHT_DOWN_X_FRAC and cy > fh * STRAIGHT_DOWN_Y_FRAC
+
+
 def _infer_frame_dims(objects: list) -> tuple:
     """
     Guess YOLO frame size from bounding-box extents.
@@ -232,11 +470,14 @@ class GameFSM:
         self._state_ticks = 0   # ticks spent in the current state
 
         # MINE tracking
+        self._smooth_dx         = 0
+        self._smooth_dy         = 0
         self._mine_ticks        = 0
         self._mine_timeout_count = 0   # consecutive timeouts on current target
         self._mine_timeout_label = None  # label being timed out on
         self._mine_absent_ticks = 0    # consecutive ticks with NO detection at all
         self._mine_last_box     = None  # last known box, held onto through low-conf flicker
+        self._mine_on_target_ticks = 0  # consecutive on-target ticks (locks aim once stable)
         # Target lock: once MINE begins, only detections of this label update
         # the aim point — prevents flip-flopping between simultaneously
         # visible labels (e.g. leaves/log/birch_log) each tick, which kept
@@ -247,13 +488,33 @@ class GameFSM:
         self._ore_blacklist_strikes = {}   # {label: times blacklisted} — for exponential backoff
         self._total_ticks        = 0   # global tick counter for blacklist expiry
 
+        # APPROACH stall tracking — detects a target bbox that isn't growing
+        # (i.e. we're not actually closing distance, likely already flush
+        # against a wall/obstruction)
+        self._approach_stall_area  = None
+        self._approach_stall_count = 0
+        # Color-only targets skip the bbox-growth stall check entirely (see
+        # _do_approach) since their box doesn't grow as distance closes —
+        # instead they get a generous flat tick budget to physically reach
+        # the target before giving up.
+        self._approach_color_ticks = 0
+
+        # APPROACH target lock (see APPROACH_LOG_LOSS_TICKS above) — holds
+        # onto a locked-on log across per-tick leaves/log flicker.
+        self._approach_locked_label     = None
+        self._approach_locked_box       = None
+        self._approach_locked_conf      = 0.0
+        self._approach_log_absent_ticks = 0
+
         # COLLECT tracking
         self._collect_ticks = 0
 
-        # EXPLORE sub-state: 'walk' | 'pan'
-        self._explore_phase  = 'walk'
-        self._explore_pticks = 0          # ticks in current phase
-        self._pan_dir        = 1          # +1 = right, -1 = left
+        # EXPLORE sub-state: 'walk' | 'sector_scan'
+        self._explore_phase        = 'walk'
+        self._explore_pticks       = 0    # ticks in 'walk' phase
+        self._explore_sector_idx   = 0    # 0=far-left .. EXPLORE_SECTORS-1=far-right
+        self._explore_sector_dir   = 1    # sweep direction: +1 = L->R, -1 = R->L
+        self._explore_sector_ticks = 0    # ticks dwelt in current sector
 
         # FISH tracking
         self._fish_phase     = 'cast'     # 'cast' | 'wait' | 'reel'
@@ -266,9 +527,25 @@ class GameFSM:
         # FARM tracking
         self._farm_ticks     = 0
 
+        # Direct pixel-cluster break check for color-sourced MINE targets
+        # (see COLOR_BREAK_FRACTION above) — baseline pixel count sampled on
+        # the first MINE tick where a frame is available for the locked target.
+        self._mine_color_baseline_px = None
+
+        # Fall-escape tracking (see FALL_JUMP_TICKS above)
+        self._fall_jump_ticks = 0
+
+        # FLEE tracking (see FLEE_TICKS above)
+        self._flee_ticks_left  = 0
+        self._flee_return_state = None   # State to resume once FLEE ends
+
+        # rebuild_fort tracking
+        self._fort_place_index = 0
+
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0, goal: str = None):
+    def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0,
+             goal: str = None, frame=None):
         """
         Evaluate one FSM tick.
 
@@ -277,6 +554,10 @@ class GameFSM:
             world_mem:   WorldMemory instance (may be None).
             hunger_frac: Hunger bar fullness 0.0–1.0 (1.0 = full).
             goal:        Active goal name (e.g. 'find_and_chop_tree'), or None.
+            frame:       Current gameplay frame (BGR ndarray) or None — used
+                         only by MINE's color-cluster break check (see
+                         COLOR_BREAK_FRACTION above); every other code path
+                         works fine without it.
 
         Returns:
             (State, action_dict)
@@ -284,6 +565,32 @@ class GameFSM:
         self._state_ticks += 1
         self._total_ticks += 1
         fw, fh = _infer_frame_dims(objects)
+
+        # ── Priority 0: fall detection ─────────────────────────────
+        # world_mem.fall_detected is set by WorldMemory.update_f3() when a
+        # fresh F3 read shows Y dropped more than FALL_Y_DROP_THRESHOLD since
+        # the previous read — we just fell into a hole/shaft/lava pocket.
+        # Pre-empts every other priority (including hunger/combat) for a
+        # couple of ticks and just jumps, trying to climb back out.
+        if world_mem is not None and getattr(world_mem, 'fall_detected', False):
+            world_mem.fall_detected = False
+            self._fall_jump_ticks = FALL_JUMP_TICKS
+            print('[FSM] fall detected (F3 Y dropped) — jumping to escape')
+        if self._fall_jump_ticks > 0:
+            self._fall_jump_ticks -= 1
+            ad = _idle()
+            ad['key']         = 'space'
+            ad['action']      = 'fall:jump_escape'
+            ad['observation'] = f'Fell — jumping to escape ({FALL_JUMP_TICKS - self._fall_jump_ticks}/{FALL_JUMP_TICKS})'
+            ad['confidence']  = 0.9
+            return self.state, ad
+
+        # Near base: crafted planks/wood blocks color-match logs (see
+        # vision/color_detector.py) — distrust color detections here so the
+        # bot doesn't APPROACH/MINE its own structure. Real YOLO detections
+        # (source unset / != 'color') still pass through untouched.
+        if _near_base(world_mem):
+            objects = [o for o in objects if o.get('source') != 'color']
 
         # Expire blacklist entries
         self._ore_blacklist = {
@@ -298,25 +605,41 @@ class GameFSM:
         # ── Priority 2: hostile mob → flee ────────────────────────
         mob = _pick_best(objects, HOSTILE_MOBS)
         if mob:
+            health_pct = getattr(world_mem, 'health_pct', None) if world_mem is not None else None
+            low_health = health_pct is not None and health_pct < LOW_HEALTH_FRAC
+            creeper_close = (mob.get('label', '').lower() == 'creeper'
+                             and _bbox_area(mob.get('box')) > CREEPER_CLOSE_BBOX_AREA)
+            if low_health or creeper_close:
+                if self.state != State.FLEE:
+                    self._flee_return_state = self.state
+                self._flee_ticks_left = FLEE_TICKS
+                return self._goto(State.FLEE, self._do_flee(mob)[1])
             return self._goto(State.COMBAT, self._combat_action(mob))
 
         # ── Gather candidate targets ───────────────────────────────
-        # Filter out blacklisted ore labels before picking
+        # Filter out blacklisted ore labels and protected container blocks
+        # (chest/barrel/shulker/etc.) before picking a MINE target — these
+        # must only ever be reached via INTERACT_TARGETS (right-click), never
+        # broken. Protected blocks are NOT stripped from `objects` itself so
+        # interact_obj (picked from `objects` below) still sees them.
         non_blacklisted = [
             o for o in objects
             if o.get('label', '') not in self._ore_blacklist
+            and o.get('label', '').lower() not in PROTECTED_BLOCKS
+            and (o.get('source') != 'color'
+                 or o.get('label', '').lower() in SAFE_COLOR_MINE_LABELS)
         ]
         # While already MINEing, accept much lower-confidence ore detections —
         # a partially-broken block's changed texture tanks YOLO's confidence
         # well below MIN_CONF even though the ore is still there to finish off.
         _ore_conf_floor = MINE_HOLD_CONF if self.state == State.MINE else MIN_CONF
         ore_obj      = _pick_best_ore(non_blacklisted, min_conf=_ore_conf_floor)
-        tree_obj     = _pick_best(objects, TREE_TARGETS)
+        tree_obj     = _pick_tree_target(non_blacklisted)
         if (tree_obj is not None and world_mem is not None
                 and getattr(world_mem, 'pos_x', None) is not None
                 and getattr(world_mem, 'pos_z', None) is not None):
             world_mem.record_tree_sighting(world_mem.pos_x, world_mem.pos_z)
-        mine_obj     = ore_obj or tree_obj or _pick_best(objects, MINE_TARGETS)
+        mine_obj     = ore_obj or tree_obj or _pick_best(non_blacklisted, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
         animal_obj   = _pick_best(objects, PASSIVE_MOBS)
         water_obj    = _pick_best(objects, FISH_TARGETS)
@@ -343,13 +666,14 @@ class GameFSM:
                     objects, self._mine_target['label'], min_conf=MINE_HOLD_CONF)
                 if locked_obj is not None:
                     self._mine_target['box'] = locked_obj.get('box', self._mine_target['box'])
-                return self._do_mine(locked_obj, fw, fh, world_mem)
-            return self._do_mine(mine_obj, fw, fh, world_mem)
+                return self._do_mine(locked_obj, fw, fh, world_mem, frame)
+            return self._do_mine(mine_obj, fw, fh, world_mem, frame)
 
         elif s == State.APPROACH:
             target = mine_obj or animal_obj
             if target:
-                return self._do_approach(target, fw, fh)
+                target = self._apply_approach_log_lock(target, non_blacklisted)
+                return self._do_approach(target, fw, fh, world_mem)
             return self._goto(State.EXPLORE, _idle())
 
         elif s == State.INTERACT:
@@ -366,18 +690,21 @@ class GameFSM:
         elif s == State.FARM:
             return self._do_farm(crop_obj, fw, fh)
 
+        elif s == State.FLEE:
+            return self._do_flee(mob)
+
         else:  # EXPLORE (default) — dispatch by priority
             if interact_obj and interact_obj.get('conf', 0) > 0.65:
                 ad = self._do_interact(interact_obj, fw, fh)[1]
                 return self._goto(State.INTERACT, ad)
             # Priority 3: ore (high value)
             if ore_obj:
-                ad = self._do_approach(ore_obj, fw, fh)[1]
-                return self._goto(State.APPROACH, ad)
+                ad = self._do_approach(ore_obj, fw, fh, world_mem)[1]
+                return self._goto(State.APPROACH, ad, world_mem)
             # Priority 4: tree (need wood)
             if tree_obj:
-                ad = self._do_approach(tree_obj, fw, fh)[1]
-                return self._goto(State.APPROACH, ad)
+                ad = self._do_approach(tree_obj, fw, fh, world_mem)[1]
+                return self._goto(State.APPROACH, ad, world_mem)
             # Priority 5: animal (need food)
             if animal_obj:
                 return self._goto(State.HUNT, self._begin_hunt(animal_obj))
@@ -394,12 +721,18 @@ class GameFSM:
     def _do_explore(self, world_mem=None, goal: str = None):
         """Walk forward, then pan left/right, repeat — unless a tree goal
         is active and none is on screen, in which case head toward the
-        nearest remembered tree location instead of scanning blind."""
+        nearest remembered tree location instead of scanning blind, or a
+        rebuild_fort goal is active, in which case navigate to the fort and
+        place blocks (see _do_rebuild_fort)."""
+        if goal == 'rebuild_fort' and world_mem is not None:
+            fort_ad = self._do_rebuild_fort(world_mem)
+            if fort_ad is not None:
+                return self.state, fort_ad
         if goal == 'find_and_chop_tree' and world_mem is not None:
             nav_ad = self._navigate_to_known_tree(world_mem)
             if nav_ad is not None:
                 return self.state, nav_ad
-        return self._do_explore_sweep()
+        return self._do_explore_sweep(world_mem)
 
     # Cardinal facing (from F3 OCR, world_mem.facing) expressed as degrees,
     # matching the atan2(dx, -dz) convention used below (north=0, clockwise).
@@ -436,8 +769,65 @@ class GameFSM:
         ad['confidence']  = 0.5
         return ad
 
-    def _do_explore_sweep(self):
-        """Walk forward, then pan left/right, repeat."""
+    def _do_rebuild_fort(self, world_mem):
+        """rebuild_fort goal handler: navigate to the remembered fort/base
+        point, then place cobblestone at a fixed 3x3 floor pattern around it
+        (see FORT_FLOOR_OFFSETS). Returns None if we can't navigate yet (no
+        F3 fix, no facing, no fort coords) — caller falls back to blind
+        explore sweep in that case."""
+        fort = _resolve_fort_coords(world_mem)
+        px = getattr(world_mem, 'pos_x', None)
+        pz = getattr(world_mem, 'pos_z', None)
+        facing = getattr(world_mem, 'facing', None)
+        cardinal_deg = self._CARDINAL_DEG.get(facing)
+        if fort is None or px is None or pz is None or cardinal_deg is None:
+            return None
+
+        fx, _fy, fz = fort
+        dx, dz = fx - px, fz - pz
+        dist = (dx * dx + dz * dz) ** 0.5
+
+        ad = _idle()
+        if dist > FORT_APPROACH_DIST:
+            target_bearing = math.degrees(math.atan2(dx, -dz)) % 360
+            diff = (target_bearing - cardinal_deg + 180) % 360 - 180
+            ad['key'] = 'w'
+            if diff > 20:
+                ad['look'] = {'dx': config.LOOK_SENSITIVITY, 'dy': 0}
+            elif diff < -20:
+                ad['look'] = {'dx': -config.LOOK_SENSITIVITY, 'dy': 0}
+            ad['action']      = 'rebuild_fort:navigate'
+            ad['observation'] = f'Heading to fort at ({fx:.0f},{fz:.0f}), {dist:.1f} blocks away'
+            ad['confidence']  = 0.5
+            return ad
+
+        # Close enough — place the next block in the hardcoded floor pattern.
+        if self._fort_place_index >= len(FORT_FLOOR_OFFSETS):
+            ad['action']      = 'rebuild_fort:done'
+            ad['observation'] = 'Fort floor pattern complete'
+            ad['confidence']  = 0.7
+            self._fort_place_index = 0   # reset in case the goal gets re-injected
+            return ad
+
+        ox, oz = FORT_FLOOR_OFFSETS[self._fort_place_index]
+        ad['key']         = FORT_COBBLESTONE_SLOT   # select cobblestone hotbar slot
+        ad['look']        = {'dx': 0, 'dy': 30}      # look down toward the floor
+        ad['click']       = [50.0, 50.0]
+        ad['button']      = 'right'
+        ad['action']      = f'rebuild_fort:place({fx + ox:.0f},{fz + oz:.0f})'
+        ad['observation'] = (f'Placing cobblestone {self._fort_place_index + 1}/'
+                             f'{len(FORT_FLOOR_OFFSETS)} at fort floor')
+        ad['confidence']  = 0.6
+        self._fort_place_index += 1
+        return ad
+
+    def _do_explore_sweep(self, world_mem=None):
+        """Walk forward, then systematically sweep the horizontal FOV across
+        EXPLORE_SECTORS discrete sectors (far-left..far-right), dwelling
+        EXPLORE_SECTOR_DWELL ticks per sector so vision has time to settle
+        and lock onto anything in view before the camera moves again.
+        Sweeps left-to-right, then right-to-left next time, alternating —
+        the completed direction is recorded in world_mem.last_scan_direction."""
         ad = _idle()
 
         if self._explore_phase == 'walk':
@@ -447,32 +837,176 @@ class GameFSM:
             ad['confidence']  = 0.5
             self._explore_pticks += 1
             if self._explore_pticks >= EXPLORE_WALK:
-                self._explore_phase  = 'pan'
-                self._explore_pticks = 0
-                self._pan_dir        = 1   # start pan right
+                self._explore_phase        = 'sector_scan'
+                self._explore_pticks       = 0
+                self._explore_sector_idx   = (0 if self._explore_sector_dir == 1
+                                               else EXPLORE_SECTORS - 1)
+                self._explore_sector_ticks = 0
 
-        else:  # pan
-            dx = config.LOOK_SENSITIVITY * self._pan_dir
-            ad['look']        = {'dx': dx, 'dy': 0}
-            ad['action']      = 'explore:pan'
-            ad['observation'] = 'Exploring — looking around'
+        else:  # sector_scan
+            if self._explore_sector_ticks == 0:
+                # Just entered this sector — hop the camera one sector-width,
+                # then hold still for the rest of the dwell so vision settles.
+                dx = config.LOOK_SENSITIVITY * EXPLORE_SECTOR_STEP * self._explore_sector_dir
+                ad['look'] = {'dx': dx, 'dy': 0}
+            else:
+                ad['look'] = {'dx': 0, 'dy': 0}
+            sector_name = _SECTOR_NAMES[self._explore_sector_idx]
+            ad['action']      = f'explore:scan:{sector_name}'
+            ad['observation'] = f'Exploring — scanning {sector_name} sector'
             ad['confidence']  = 0.4
-            self._explore_pticks += 1
-            if self._explore_pticks >= EXPLORE_PAN:
-                if self._pan_dir == 1:
-                    self._pan_dir        = -1   # now pan left
-                    self._explore_pticks = 0
-                else:
-                    # Completed both directions — back to walk
+            self._explore_sector_ticks += 1
+
+            if self._explore_sector_ticks >= EXPLORE_SECTOR_DWELL:
+                self._explore_sector_ticks = 0
+                self._explore_sector_idx  += self._explore_sector_dir
+                if not (0 <= self._explore_sector_idx < EXPLORE_SECTORS):
+                    # Swept the full arc — record direction, reverse for next
+                    # time, and resume walking.
+                    if world_mem is not None:
+                        world_mem.last_scan_direction = (
+                            'left_to_right' if self._explore_sector_dir == 1
+                            else 'right_to_left')
+                    self._explore_sector_dir *= -1
                     self._explore_phase  = 'walk'
                     self._explore_pticks = 0
 
         return self.state, ad
 
-    def _do_approach(self, target: dict, fw: int, fh: int):
+    def _apply_approach_log_lock(self, target: dict, objects: list) -> dict:
+        """Hysteresis for APPROACH targeting (see APPROACH_LOG_LOSS_TICKS).
+
+        Once locked onto a log, keep aiming at that same log even if this
+        tick's fresh _pick_tree_target() call picked leaves instead — only
+        release the lock if the locked log is completely undetected for
+        APPROACH_LOG_LOSS_TICKS consecutive ticks, or a different log beats
+        it by APPROACH_LOG_SWITCH_MARGIN confidence. Non-log targets (ore,
+        animals) pass through untouched.
+        """
+        label  = target.get('label', '').lower()
+        locked = self._approach_locked_label
+
+        if locked is None:
+            if 'log' in label:
+                self._approach_locked_label     = label
+                self._approach_locked_box       = target.get('box')
+                self._approach_locked_conf      = target.get('conf', 0.0)
+                self._approach_log_absent_ticks = 0
+            return target
+
+        # Re-find the locked log among this tick's raw detections, accepting
+        # the same lowered confidence floor MINE uses for a locked target.
+        locked_hit = _pick_by_label(objects, locked, min_conf=MINE_HOLD_CONF)
+
+        if locked_hit is not None:
+            self._approach_log_absent_ticks = 0
+            self._approach_locked_box  = locked_hit.get('box', self._approach_locked_box)
+            self._approach_locked_conf = locked_hit.get('conf', self._approach_locked_conf)
+            # A different log must clearly outscore the locked one to steal it.
+            if ('log' in label and label != locked
+                    and target.get('conf', 0.0) >=
+                        self._approach_locked_conf + APPROACH_LOG_SWITCH_MARGIN):
+                self._approach_locked_label = label
+                self._approach_locked_box   = target.get('box')
+                self._approach_locked_conf  = target.get('conf', 0.0)
+                return target
+            return locked_hit
+
+        # Locked log wasn't detected at all this tick — hold the lock through
+        # a short grace period instead of snapping to whatever else is
+        # visible (leaves, usually).
+        self._approach_log_absent_ticks += 1
+        if self._approach_log_absent_ticks < APPROACH_LOG_LOSS_TICKS:
+            return {
+                'label': locked,
+                'box':   self._approach_locked_box,
+                'conf':  self._approach_locked_conf,
+            }
+
+        # Fully lost the lock — release and adopt whatever this tick found.
+        self._approach_locked_label     = None
+        self._approach_locked_box       = None
+        self._approach_locked_conf      = 0.0
+        self._approach_log_absent_ticks = 0
+        if 'log' in label:
+            self._approach_locked_label = label
+            self._approach_locked_box   = target.get('box')
+            self._approach_locked_conf  = target.get('conf', 0.0)
+        return target
+
+    def _do_approach(self, target: dict, fw: int, fh: int, world_mem=None):
         """Walk toward target, aiming camera at its bbox centre."""
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
+
+        # Stall guard: if the bbox isn't growing tick-over-tick, we're not
+        # actually closing distance — likely already pressed up against a
+        # wall or other obstruction that only looks like a valid target.
+        # Give up before this slides into MINE against whatever it is.
+        #
+        # Color-sourced detections (vision/color_detector.py) don't work
+        # here — their bbox is the extent of a matched HSV pixel cluster,
+        # which stays roughly fixed/low-variance as the player closes in
+        # rather than growing like a real YOLO box does, so area-growth
+        # always reads as "stalled" and aborts before MINE. Alignment
+        # (is_on_target) doesn't work as a substitute either — the pixel
+        # cluster jitters tick to tick and rarely sits inside the 5% dead
+        # zone long enough to reset the counter, which just reproduces the
+        # same false-stall deadlock (confirmed 2026-07-18: still aborted
+        # at 12 ticks with alignment tracking). There's no reliable
+        # "making progress" signal from a color bbox at all, so just don't
+        # run the stall guard for color targets — let the normal
+        # APPROACH_TICKS counter carry it into MINE.
+        is_color = target.get('source') == 'color'
+        area = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+        if is_color:
+            self._approach_stall_count = 0
+            self._approach_color_ticks += 1
+            if self._approach_color_ticks >= APPROACH_COLOR_TICKS_TO_ABORT:
+                label = target.get('label', 'block')
+                print(f'[FSM] APPROACH: color-only {label} target not reached after '
+                      f'{self._approach_color_ticks} ticks → blacklist + EXPLORE')
+                self._ore_blacklist[label] = self._total_ticks + 60
+                self._ore_blacklist_strikes[label] = self._ore_blacklist_strikes.get(label, 0) + 1
+                self._approach_color_ticks = 0
+                self._approach_stall_area  = None
+                self._approach_stall_count = 0
+                return self._goto(State.EXPLORE, _idle())
+        else:
+            self._approach_color_ticks = 0
+            if self._approach_stall_area is None:
+                self._approach_stall_area  = area
+                self._approach_stall_count = 0
+            else:
+                if area < self._approach_stall_area * STALL_AREA_GROWTH_MIN:
+                    self._approach_stall_count += 1
+                else:
+                    self._approach_stall_count = 0
+                self._approach_stall_area = max(self._approach_stall_area, area)
+
+            if self._approach_stall_count >= STALL_TICKS_TO_ABORT:
+                label = target.get('label', 'block')
+                print(f'[FSM] APPROACH: {label} bbox not growing after '
+                      f'{self._approach_stall_count} ticks (stuck against something) '
+                      f'→ blacklist + EXPLORE')
+                self._ore_blacklist[label] = self._total_ticks + 60
+                self._ore_blacklist_strikes[label] = self._ore_blacklist_strikes.get(label, 0) + 1
+                self._approach_stall_area  = None
+                self._approach_stall_count = 0
+                return self._goto(State.EXPLORE, _idle())
+
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
+        # Leaves are a canopy nav-proxy — the trunk is below them. Pitching up
+        # into the canopy causes an uncontrolled upward spiral; suppress dy so
+        # we only turn left/right to face the tree, not pitch into the leaves.
+        if target.get('label', '').lower() == 'leaves':
+            dy = 0
+        else:
+            # Same runaway risk as MINE (see _dampen_pitch_dy) — a target
+            # sitting high in frame for many consecutive APPROACH ticks with
+            # no damping is what actually blew cumulative pitch past the
+            # runtime's soft clamp on 2026-07-18 (bot ended up staring
+            # straight up mid-approach, tree still visible off to the side).
+            dy = self._dampen_pitch_dy(dy, world_mem)
         ad = _idle()
         # Ore → select the pickaxe on the very first approach tick (hotbar
         # selection persists in-game, so one press is enough) instead of
@@ -483,34 +1017,111 @@ class GameFSM:
             ad['key'] = '2'
         else:
             ad['key'] = 'w'
+        # Stalled against a small terrain lip (ledge/root) rather than a real
+        # wall — a jump tap can hop over it. Try this before the abort at
+        # STALL_TICKS_TO_ABORT gives up and blacklists the target outright.
+        # Restricted to log targets: leaves bboxes never grow while closing
+        # in on the trunk below them (same non-growth signature as a real
+        # stall), so without this guard the bot jump-spams at leaves canopy
+        # instead of walking under it (2026-07-18).
+        if (STALL_TICKS_TO_JUMP <= self._approach_stall_count < STALL_TICKS_TO_ABORT
+                and 'log' in target.get('label', '').lower()):
+            ad['key'] = 'space'
         ad['look']        = {'dx': dx, 'dy': dy}
         ad['action']      = f'approach:{target.get("label","target")}'
         ad['observation'] = (f'Approaching {target.get("label","target")} '
                              f'conf={target.get("conf",0):.2f}')
         ad['confidence']  = target.get('conf', 0.5)
 
-        # After enough ticks (roughly 2–3 seconds at 2 s/tick), switch to MINE
+        # After enough ticks (roughly 2–3 seconds at 2 s/tick), switch to MINE.
+        # Never transition to MINE targeting leaves — they're a navigation proxy
+        # only; keep approaching until we can see an actual log block.
         if self._state_ticks >= APPROACH_TICKS:
-            return self._goto(State.MINE,
-                              self._begin_mine(target, fw, fh))
+            if 'leaves' in target.get('label', '').lower():
+                # Reset timer so we keep approaching (don't spam the transition)
+                self._state_ticks = APPROACH_TICKS - 2
+            elif self._approach_stall_count >= STALL_TICKS_TO_JUMP:
+                # Currently stalled/jumping (see guard above) — don't slide
+                # into MINE against whatever's blocking us just because the
+                # tick count ran out; let the jump-then-abort logic above
+                # keep working it until it either clears or gives up.
+                pass
+            else:
+                _label = target.get('label', '').lower()
+                # No-dig-straight-down guard — see STRAIGHT_DOWN_* constants
+                # above. Refuse to start MINEing a plain terrain block that
+                # sits directly beneath the player; abort back to EXPLORE
+                # instead of digging a hole to fall into.
+                if (_label not in STRAIGHT_DOWN_EXEMPT
+                        and _is_straight_down(target.get('box'), fw, fh, world_mem)):
+                    print(f'[FSM] APPROACH: refusing straight-down dig on {_label} → EXPLORE')
+                    self._ore_blacklist[_label] = self._total_ticks + 60
+                    self._ore_blacklist_strikes[_label] = self._ore_blacklist_strikes.get(_label, 0) + 1
+                    return self._goto(State.EXPLORE, _idle())
+                mine_ad = self._begin_mine(target, fw, fh)
+                # Double-check: MINE must never lock onto a leaves target —
+                # if _mine_target somehow ended up as leaves (e.g. a future
+                # caller passes one directly), bail back to EXPLORE instead
+                # of holding click on canopy that yields nothing.
+                locked_label = self._mine_target.get('label', '') if self._mine_target else ''
+                if 'leaves' in locked_label:
+                    self._mine_target = None
+                    return self._goto(State.EXPLORE, _idle())
+                return self._goto(State.MINE, mine_ad, world_mem)
         return State.APPROACH, ad
 
     def _begin_mine(self, target: dict, fw: int, fh: int) -> dict:
         """Build the initial action_dict for entering MINE state (aim only, no click yet)."""
-        self._mine_ticks        = 0
-        self._mine_absent_ticks = 0
+        self._mine_ticks          = 0
+        self._mine_absent_ticks   = 0
+        self._smooth_dx           = 0
+        self._smooth_dy           = 0
+        self._mine_on_target_ticks = 0
         self._mine_last_box     = target.get('box')
         self._mine_target       = {'label': target.get('label', '').lower(),
                                     'box':   target.get('box')}
+        self._mine_color_baseline_px = None
         box = target.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         ad = _idle()
-        ad['key']    = '2'                   # select pickaxe hotbar slot
-        ad['look']   = {'dx': dx, 'dy': dy}  # aim toward ore
-        ad['action'] = f'aim:{target.get("label","block")}'
+        label = target.get('label', '').lower()
+        # Tree targets → axe (slot 1); ore/stone → pickaxe (slot 2)
+        ad['key']    = '1' if label in TREE_TARGETS else '2'
+        ad['look']   = {'dx': dx, 'dy': dy}  # aim toward target
+        ad['action'] = f'aim:{label or "block"}'
         return ad
 
-    def _do_mine(self, mine_obj, fw: int, fh: int, world_mem=None):
+    def _smooth_aim(self, dx: float, dy: float) -> tuple:
+        """Exponentially smooth the raw aim delta to damp mouse oscillation."""
+        SMOOTH = 0.35  # lower = smoother/slower, higher = faster
+        self._smooth_dx = SMOOTH * dx + (1 - SMOOTH) * self._smooth_dx
+        self._smooth_dy = SMOOTH * dy + (1 - SMOOTH) * self._smooth_dy
+        return int(self._smooth_dx), int(self._smooth_dy)
+
+    def _dampen_pitch_dy(self, dy: int, world_mem) -> int:
+        """
+        Vertical aim during APPROACH/MINE is prone to a positive-feedback loop: if
+        the target bbox sits above frame centre the camera looks up, which (for a
+        target being closed in on) tends to push the bbox even higher next tick,
+        so dy keeps growing more negative. Halve the vertical gain, and once the
+        session's cumulative pitch has already walked up past the runtime
+        pitch-clamp's own threshold, refuse to send any more upward delta at all
+        until the clamp corrects it back down.
+
+        Runaway can still outrun that soft clamp — its nudge is only a few
+        pixels a tick against dy that can hit -127 every tick. Past -150
+        cumulative, stop trusting target-tracking dy entirely and force a fixed
+        downward correction instead, regardless of where the bbox says to look.
+        """
+        cum_pitch = getattr(world_mem, 'cumulative_pitch_dy', 0) if world_mem is not None else 0
+        if cum_pitch < -150:
+            return 30
+        dy = int(dy * 0.4)
+        if cum_pitch < -100 and dy < 0:
+            return 0
+        return dy
+
+    def _do_mine(self, mine_obj, fw: int, fh: int, world_mem=None, frame=None):
         """
         Two-phase mining:
           AIM  — send look delta each tick until crosshair is on the ore bbox.
@@ -528,6 +1139,8 @@ class GameFSM:
                     and self._mine_last_box is not None):
                 box = self._mine_last_box
                 dx, dy = bbox_to_mouse_delta(box, fw, fh)
+                dy = self._dampen_pitch_dy(dy, world_mem)
+                dx, dy = self._smooth_aim(dx, dy)
                 ad = _idle()
                 ad['key']         = '2'
                 ad['look']        = {'dx': dx, 'dy': dy}
@@ -555,13 +1168,69 @@ class GameFSM:
         self._mine_absent_ticks = 0
         self._mine_last_box     = mine_obj.get('box', self._mine_last_box)
 
+        # Direct pixel-cluster break check (color-sourced targets only — see
+        # COLOR_BREAK_FRACTION above). Catches a break immediately even if a
+        # same-labeled block elsewhere in frame would otherwise keep
+        # mine_obj non-None and stall the MINE_ABSENT_TICKS_TO_BREAK wait.
+        if frame is not None and mine_obj.get('source') == 'color':
+            _color_label = mine_obj.get('label', '').lower()
+            _px = sample_box_pixel_count(frame, mine_obj.get('box'), _color_label)
+            if self._mine_color_baseline_px is None:
+                if _px >= COLOR_BREAK_MIN_BASELINE_PX:
+                    self._mine_color_baseline_px = _px
+            elif _px < self._mine_color_baseline_px * COLOR_BREAK_FRACTION:
+                print(f'[FSM] MINE: {_color_label} color cluster collapsed '
+                      f'({_px}px < {COLOR_BREAK_FRACTION:.0%} of baseline '
+                      f'{self._mine_color_baseline_px}px) → COLLECT')
+                if _color_label in TREE_TARGETS and world_mem is not None:
+                    world_mem.record_wood_chopped()
+                self._mine_target            = None
+                self._mine_ticks             = 0
+                self._mine_timeout_count     = 0
+                self._mine_timeout_label     = None
+                self._mine_absent_ticks      = 0
+                self._mine_last_box          = None
+                self._mine_color_baseline_px = None
+                return self._goto(State.COLLECT, self._begin_collect())
+
         box = mine_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
+
+        # No-dig-straight-down guard, continuous variant — the entry check in
+        # _do_approach only catches a target that was already straight-down
+        # at MINE start; sloped terrain can drift into this mid-dig. Bail out
+        # every tick it's true rather than only once at entry.
+        _mine_label = mine_obj.get('label', '').lower()
+        if (_mine_label not in STRAIGHT_DOWN_EXEMPT
+                and _is_straight_down(box, fw, fh, world_mem)):
+            print(f'[FSM] MINE: aborting straight-down dig on {_mine_label} → EXPLORE')
+            self._mine_target       = None
+            self._mine_ticks        = 0
+            self._mine_timeout_count = 0
+            self._mine_timeout_label = None
+            return self._goto(State.EXPLORE, _idle())
+
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
+        dy = self._dampen_pitch_dy(dy, world_mem)
+        dx, dy = self._smooth_aim(dx, dy)
         on_target = is_on_target(box, fw, fh)
 
+        if on_target:
+            self._mine_on_target_ticks += 1
+        else:
+            self._mine_on_target_ticks = 0
+
         ad = _idle()
-        ad['key']  = '2'                         # keep pickaxe selected
-        ad['look'] = {'dx': dx, 'dy': dy}        # always correct aim
+        # Use axe (slot 1) for wood/tree targets, pickaxe (slot 2) for everything else
+        _lbl = mine_obj.get('label', '').lower() if mine_obj else (
+            self._mine_target.get('label', '') if self._mine_target else '')
+        ad['key']  = '1' if _lbl in TREE_TARGETS else '2'
+        # Once locked on for a few ticks, stop nudging the camera entirely —
+        # further "correction" off a jittery bbox centre is what drives the
+        # pitch runaway; holding still and clicking is enough to keep mining.
+        if self._mine_on_target_ticks >= 3:
+            ad['look'] = {'dx': 0, 'dy': 0}
+        else:
+            ad['look'] = {'dx': dx, 'dy': dy}
 
         if on_target:
             ad['click']    = [50.0, 50.0]        # left-click screen centre
@@ -606,7 +1275,7 @@ class GameFSM:
 
             print(f'[FSM] MINE: timed out after {MINE_MAX_TICKS} ticks on {curr_label} '
                   f'(attempt {self._mine_timeout_count}/3), re-approaching')
-            return self._goto(State.APPROACH, _idle())
+            return self._goto(State.APPROACH, _idle(), world_mem)
 
         return State.MINE, ad
 
@@ -656,6 +1325,29 @@ class GameFSM:
                              f'(conf={mob.get("conf",0):.2f})')
         ad['confidence']  = 0.9
         return ad
+
+    def _do_flee(self, mob: dict = None):
+        """FLEE state: sprint backward (shift+s) for FLEE_TICKS ticks, then
+        hand control back to whatever state was active before this flee
+        began (see _flee_return_state, set at the trigger site in tick()).
+        Re-triggered every tick the danger condition still holds (tick()'s
+        priority-2 check refreshes _flee_ticks_left back to FLEE_TICKS), so
+        this only actually counts down once the threat is no longer judged
+        dangerous."""
+        self._flee_ticks_left -= 1
+        ad = _idle()
+        ad['key']         = 'shift+s'   # sneak-backward — see kb2040_packer combo parsing
+        label = mob.get('label', 'threat') if mob else 'threat'
+        ad['action']      = f'flee:sprint_backward:{label}'
+        ad['observation'] = (f'Fleeing {label} '
+                             f'({FLEE_TICKS - self._flee_ticks_left}/{FLEE_TICKS})')
+        ad['confidence']  = 0.9
+
+        if self._flee_ticks_left <= 0:
+            return_state = self._flee_return_state or State.EXPLORE
+            self._flee_return_state = None
+            return self._goto(return_state, _idle())
+        return State.FLEE, ad
 
     # ── FISH state ────────────────────────────────────────────────────────────
 
@@ -806,12 +1498,37 @@ class GameFSM:
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
-    def _goto(self, new_state: State, action: dict):
+    def _goto(self, new_state: State, action: dict, world_mem=None):
         """Transition to a new state (or stay if already there)."""
         if new_state != self.state:
             print(f'[FSM] {self.state.value} → {new_state.value}')
             if self.state == State.MINE and new_state != State.MINE:
                 self._mine_target = None   # clear target lock on any MINE exit/timeout
+            if self.state == State.APPROACH and new_state != State.APPROACH:
+                self._approach_locked_label     = None
+                self._approach_locked_box       = None
+                self._approach_locked_conf      = 0.0
+                self._approach_log_absent_ticks = 0
+            # Mandatory pitch reset on entry into APPROACH/MINE — a one-time
+            # downward nudge that counteracts whatever upward drift EXPLORE's
+            # scanning/panning accumulated before this transition, so it
+            # can't compound through another approach+mine cycle on top of
+            # it (2026-07-18: bot drifted past the runtime pitch clamp and
+            # ended up staring straight at the sky).
+            if new_state in (State.APPROACH, State.MINE) and action is not None:
+                look = action.get('look') or {'dx': 0, 'dy': 0}
+                look['dy'] = look.get('dy', 0) + 100
+                action['look'] = look
+                # If cumulative_pitch_dy is already past (or near) the runtime's
+                # ±200 clamp on entry, the clamp fires on the very next tick and
+                # jolts the camera before the state has a chance to do anything
+                # useful — target falls out of frame and the state aborts right
+                # back to EXPLORE/COLLECT. Reset (with a slight downward bias)
+                # so a fresh APPROACH/MINE always starts with clamp headroom
+                # (2026-07-18: cumulative_pitch_dy=217 caused an immediate
+                # APPROACH→EXPLORE bounce).
+                if world_mem is not None:
+                    world_mem.cumulative_pitch_dy = 30
             self.state        = new_state
             self._state_ticks = 0
         return self.state, action

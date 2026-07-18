@@ -22,14 +22,27 @@
     "redstone_ore_7bac87": 1.5255283212983446,
     "redstone_ore_9cdb71": 0.4226264346299963,
     "redstone_ore_845b0a": 1.5754680138425943,
-    "oak_planks_91dccd": 4.013507341569055
+    "oak_planks_91dccd": 4.013507341569055,
+    "leaves_tree_11ea7c": 3.7292049566237884,
+    "leaves_tree_fbf951": 2.805775977400039,
+    "leaves_tree_c97def": 3.5517978073547742,
+    "leaves_tree_cddf08": 3.399210343139986,
+    "leaves_tree_860462": 3.3686832725576004,
+    "leaves_tree_f075ea": 3.928283026099812,
+    "leaves_tree_b68e8c": 3.3828014364080445,
+    "leaves_tree_079222": 3.702813344396249,
+    "leaves_tree_061af6": 3.681211316278896,
+    "oak_planks_9f7d59": 3.7608495636304964
   },
   "armor_bar,emerald_ore,health_bar": {
     "mine_emerald_ore": 0.8117347326278601,
     "armor_bar_diamond_ore_emeral_72d3e5": 0.29911055578132173,
     "armor_bar_health_bar_hotbar__86c48b": 0.904766486718223,
     "armor_bar_health_bar_hotbar__843f39": 0.9061606406913475,
-    "armor_bar_health_bar_hotbar__310ac5": 0.4349054911263779
+    "armor_bar_health_bar_hotbar__310ac5": 0.4349054911263779,
+    "leaves_tree_fbf951": 0.2366422726857456,
+    "leaves_tree_cddf08": 0.9079395007770823,
+    "leaves_tree_c8afc8": 3.601063943862205
   },
   "armor_bar,coal_ore,diamond_ore": {
     "mine_diamond_ore": 0.6871636717835862,
@@ -38,7 +51,8 @@
   "armor_bar,coal_ore,health_bar": {
     "armor_bar_health_bar_hotbar__c93505": 0.884624363248631,
     "armor_bar_emerald_ore_health_4aebc3": 0.6222367637319467,
-    "mine_coal_ore": 0.08847157541135092
+    "mine_coal_ore": 0.08847157541135092,
+    "leaves_tree_079222": 0.1391161926923768
   },
   "diamond_ore,emerald_ore,gold_ore": {
     "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962,
@@ -77,11 +91,17 @@
     "armor_bar_emerald_ore_health_4aebc3": 1.0254146886485858,
     "armor_bar_gold_ore_health_ba_c7d2a1": 1.063690207465788,
     "armor_bar_gold_ore_health_ba_59e436": 1.016380566191448,
-    "armor_bar_gold_ore_health_ba_0cbd8e": 1.1351976062596212
+    "armor_bar_gold_ore_health_ba_0cbd8e": 1.1351976062596212,
+    "gold_ore_94e443": 1.1379184232383461
   },
   "armor_bar,emerald_ore,hotbar": {},
   "armor_bar,gold_ore,hotbar": {
-    "armor_bar_gold_ore_health_ba_59e436": 0.9247109432545927
+    "armor_bar_gold_ore_health_ba_59e436": 0.9247109432545927,
+    "gold_ore_fa480e": 1.122452623751468,
+    "gold_ore_84097c": 1.1326754095687857,
+    "gold_ore_ae74ae": 0.7778055430517626,
+    "gold_ore_38a842": 1.1137612407310324,
+    "gold_ore_94e443": 1.1049659544506207
   },
   "armor_bar,bed,gold_ore": {},
   "gold_ore,health_bar,hotbar": {
@@ -275,7 +295,10 @@
     "diamond_ore_6dbbb7": 1.26374418042634,
     "diamond_ore_b2b9b5": 1.2510066315023898
   },
-  "diamond_ore,emerald_ore,redstone_ore": {},
+  "diamond_ore,emerald_ore,redstone_ore": {
+    "redstone_ore_895d97": 0.4678834279998498,
+    "mine_redstone_ore": 0.09999903742494978
+  },
   "diamond_ore,lapis_ore": {},
   "diamond_ore,gold_ore": {
     "gold_ore_fa480e": 0.071326738,
@@ -288,7 +311,9 @@
   "coal_ore": {
     "coal_ore_281a72": 0.09788459809321023
   },
-  "health_bar,hotbar,hunger_bar": {},
+  "health_bar,hotbar,hunger_bar": {
+    "leaves_tree_079222": 3.1215139564471164
+  },
   "health_bar,hotbar,oak_planks": {},
   "hotbar,redstone_ore,xp_bar": {
     "redstone_ore_bae470": 4.197948253984782,
@@ -313,5 +338,71 @@
   "armor_bar,health_bar,hunger_bar": {},
   "armor_bar,hunger_bar": {},
   "armor_bar,health_bar,xp_bar": {},
-  "coal_ore,health_bar": {}
+  "coal_ore,health_bar": {},
+  "gold_ore,hotbar,oak_planks": {},
+  "gold_ore,hunger_bar": {
+    "gold_ore_fa480e": 0.42694633554800554,
+    "gold_ore_ee3789": 0.5180210968533268,
+    "gold_ore_4de8c8": 0.4176555334305057,
+    "gold_ore_3049ba": 0.4487071741682389,
+    "gold_ore_be5d96": 1.148660085510178,
+    "gold_ore_ae74ae": 1.3338044054136762,
+    "gold_ore_e5cee3": 0.4241133567353547,
+    "gold_ore_254a73": 1.0968621029573558,
+    "gold_ore_2341ae": 1.275402509028908,
+    "gold_ore_d77dd9": 1.3606783046691477
+  },
+  "gold_ore,health_bar,hunger_bar": {
+    "gold_ore_447313": 1.6078435942303517,
+    "gold_ore_3049ba": 0.5766471573888532,
+    "gold_ore_4de8c8": 0.9691694792121245,
+    "gold_ore_be5d96": 1.1553210371768932,
+    "gold_ore_7c74c5": 0.6580087572459442
+  },
+  "armor_bar,birch_log,health_bar": {
+    "leaves_tree_fbf951": 2.5747202675836243,
+    "leaves_tree_c97def": 1.2253914364467262,
+    "leaves_tree_6efe3a": 1.2405302783863275,
+    "leaves_tree_c8afc8": 1.2422199189718188,
+    "leaves_tree_b68e8c": 2.4110293146323194,
+    "birch_log_leaves_tree_bd6ca7": 2.4188879828786183,
+    "leaves_tree_bb97cf": 0.7328081397884075,
+    "birch_log_leaves_tree_64fb67": 3.7113049003367893,
+    "leaves_tree_061af6": 1.0315136839753054,
+    "leaves_tree_f075ea": 2.4092154685004883
+  },
+  "armor_bar,birch_log,coal_ore": {},
+  "birch_log,health_bar,hotbar": {},
+  "armor_bar,birch_log,emerald_ore": {
+    "leaves_tree_860462": 0.9502502860022102,
+    "leaves_tree_11ea7c": 0.9108022347328668,
+    "birch_log_leaves_tree_64fb67": 2.5139335869467514,
+    "leaves_tree_061af6": 3.410210353188547
+  },
+  "armor_bar,birch_log,gold_ore": {
+    "leaves_tree_c8afc8": 0.044800000000000006
+  },
+  "birch_log,log,redstone_ore": {
+    "leaves_tree_c8afc8": 0.2740943830055631
+  },
+  "birch_log,gold_ore,hotbar": {},
+  "birch_log,diamond_ore,emerald_ore": {
+    "mine_diamond_ore": 4.16292732473929
+  },
+  "birch_log,hotbar,leaves": {},
+  "armor_bar,chicken,health_bar": {
+    "hunt_sheep": 1.3157949997824645
+  },
+  "birch_log,emerald_ore,gold_ore": {},
+  "birch_log,gold_ore,health_bar": {},
+  "birch_log,emerald_ore,health_bar": {},
+  "armor_bar,birch_log,chicken": {
+    "hunt_cow": 4.173063333303034
+  },
+  "armor_bar,birch_log,cobblestone": {},
+  "armor_bar,crosshair,health_bar": {},
+  "armor_bar,diamond_ore,health_bar": {
+    "leaves_tree_f075ea": 3.724362298138974
+  },
+  "armor_bar,gravel,health_bar": {}
 }

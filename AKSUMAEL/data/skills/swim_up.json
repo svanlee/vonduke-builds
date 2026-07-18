@@ -98,5 +98,6 @@
   "postconditions": {},
   "success_count": 0,
   "failed_count": 0,
-  "blacklisted": false
+  "blacklisted": false,
+  "universal": false
 }
