@@ -11,10 +11,11 @@ import config
 
 
 class SurveyBehavior:
-    def __init__(self, collector, executor, auto_trainer=None):
+    def __init__(self, collector, executor, auto_trainer=None, capture_fn=None):
         self._collector = collector
         self._executor  = executor
         self._auto_trainer = auto_trainer
+        self._capture   = capture_fn   # callable() -> fresh frame, or None
         self._last_survey = 0.0
         self._active = False
 
@@ -53,24 +54,34 @@ class SurveyBehavior:
         self._last_survey = time.time()
         saved = 0
 
-        look_keys = ['a', None, 'd']   # strafe left, center, strafe right
-        for key in look_keys:
-            if key:
-                self._executor.execute({'key': key, 'click': None,
-                                        'gamepad': {'lx': 0, 'ly': 0, 'rx': 0, 'ry': 0, 'lt': 0, 'rt': 0, 'buttons': 0},
-                                        'source': 'survey'})
-                time.sleep(0.25)
+        try:
+            look_keys = ['a', None, 'd']   # strafe left, center, strafe right
+            for key in look_keys:
+                if key:
+                    self._executor.execute({'key': key, 'click': None,
+                                            'gamepad': {'lx': 0, 'ly': 0, 'rx': 0, 'ry': 0, 'lt': 0, 'rt': 0, 'buttons': 0},
+                                            'source': 'survey'})
+                    time.sleep(0.25)
 
-            # Grab a fresh frame and save it
-            # (frame passed in is the current one; for subsequent angles we save what we have)
-            if self._collector:
-                if self._collector.force_save(frame, objects):
-                    saved += 1
-                    if self._auto_trainer:
-                        self._auto_trainer.on_survey_saved(1)
+                # Grab a fresh frame for this angle if a capture_fn was
+                # given — otherwise every saved frame would be the same
+                # pre-movement snapshot passed into run(), defeating the
+                # point of a multi-angle sweep.
+                shot = frame
+                if self._capture:
+                    fresh = self._capture()
+                    if fresh is not None:
+                        shot = fresh
 
-        print(f'[SURVEY] saved {saved} frames (uncertain → sweep complete)')
-        self._active = False
+                if self._collector:
+                    if self._collector.force_save(shot, objects):
+                        saved += 1
+                        if self._auto_trainer:
+                            self._auto_trainer.on_survey_saved(1)
+
+            print(f'[SURVEY] saved {saved} frames (uncertain → sweep complete)')
+        finally:
+            self._active = False
 
         if self._auto_trainer and self._auto_trainer.should_train():
             self._auto_trainer.start_training()

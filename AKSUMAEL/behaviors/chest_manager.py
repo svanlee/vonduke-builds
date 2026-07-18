@@ -39,11 +39,13 @@ def _chest_slot_pct(slot: int) -> tuple[float, float]:
     return _CHEST_X0 + col * _CHEST_DX, _CHEST_Y0 + row * _CHEST_DY
 
 
-def _player_slot_pct(inv_slot: int) -> tuple[float, float]:
-    """Convert an InventoryReader-style player slot index (0-26 main, 27-35
-    hotbar) to screen % within the chest UI (player grid sits below chest)."""
-    if inv_slot < 0:
+def _player_slot_pct(chest_slot: int) -> tuple[float, float]:
+    """Convert a chest-screen player slot index (27-62, continuing after the
+    chest's own 0-26 — see _CHEST_PROMPT/_PLAYER_SLOT_BASE) to screen %
+    within the chest UI (player grid sits below the chest grid)."""
+    if chest_slot < _PLAYER_SLOT_BASE:
         return (50.0, 90.0)
+    inv_slot = chest_slot - _PLAYER_SLOT_BASE   # 0-26 main, 27-35 hotbar
     if inv_slot >= 27:   # hotbar
         col = inv_slot - 27
         return _PLAYER_X0 + col * _PLAYER_DX, _PLAYER_HOTBAR_Y
@@ -95,7 +97,9 @@ class ChestManager:
         return dict(items)
 
     def store_item(self, executor, item: str, inv_slot: int):
-        """Shift-click an item in the player's inventory to move it to the chest."""
+        """Shift-click an item in the player's inventory to move it to the
+        chest. inv_slot is the chest-screen slot (27-62) as reported by
+        read_contents(), not a bare 0-35 InventoryReader index."""
         x, y = _player_slot_pct(inv_slot)
         print(f'[CHEST] storing {item} (inv slot {inv_slot})')
         self._shift_click(executor, x, y)

@@ -32,6 +32,7 @@ class InventoryTracker:
             "mine_iron_ore": ("iron_ore", 1),
             "mine_gold_ore": ("gold_ore", 1),
             "mine_lapis_ore": ("lapis", 6),
+            "chop_tree": ("oak_log", 1),
         }
         if skill_name in gains:
             item, qty = gains[skill_name]
