@@ -61,6 +61,13 @@ class GoalStack:
         # AKSUMAEL doesn't spin in a tree-search loop forever.
         self._chop_tree_fail_streak   = 0
         self._chop_tree_blocked_until = 0
+        # world.wood_count is a lifetime counter (persists to disk across
+        # restarts, never reset) — snapshot its value the tick a goal
+        # becomes current so retirement can check logs gained *this
+        # episode* instead of the all-time total, which would otherwise
+        # instantly retire find_and_chop_tree the moment it's re-pushed
+        # once wood_count has ever reached 4 in the bot's whole history.
+        self._wood_snapshot = {}
         self._load()
 
     def _load(self):
@@ -101,12 +108,14 @@ class GoalStack:
         if diamonds < 3 and self.current == "explore":
             self.push("mine_diamonds")
 
-        # Need wood — if no logs seen recently (wood_count is low this session)
-        wood_count = getattr(world_memory, 'wood_count', 0)
+        # Need wood — current log stock is low. wood_count is a lifetime
+        # counter (persists across restarts), so gating on it being 0 would
+        # mean this only ever fires once, the very first time AKSUMAEL chops
+        # a tree in its whole history — gate on current inventory instead.
         inv_logs = (inventory.items.get('log', 0)
                     + inventory.items.get('oak_log', 0)
                     + inventory.items.get('wood', 0))
-        if (wood_count == 0 and inv_logs < 4 and self.current == "explore"
+        if (inv_logs < 4 and self.current == "explore"
                 and tick >= self._chop_tree_blocked_until):
             self.push("find_and_chop_tree")
 
@@ -231,6 +240,8 @@ class GoalStack:
         if goal != self._last_seen:
             self._pushed_at[goal] = tick
             self._last_seen = goal
+            if goal == "find_and_chop_tree":
+                self._wood_snapshot[goal] = getattr(world, 'wood_count', 0) if world is not None else 0
         if goal in _NEVER_RETIRE:
             return
 
@@ -247,6 +258,14 @@ class GoalStack:
             base_item = ore_item.replace("_ore", "")
             if items.get(base_item, 0) > 0 or items.get(ore_item, 0) > 0:
                 self._retire(tick, goal, "success: ore already in inventory", age, world)
+                return
+        elif goal == "find_and_chop_tree":
+            inv_logs = (items.get('log', 0) + items.get('oak_log', 0)
+                        + items.get('wood', 0))
+            world_wood = getattr(world, 'wood_count', 0) if world is not None else 0
+            wood_this_episode = world_wood - self._wood_snapshot.get(goal, 0)
+            if inv_logs >= 4 or wood_this_episode >= 4:
+                self._retire(tick, goal, "success: enough logs collected", age, world)
                 return
 
         # ── Timeout retirement — goal looks unachievable ────────────
@@ -276,6 +295,7 @@ class GoalStack:
         position = list(world.position) if world is not None and getattr(world, 'position', None) else None
         print(f'[GOALS] retiring "{goal}" — {reason} ({ticks_active} ticks active)')
         self._pushed_at.pop(goal, None)
+        self._wood_snapshot.pop(goal, None)
 
         if goal == "find_and_chop_tree":
             if reason.startswith("timeout"):

@@ -135,9 +135,15 @@ class InventoryReader:
         finally:
             self._reading = False
 
-        self._cache    = result
+        # A parse/LLM failure returns {'items': [], 'parse_error': True} —
+        # keep the last known-good cache instead of clobbering it with that
+        # placeholder, so a transient bad read doesn't erase real inventory
+        # data callers already had. Still bump _cache_ts so the TTL/rate
+        # limit applies and we don't hammer the LLM every tick.
+        if not result.get('parse_error'):
+            self._cache = result
         self._cache_ts = time.time()
-        return dict(result)
+        return dict(self._cache)
 
     # ── Internals ────────────────────────────────────────────────
 

@@ -93,8 +93,10 @@ class GameLauncher:
                 print(f'[LAUNCH] step {i+1}: key={step["key"]}')
 
             elif step_type == 'click':
-                self.executor.execute({'click': step.get('button', 'left')})
-                print(f'[LAUNCH] step {i+1}: click={step.get("button","left")}')
+                x_pct, y_pct = step.get('x', 50.0), step.get('y', 50.0)
+                button = step.get('button', 'left')
+                self.executor.execute({'click': [x_pct, y_pct], 'button': button})
+                print(f'[LAUNCH] step {i+1}: click=({x_pct},{y_pct}) button={button}')
 
             elif step_type == 'look':
                 self.executor.execute({

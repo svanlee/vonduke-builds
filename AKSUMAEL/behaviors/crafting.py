@@ -384,7 +384,7 @@ class CraftingBehavior:
             if grid == '3x3':
                 success = self._run_3x3(recipe_name, inv, inv_slots)
             else:
-                success = self._run_2x2(recipe_name, inv)
+                success = self._run_2x2(recipe_name, inv, inv_slots)
         except Exception as e:
             print(f'[CRAFT] error during {recipe_name}: {e}')
             self._emergency_close()
@@ -413,18 +413,18 @@ class CraftingBehavior:
         if not self._open_table():
             return False
         recipe = _normalize_recipe(RECIPES_3x3[recipe_name], inv)
-        self._place_recipe_3x3(recipe, inv_slots)
+        placed = self._place_recipe_3x3(recipe, inv_slots)
         self._collect(RESULT_SLOT_3x3)
         self._close_ui()
-        return True
+        return placed
 
-    def _run_2x2(self, recipe_name: str, inv: dict) -> bool:
+    def _run_2x2(self, recipe_name: str, inv: dict, inv_slots: dict) -> bool:
         self._open_inventory()
         recipe = _normalize_recipe(RECIPES_2x2[recipe_name], inv)
-        self._place_recipe_2x2(recipe)
+        placed = self._place_recipe_2x2(recipe, inv_slots)
         self._collect(RESULT_SLOT_2x2)
         self._close_ui()
-        return True
+        return placed
 
     def _approach_table(self):
         print('[CRAFT] approaching crafting table')
@@ -443,13 +443,17 @@ class CraftingBehavior:
         self._tap('e', 600)
         time.sleep(0.35)
 
-    def _place_recipe_3x3(self, recipe: dict, inv_slots: dict):
+    def _place_recipe_3x3(self, recipe: dict, inv_slots: dict) -> bool:
         """Pick each material from inventory, deposit into crafting grid slots.
 
         Groups slots by material so we only do one pick-up per unique item:
           1. Left-click inventory slot → picks up whole stack onto cursor
-          2. Left-click each crafting grid slot that needs that item → deposits one
+          2. Right-click each crafting grid slot that needs that item →
+             deposits one at a time
           3. Left-click the same inventory slot again → returns remainder
+
+        Returns False if any required item's slot wasn't found (recipe was
+        only partially placed), True if every item was placed.
         """
         print('[CRAFT] placing 3×3 recipe (pick-and-place)')
 
@@ -459,10 +463,12 @@ class CraftingBehavior:
         for grid_slot, item in recipe.items():
             slots_for_item[item].append(grid_slot)
 
+        all_placed = True
         for item, grid_slots in slots_for_item.items():
             inv_slot = inv_slots.get(item, -1)
             if inv_slot < 0:
                 print(f'[CRAFT] WARNING: no slot found for {item} — skipping')
+                all_placed = False
                 continue
 
             inv_x, inv_y = _inv_slot_pct(inv_slot)
@@ -470,19 +476,55 @@ class CraftingBehavior:
             # Pick up stack from inventory
             self._click(inv_x, inv_y, wait=0.2)
 
-            # Deposit one into each required crafting grid slot
+            # Deposit one into each required crafting grid slot. Must be a
+            # right-click: left-clicking an empty slot while holding a
+            # stack on the cursor drops the WHOLE stack into that one slot
+            # (standard Java Edition behavior), leaving every other slot
+            # for this item empty and the recipe never completing. Only
+            # right-click peels off a single item per click.
             for grid_slot in grid_slots:
                 cx, cy = CRAFT_GRID_3x3[grid_slot]
-                self._click(cx, cy, wait=0.15)
+                self._click(cx, cy, button='right', wait=0.15)
 
             # Return remainder to inventory (click same slot)
             self._click(inv_x, inv_y, wait=0.2)
+        return all_placed
 
-    def _place_recipe_2x2(self, recipe: dict):
-        print('[CRAFT] placing 2×2 recipe')
-        for slot, _item in recipe.items():
-            x_pct, y_pct = CRAFT_GRID_2x2[slot]
-            self._click(x_pct, y_pct, wait=0.15)
+    def _place_recipe_2x2(self, recipe: dict, inv_slots: dict) -> bool:
+        """Pick each material from inventory, deposit into the 2×2 grid.
+
+        Same pick-up/deposit-one/return-remainder pattern as
+        _place_recipe_3x3 — clicking a grid cell with nothing picked up
+        from the inventory first is a no-op, so this must mirror that
+        flow rather than just clicking the grid coordinates directly.
+
+        Returns False if any required item's slot wasn't found.
+        """
+        print('[CRAFT] placing 2×2 recipe (pick-and-place)')
+
+        from collections import defaultdict
+        slots_for_item: dict[str, list] = defaultdict(list)
+        for grid_slot, item in recipe.items():
+            slots_for_item[item].append(grid_slot)
+
+        all_placed = True
+        for item, grid_slots in slots_for_item.items():
+            inv_slot = inv_slots.get(item, -1)
+            if inv_slot < 0:
+                print(f'[CRAFT] WARNING: no slot found for {item} — skipping')
+                all_placed = False
+                continue
+
+            inv_x, inv_y = _inv_slot_pct(inv_slot)
+
+            self._click(inv_x, inv_y, wait=0.2)
+
+            for grid_slot in grid_slots:
+                cx, cy = CRAFT_GRID_2x2[grid_slot]
+                self._click(cx, cy, button='right', wait=0.15)
+
+            self._click(inv_x, inv_y, wait=0.2)
+        return all_placed
 
     def _collect(self, result_slot: tuple):
         """Shift-click result slot to collect entire stack at once."""

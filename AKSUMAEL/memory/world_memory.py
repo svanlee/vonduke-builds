@@ -146,9 +146,6 @@ class WorldMemory:
         if event:
             self.recent_events.append({'t': time.strftime('%H:%M:%S'), 'event': event})
             self.recent_events = self.recent_events[-MAX_RECENT:]
-            # Track wood chopped via event string
-            if 'chop' in event.lower() or 'log' in event.lower():
-                self.wood_count += 1
 
         observation = (action or {}).get('observation', '') if action else ''
         self._ticks_since_f3 += 1

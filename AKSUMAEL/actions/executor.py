@@ -95,6 +95,12 @@ class ActionExecutor:
         if self._hid:
             self._hid.release_all()
 
+    def reset_device(self):
+        """Forward to KB2040Serial.reset_device() (no-op on ch9329/print
+        modes, or on unflashed KB2040 firmware — see that method)."""
+        if self._hid and hasattr(self._hid, 'reset_device'):
+            self._hid.reset_device()
+
     def close(self):
         self.release_all()
         if self._hid:

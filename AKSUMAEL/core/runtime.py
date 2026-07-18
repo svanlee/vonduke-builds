@@ -257,7 +257,8 @@ def run():
     from behaviors.launch_game import GameLauncher
     from core.fsm import GameFSM, State, ORE_TARGETS, TREE_TARGETS
     auto_trainer = AutoTrainer(yolo)
-    surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer) if collector else None
+    surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer,
+                               capture_fn=lambda: pipeline.latest_raw_frame) if collector else None
     respawner = RespawnBehavior(executor, goals)
     hunger_behavior = HungerBehavior(executor, goals)
     night_survival  = NightSurvivalBehavior(executor, goals)
@@ -1501,7 +1502,7 @@ def run():
             # Only in EXPLORE, never mid-skill-replay or while sheltering.
             if (fsm_state == State.EXPLORE and not replayer.is_active()
                     and not _menu_open and not night_survival.is_active()
-                    and torch_behavior.should_trigger(world_mem)):
+                    and torch_behavior.should_trigger(world_mem, avg_brightness)):
                 torch_behavior.place()
 
             # ── Curiosity survey ────────────────────────────────

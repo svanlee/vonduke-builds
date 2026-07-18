@@ -12,6 +12,11 @@
 #   0x02  Mouse rel [buttons, dx+128, dy+128, wheel+128]  -> relative MOUSE device
 #   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]      -> absolute pointer device
 #   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128, btn_lo, btn_hi, lt, rt]
+#   0x05  Reset     []  -> microcontroller.reset(), forces USB HID
+#                        re-enumeration on the target PC (2026-07-17: added
+#                        after the relative-mouse HID channel went dead
+#                        mid-session with no way to recover it remotely —
+#                        see uart/kb2040_packer.py reset_device())
 #   0xFF  Release all
 #
 # Dependencies (copy to CIRCUITPY/lib/):
@@ -19,6 +24,7 @@
 
 import board
 import busio
+import microcontroller
 import usb_hid
 from adafruit_hid.keyboard         import Keyboard
 from adafruit_hid.keycode           import Keycode
@@ -47,8 +53,8 @@ for _dev in usb_hid.devices:
 uart = busio.UART(board.D0, board.D1, baudrate=115200, timeout=0)
 
 # ── Packet parser state ───────────────────────────────────────
-PKT_TYPE  = {0x01, 0x02, 0x03, 0x04, 0xFF}
-LEN_MAP   = {0x01: 8, 0x02: 4, 0x03: 5, 0x04: 8, 0xFF: 0}
+PKT_TYPE  = {0x01, 0x02, 0x03, 0x04, 0x05, 0xFF}
+LEN_MAP   = {0x01: 8, 0x02: 4, 0x03: 5, 0x04: 8, 0x05: 0, 0xFF: 0}
 
 buf       = bytearray()
 HEADER    = b'\xAA\xBB'
@@ -177,8 +183,12 @@ def handle_gamepad(data):
     buttons = (btn_hi << 8) | btn_lo
     try:
         gamepad.move_joysticks(x=lx, y=ly, z=rx, r_z=ry)
-        # Map first 8 buttons
-        for i in range(8):
+        # Map all 16 buttons (GAMEPAD_REPORT_DESCRIPTOR in boot.py declares
+        # Button 1..16, `buttons` already packs both btn_lo and btn_hi) —
+        # this used to stop at 8, so bits 8-15 (btn_hi), including the
+        # guide button packed into bit 15 by kb2040_packer.pack_gamepad(),
+        # were never pressed or released.
+        for i in range(16):
             if buttons & (1 << i):
                 gamepad.press_buttons(i + 1)
             else:
@@ -257,6 +267,9 @@ while True:
             handle_mouse_abs(data)
         elif pkt_type == 0x04 and len(data) == 8:
             handle_gamepad(data)
+        elif pkt_type == 0x05:
+            release_all()
+            microcontroller.reset()   # does not return
         elif pkt_type == 0xFF:
             release_all()
 

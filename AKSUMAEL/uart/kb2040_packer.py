@@ -13,6 +13,7 @@
 #   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]   5 bytes  -> absolute pointer device (desktop clicks)
 #   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128,
 #                   btn_lo, btn_hi, lt, rt]           8 bytes
+#   0x05  Reset                                       0 bytes  -> microcontroller.reset() (forces USB HID re-enumeration)
 #   0xFF  Release all                                 0 bytes
 
 import time
@@ -23,6 +24,7 @@ TYPE_KB      = 0x01
 TYPE_MOUSE_R = 0x02
 TYPE_MOUSE_A = 0x03
 TYPE_GAMEPAD = 0x04
+TYPE_RESET   = 0x05
 TYPE_RELEASE = 0xFF
 
 HEADER = bytes([0xAA, 0xBB])
@@ -123,17 +125,27 @@ def pack_gamepad(lx: int = 0, ly: int = 0,
                  buttons: int = 0,
                  lt: int = 0, rt: int = 0,
                  guide: bool = False) -> bytes:
+    # No dedicated wire byte for guide — TYPE_GAMEPAD is a fixed 8 bytes
+    # (rp2040/code.py checks len(data) == 8 and silently drops anything
+    # else), so guide rides in bit 15 of the existing 16-bit buttons field
+    # (Button 16 in boot.py's GAMEPAD_REPORT_DESCRIPTOR) instead of a 9th
+    # byte that the firmware would never dispatch.
+    if guide:
+        buttons |= 0x8000
     return _frame(TYPE_GAMEPAD, [
         s8_to_u8(lx), s8_to_u8(ly),
         s8_to_u8(rx), s8_to_u8(ry),
         buttons & 0xFF, (buttons >> 8) & 0xFF,
         u8(lt), u8(rt),
-        1 if guide else 0,
     ])
 
 
 def pack_release_all() -> bytes:
     return _frame(TYPE_RELEASE, [])
+
+
+def pack_reset() -> bytes:
+    return _frame(TYPE_RESET, [])
 
 
 def key_to_hid(key_name: str) -> tuple:
@@ -151,7 +163,8 @@ def key_to_hid(key_name: str) -> tuple:
 
 
 def action_dict_to_packets(action_dict: dict,
-                            platform: str = 'pc') -> list:
+                            platform: str = 'pc',
+                            held_buttons: int = 0) -> list:
     packets = []
     key     = action_dict.get('key')
     click   = action_dict.get('click')
@@ -175,12 +188,38 @@ def action_dict_to_packets(action_dict: dict,
         except (TypeError, IndexError, ValueError):
             pass
 
-    # Mouse look (relative camera pan)
+    # Relative mouse button press (goes through TYPE_MOUSE_R — captured by game)
+    # Use 'mouse_button': 'left' or 'right' for in-game clicks (mining, attacking)
+    # instead of 'click': [...] which uses TYPE_MOUSE_A (not game-captured).
+    mouse_btn = action_dict.get('mouse_button')
+    if mouse_btn in ('left', 'right'):
+        _btn = 1 if mouse_btn == 'left' else 2
+        packets.append(pack_mouse_relative(dx=0, dy=0, buttons=_btn))
+        packets.append(pack_mouse_relative(dx=0, dy=0, buttons=0))
+
+    # Held mouse button — press-only or release-only, no auto-release.
+    # 'mouse_button' above always sends press+release as one instant click,
+    # which resets Minecraft's block-break progress every time it fires.
+    # Use 'mouse_hold': 'down' once to start a continuous hold and 'up'
+    # once to end it — the button stays physically down on everything
+    # in between (2026-07-17).
+    mouse_hold = action_dict.get('mouse_hold')
+    if mouse_hold in ('down', 'up'):
+        _hold_btn = 1 if action_dict.get('mouse_button_name', 'left') == 'left' else 2
+        packets.append(pack_mouse_relative(
+            dx=0, dy=0, buttons=_hold_btn if mouse_hold == 'down' else 0))
+
+    # Mouse look (relative camera pan) — must carry forward any currently
+    # held mouse button (held_buttons, tracked by KB2040Serial) instead of
+    # hardcoding buttons=0. Every TYPE_MOUSE_R packet is a full state
+    # report on the firmware side (rp2040/code.py::handle_mouse_rel), not
+    # a delta — a look packet sent mid-hold with buttons=0 would silently
+    # release the held click (2026-07-17).
     if look and isinstance(look, dict):
         dx = int(look.get('dx', 0))
         dy = int(look.get('dy', 0))
         if dx != 0 or dy != 0:
-            packets.append(pack_mouse_move(dx, dy))
+            packets.append(pack_mouse_relative(dx=dx, dy=dy, buttons=held_buttons))
 
     # Gamepad (all platforms — KB2040 supports it natively)
     if gamepad and isinstance(gamepad, dict):
@@ -207,6 +246,12 @@ class KB2040Serial:
         self._ser  = None
         self._lock = threading.Lock()
         self._last_reconnect_attempt = 0.0
+        # Currently-held relative-mouse buttons bitmask (bit 0=left,
+        # bit 1=right) — see action_dict_to_packets' held_buttons param.
+        # Every TYPE_MOUSE_R packet is a full state report, so any 'look'
+        # packet sent while a 'mouse_hold' is active must echo this back
+        # or the firmware will release the button (2026-07-17).
+        self._held_mouse_buttons = 0
         self._connect()
 
     def _connect(self, quiet=False):
@@ -216,6 +261,7 @@ class KB2040Serial:
             time.sleep(0.15)
             # Send release-all to clear any stale HID state
             self._ser.write(pack_release_all())
+            self._held_mouse_buttons = 0
             if not quiet:
                 print(f'[KB2040] connected on {self.port} @ {self.baud}')
         except ImportError:
@@ -225,6 +271,14 @@ class KB2040Serial:
         except Exception as e:
             if not quiet:
                 print(f'[KB2040] UART open failed: {e}')
+            # pyserial.Serial() may have already opened the fd before the
+            # write() above raised (e.g. device yanked mid-connect) — close
+            # it explicitly instead of relying on GC to release the handle.
+            if self._ser:
+                try:
+                    self._ser.close()
+                except Exception:
+                    pass
             self._ser = None
         self._last_reconnect_attempt = time.time()
 
@@ -262,15 +316,41 @@ class KB2040Serial:
     def send_action(self, action_dict: dict,
                     platform: str = 'pc',
                     delay_ms: int = 20) -> bool:
+        mouse_hold = action_dict.get('mouse_hold')
+        if mouse_hold in ('down', 'up'):
+            _btn = 1 if action_dict.get('mouse_button_name', 'left') == 'left' else 2
+            if mouse_hold == 'down':
+                self._held_mouse_buttons |= _btn
+            else:
+                self._held_mouse_buttons &= ~_btn
+
         ok = True
-        for pkt in action_dict_to_packets(action_dict, platform):
+        for pkt in action_dict_to_packets(action_dict, platform,
+                                          held_buttons=self._held_mouse_buttons):
             ok &= self.send(pkt)
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
         return ok
 
     def release_all(self):
+        self._held_mouse_buttons = 0
         self.send(pack_release_all())
+
+    def reset_device(self):
+        """Force the KB2040 to microcontroller.reset(), which re-enumerates
+        its USB HID devices on the target PC — recovery path for when the
+        relative-mouse channel goes dead without any USB disconnect visible
+        on this host's side (2026-07-17). Requires rp2040/code.py to have
+        been flashed with the 0x05 packet handler — older firmware silently
+        ignores this packet (unrecognized type), so it's a no-op until then.
+        The reset drops /dev/ttyUSB0 briefly; existing try_reconnect() polling
+        picks the link back up once the board finishes rebooting.
+        Sends release-all first — 0x05 is a no-op on old firmware, so
+        without this a held button would otherwise stay physically down
+        with no way to clear it."""
+        self._held_mouse_buttons = 0
+        self.send(pack_release_all())
+        self.send(pack_reset())
 
     def close(self):
         self.release_all()

@@ -343,8 +343,8 @@ class GameFSM:
                     objects, self._mine_target['label'], min_conf=MINE_HOLD_CONF)
                 if locked_obj is not None:
                     self._mine_target['box'] = locked_obj.get('box', self._mine_target['box'])
-                return self._do_mine(locked_obj, fw, fh)
-            return self._do_mine(mine_obj, fw, fh)
+                return self._do_mine(locked_obj, fw, fh, world_mem)
+            return self._do_mine(mine_obj, fw, fh, world_mem)
 
         elif s == State.APPROACH:
             target = mine_obj or animal_obj
@@ -510,7 +510,7 @@ class GameFSM:
         ad['action'] = f'aim:{target.get("label","block")}'
         return ad
 
-    def _do_mine(self, mine_obj, fw: int, fh: int):
+    def _do_mine(self, mine_obj, fw: int, fh: int, world_mem=None):
         """
         Two-phase mining:
           AIM  — send look delta each tick until crosshair is on the ore bbox.
@@ -542,6 +542,9 @@ class GameFSM:
 
             # Gone for MINE_ABSENT_TICKS_TO_BREAK+ ticks in a row — broken!
             print(f'[FSM] MINE: target gone after {self._mine_ticks} ticks → COLLECT')
+            broken_label = self._mine_target['label'] if self._mine_target else None
+            if broken_label in TREE_TARGETS and world_mem is not None:
+                world_mem.record_wood_chopped()
             self._mine_ticks        = 0
             self._mine_timeout_count = 0
             self._mine_timeout_label = None
