@@ -35,6 +35,7 @@ GOAL_PRIORITIES = {
     "flee_danger": 8,
     "return_to_base": 8,
     "find_shelter": 7,
+    "rebuild_fort": 6,
     "mine_diamonds": 5,
     "mine_coal": 4,
     "find_and_chop_tree": 3,
@@ -68,6 +69,12 @@ class GoalStack:
         # instantly retire find_and_chop_tree the moment it's re-pushed
         # once wood_count has ever reached 4 in the bot's whole history.
         self._wood_snapshot = {}
+        # Params attached to an injected goal (e.g. {"goal": "rebuild_fort",
+        # "params": {...}} written to data/injected_goals.json) — keyed by
+        # goal name, consumed by whatever handles that goal (e.g.
+        # core/fsm.py's rebuild_fort dispatch). Not persisted to disk;
+        # ephemeral for the session that received the injection.
+        self.goal_params = {}
         self._load()
 
     def _load(self):
@@ -118,6 +125,16 @@ class GoalStack:
         if (inv_logs < 4 and self.current == "explore"
                 and tick >= self._chop_tree_blocked_until):
             self.push("find_and_chop_tree")
+
+        # Wood-processing chain — see InventoryTracker.wood_subgoal(). Auto-push
+        # the next crafting step the instant the raw-material threshold is hit,
+        # same pattern as suggest_craft_goal() for pickaxe tiers. Guarded by
+        # has_craft_goal() so this doesn't re-push every tick while the goal
+        # it just pushed is still active.
+        if not self.has_craft_goal() and hasattr(inventory, 'wood_subgoal'):
+            _wood_goal = inventory.wood_subgoal()
+            if _wood_goal:
+                self.push(_wood_goal)
 
         # Need food — hunger below 60% and no food in inventory
         hunger_frac = (world_memory.hunger_level / 20.0
@@ -342,17 +359,38 @@ class GoalStack:
         try:
             with open(INJECTED_GOALS_PATH) as f:
                 data = json.load(f)
-            queue = data.get("queue", [])
-            if not queue:
-                return
-            for item in queue:
-                goal = item.get("goal")
-                if goal:
-                    print(f"[GOALS] hive-injected goal: {goal} ({item.get('reason', 'mastermind')})")
-                    self.push(goal)
+        except (OSError, json.JSONDecodeError) as e:
+            # Unreadable — retrying won't fix it, so quarantine instead of
+            # spamming this error every tick forever.
+            print(f"[GOALS] injected-goals read error: {e} — discarding file")
+            try:
+                os.remove(INJECTED_GOALS_PATH)
+            except OSError:
+                pass
+            return
+
+        # Every writer (mastermind/agent_client.py, axon/hub.py,
+        # core/runtime.py._restore_preserved_goals) writes {"queue": [...]},
+        # but accept a bare list too rather than silently wedging on it
+        # every tick if something ever writes the older/raw format.
+        queue = data.get("queue", []) if isinstance(data, dict) else data
+        if not isinstance(queue, list):
+            print(f"[GOALS] injected-goals file has unexpected shape ({type(data).__name__}) — discarding")
             os.remove(INJECTED_GOALS_PATH)
-        except Exception as e:
-            print(f"[GOALS] injected-goals read error: {e}")
+            return
+        if not queue:
+            os.remove(INJECTED_GOALS_PATH)
+            return
+        for item in queue:
+            goal = item.get("goal")
+            if goal:
+                params = item.get("params")
+                if params:
+                    self.goal_params[goal] = params
+                print(f"[GOALS] hive-injected goal: {goal} "
+                      f"({item.get('reason', 'mastermind')}) params={params or {}}")
+                self.push(goal)
+        os.remove(INJECTED_GOALS_PATH)
 
 
 def _mine_goal_to_item(goal: str) -> str:

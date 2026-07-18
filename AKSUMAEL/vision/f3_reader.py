@@ -71,6 +71,11 @@ def _fuzzy_direction(word: str) -> str | None:
 FPS_RE    = re.compile(r"(\d+)\s*fps", re.IGNORECASE)
 # Chunk: 2 4 -1 in r:0 -1   → first three numbers are chunk xz+section
 CHUNK_RE  = re.compile(r"Chunk:\s*([-\d]+)\s+([-\d]+)\s+([-\d]+)", re.IGNORECASE)
+# Client Light: 15 (15 sky, 0 block)  — vanilla F3's per-block light readout.
+# OCR often mangles 'Client', so anchor on the more distinctive 'Light' word.
+LIGHT_RE  = re.compile(r"Light\s*[:\;\.]\s*(\d+)", re.IGNORECASE)
+# Local Difficulty: 1.00 // 1.00 (Day 12)  — vanilla F3 day counter.
+DAY_RE    = re.compile(r"\(\s*Day\s+(\d+)\s*\)", re.IGNORECASE)
 
 
 def _preprocess(frame_bgr: np.ndarray) -> np.ndarray:
@@ -99,6 +104,8 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
       fps       : int    — current game FPS (None if not found)
       chunk_x   : int    — chunk X (None if not found)
       chunk_z   : int    — chunk Z (None if not found)
+      light_level : int  — client light level 0-15 at targeted block (None if not found)
+      day_count   : int  — vanilla day counter from the Local Difficulty line (None if not found)
     """
     result = {
         "f3_active": False,
@@ -108,6 +115,8 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         "facing": None,
         "fps": None,
         "chunk_x": None, "chunk_z": None,
+        "light_level": None,
+        "day_count": None,
     }
     if not TESSERACT_OK or frame_bgr is None:
         return result
@@ -204,6 +213,22 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         try:
             result["chunk_x"] = int(m.group(1))
             result["chunk_z"] = int(m.group(3))
+        except ValueError:
+            pass
+
+    # Light level — crucial for mob-spawn risk (light < 8 lets mobs spawn)
+    m = LIGHT_RE.search(text)
+    if m:
+        try:
+            result["light_level"] = int(m.group(1))
+        except ValueError:
+            pass
+
+    # Day count
+    m = DAY_RE.search(text)
+    if m:
+        try:
+            result["day_count"] = int(m.group(1))
         except ValueError:
             pass
 

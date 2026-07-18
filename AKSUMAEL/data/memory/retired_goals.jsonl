@@ -23,3 +23,29 @@
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784043249.9442225}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784043828.2032576}
 {"goal": "craft_stone_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 162, "ts": 1784052985.245542}
+{"goal": "gather 20 oak logs and 20 birch logs by breaking tree blocks directly (not crafting)", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784116020.4385402}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 1273, "ts": 1784116724.509694}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784118371.8472652}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784123538.3042972}
+{"goal": "craft_pickaxe", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784124205.0720975}
+{"goal": "sleep_in_bed", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784126001.5768113}
+{"goal": "craft_pickaxe", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 439, "ts": 1784126481.2546377}
+{"goal": "craft_pickaxe", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784127757.5729976}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784142899.8894622}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784143333.8538866}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784143592.3686557}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 712, "ts": 1784294348.8842647}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 459, "ts": 1784371824.2870345}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2055, "ts": 1784373000.1502643}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784373277.058415}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-4.0, 64, 21.0], "tick": 204, "ts": 1784375482.770706}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-6.0, 64, 21.0], "tick": 722, "ts": 1784376569.3006306}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-6.0, 64, 21.0], "tick": 204, "ts": 1784376814.1888652}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [7.6, 62, -38.7], "tick": 404, "ts": 1784384592.4292183}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [7.6, 62, -38.7], "tick": 906, "ts": 1784385828.404385}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-27.0, 64, 14.0], "tick": 204, "ts": 1784402175.8082938}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-4.0, 6, -26.0], "tick": 204, "ts": 1784404730.316021}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784406399.2171595}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 445, "ts": 1784406975.7991512}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [6.0, 62, 56.0], "tick": 647, "ts": 1784407464.774125}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784415137.6487696}

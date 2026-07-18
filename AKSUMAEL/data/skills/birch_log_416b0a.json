@@ -1,0 +1,102 @@
+{
+  "name": "birch_log_416b0a",
+  "trigger_objects": [
+    "birch_log"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": "2",
+        "click": [
+          50.0,
+          50.0
+        ],
+        "look": {
+          "dx": -7,
+          "dy": 0
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": [
+          50.0,
+          50.0
+        ],
+        "look": {
+          "dx": -7,
+          "dy": 0
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.41,
+  "uses": 1,
+  "created": 1784384045.462806,
+  "last_used": 1784400050.9154818,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 20,
+  "failed_count": 0,
+  "blacklisted": true,
+  "universal": false
+}

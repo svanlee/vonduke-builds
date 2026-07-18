@@ -1,0 +1,99 @@
+{
+  "yolo_objects": [
+    {
+      "label": "hotbar",
+      "conf": 0.93,
+      "box": [
+        559.0,
+        933.0,
+        1274.2,
+        998.2
+      ],
+      "source": "yolo"
+    },
+    {
+      "label": "hunger_bar",
+      "conf": 0.83,
+      "box": [
+        955.9,
+        869.6,
+        1264.3,
+        895.6
+      ],
+      "source": "yolo"
+    },
+    {
+      "label": "xp_bar",
+      "conf": 0.81,
+      "box": [
+        577.4,
+        898.0,
+        1255.4,
+        923.6
+      ],
+      "source": "yolo"
+    },
+    {
+      "label": "health_bar",
+      "conf": 0.79,
+      "box": [
+        565.6,
+        866.0,
+        858.5,
+        893.6
+      ],
+      "source": "yolo"
+    }
+  ],
+  "color_objects": [
+    {
+      "label": "log",
+      "conf": 0.75,
+      "box": [
+        1209,
+        510,
+        1359,
+        810
+      ],
+      "source": "color"
+    },
+    {
+      "label": "leaves",
+      "conf": 0.75,
+      "box": [
+        0,
+        0,
+        1822,
+        704
+      ],
+      "source": "color"
+    },
+    {
+      "label": "birch_log",
+      "conf": 0.75,
+      "box": [
+        178,
+        765,
+        296,
+        810
+      ],
+      "source": "color"
+    }
+  ],
+  "tree_boxes": [
+    {
+      "label": "leaves",
+      "conf": 0.75,
+      "box": [
+        0,
+        0,
+        1822,
+        704
+      ],
+      "source": "color"
+    }
+  ],
+  "label_lines": [
+    "0 0.474479 0.325926 0.948958 0.651852"
+  ]
+}

@@ -28,6 +28,21 @@ class YOLODetector:
         except Exception as e:
             print(f'[YOLO] failed to load: {e} — running without YOLO')
 
+    def _vram_headroom_ok(self) -> bool:
+        """False when free VRAM is below config.YOLO_MIN_FREE_VRAM_MB. The
+        GPU here is shared with an external llama-server process that holds
+        a big static allocation, so headroom can get tight without this
+        process's own allocator ever seeing an OOM coming."""
+        try:
+            import torch
+            free_bytes, _total = torch.cuda.mem_get_info(self._device)
+            if free_bytes < config.YOLO_MIN_FREE_VRAM_MB * 1024 * 1024:
+                print(f'[YOLO] low VRAM headroom ({free_bytes / 1024**2:.0f}MB free) — skipping this tick')
+                return False
+            return True
+        except Exception:
+            return True  # can't check — don't block detection over it
+
     def reload_weights(self, path: str = None):
         """Hot-swap YOLO model weights. Call after retraining completes."""
         import config as cfg
@@ -68,6 +83,8 @@ class YOLODetector:
         """
         if self.model is None or frame is None:
             return []
+        if self._device == 0 and not self._vram_headroom_ok():
+            return []
         try:
             # conf= must be passed here — without it, Ultralytics applies
             # its own internal default (0.25) to decide which boxes even
@@ -105,6 +122,12 @@ class YOLODetector:
             return out
         except Exception as e:
             print(f'[YOLO] detect error: {e}')
+            if self._device == 0:
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
             return []
 
     def teach_label(self, box: list, label: str):

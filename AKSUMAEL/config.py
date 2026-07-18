@@ -185,6 +185,14 @@ def game_context_for_phase(phase: str | None) -> str:
         return GAME_CONTEXT
     return f"{GAME_CONTEXT}\n{tactics}"
 
+# ── Display / GUI ─────────────────────────────────────────────
+# The Victus rig has its own laptop screen (DISPLAY=:0), so the live
+# YOLO-overlay/labeling window renders there. Set False only when running
+# genuinely headless (no GTK/Qt/Cocoa backend available) to skip the
+# namedWindow/imshow/waitKey calls entirely instead of attempting-then-
+# catching a guaranteed failure on every restart.
+ENABLE_DISPLAY_UI = True
+
 # ── Vision Source ─────────────────────────────────────────────
 # Rybozen HDMI capture card via USB (the only vision source)
 CAMERA_INDEX = 2     # -1 = auto-detect, or set 0/1/2 explicitly
@@ -251,6 +259,14 @@ YOLO_MODEL          = "data/models/aksumael_mc.pt"
 # nothing under this value reaches it either.
 YOLO_CONF_THRESHOLD = 0.10
 YOLO_LABEL_DB       = "data/yolo_labels.json"
+# Skip a detect() call entirely when free VRAM drops below this. The GPU is
+# shared with a standalone llama-server process (local vision route) that
+# permanently holds ~4GB of the 6GB card, leaving little headroom — running
+# a CUDA inference call into that headroom risked a driver-level abort
+# (SIGABRT, no Python traceback, crashed the whole process) rather than a
+# catchable OOM error. Skipping ahead of time is cheaper than recovering
+# after the fact (2026-07-18).
+YOLO_MIN_FREE_VRAM_MB = 400
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
 COLLECT_FRAMES         = False   # disabled — survey behavior handles collection now
@@ -281,7 +297,7 @@ DAYTIME_SAFE_RANGE = (0, 13000)   # ticks 0-13000 are daylight
 # False to disable night-shelter behavior entirely (e.g. to test
 # mining/chopping without it preempting every tick) — re-enable before
 # any unattended/long-running session.
-NIGHT_SURVIVAL_ENABLED = True
+NIGHT_SURVIVAL_ENABLED = False
 NIGHT_BRIGHTNESS_DARK = 35     # avg frame brightness (0-255) below which it's night/dark
 NIGHT_BRIGHTNESS_DAWN = 60     # avg frame brightness above which it's day again
 PILLAR_HEIGHT        = 6       # blocks to pillar up when caught in the open at night

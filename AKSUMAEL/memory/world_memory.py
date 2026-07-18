@@ -15,6 +15,10 @@ import config
 MEMORY_FILE = 'data/world_memory.json'
 MAX_RECENT  = 20   # keep last N observations in memory
 
+# Fall detection: an F3 Y read that dropped more than this since the
+# previous F3 read means we just fell into a hole/shaft/lava pocket.
+FALL_Y_DROP_THRESHOLD = 3
+
 
 class WorldMemory:
     def __init__(self):
@@ -49,6 +53,29 @@ class WorldMemory:
         # {x, z, timestamp} so EXPLORE can head toward a remembered tree
         # instead of scanning blind when none is currently on screen.
         self.known_trees   = []
+        # ── Fall detection (ephemeral — not persisted, see update_f3) ──
+        self.fall_detected = False
+        # ── Fort/base coordinates (v1.2) — optional, set externally (e.g. by
+        # a future base-building routine) or read from disk if present.
+        # rebuild_fort's coordinate resolver (core/fsm.py) checks these
+        # before falling back to spawn_x/y/z.
+        self.fort_location = None   # [x, y, z] or None
+        self.base_coords   = None   # [x, y, z] or None
+        self.home          = None   # [x, y, z] or None
+        # ── F3 extended fields (v1.3) — see update_f3() ────────────
+        self.pos_x         = None
+        self.pos_z         = None
+        self.facing        = None       # 'north'/'south'/'east'/'west' or None
+        self.fps           = None
+        self.chunk_x       = None
+        self.chunk_z       = None
+        self.light_level   = None       # 0-15 client light at targeted block, from F3
+        self.day_count     = None       # vanilla day counter, from F3
+        self.mob_spawn_risk = False     # True once light_level is known and < 8
+        self.last_scan_direction = None # 'left_to_right' | 'right_to_left' — EXPLORE sweep
+        # ── HUD pixel read (v1.3) — see memory/hud_reader.py ───────
+        self.health_pct    = 1.0
+        self.hunger_pct    = 1.0
         self._load()
 
     def _load(self):
@@ -72,6 +99,15 @@ class WorldMemory:
                 self.near_water    = d.get('near_water', False)
                 self.llm_calls     = d.get('llm_calls', 0)
                 self.known_trees   = d.get('known_trees', [])
+                self.fort_location = d.get('fort_location')
+                self.base_coords   = d.get('base_coords')
+                self.home          = d.get('home')
+                self.facing        = d.get('facing')
+                self.fps           = d.get('fps')
+                self.chunk_x       = d.get('chunk_x')
+                self.chunk_z       = d.get('chunk_z')
+                self.light_level   = d.get('light_level')
+                self.day_count     = d.get('day_count')
             except Exception:
                 pass
 
@@ -95,6 +131,15 @@ class WorldMemory:
             'near_water':    self.near_water,
             'llm_calls':     self.llm_calls,
             'known_trees':   self.known_trees,
+            'fort_location': self.fort_location,
+            'base_coords':   self.base_coords,
+            'home':          self.home,
+            'facing':        self.facing,
+            'fps':           self.fps,
+            'chunk_x':       self.chunk_x,
+            'chunk_z':       self.chunk_z,
+            'light_level':   self.light_level,
+            'day_count':     self.day_count,
             'last_saved':    time.strftime('%Y-%m-%d %H:%M:%S'),
         }
         with open(MEMORY_FILE, 'w') as f:
@@ -160,8 +205,13 @@ class WorldMemory:
         if not f3_data or not f3_data.get('f3_active'):
             return
         if f3_data.get('y_level') is not None:
+            prev_y = self.y_level
             self.y_level = f3_data['y_level']
             self.depth_estimate = self.y_level
+            if prev_y - self.y_level > FALL_Y_DROP_THRESHOLD:
+                self.fall_detected = True
+                print(f'[FALL] Y dropped {prev_y} -> {self.y_level} '
+                      f'(>{FALL_Y_DROP_THRESHOLD}) — flagging fall')
         if f3_data.get('biome'):
             self.biome = f3_data['biome']
         # Store extended F3 data
@@ -177,11 +227,19 @@ class WorldMemory:
             self.chunk_x = f3_data['chunk_x']
         if f3_data.get('chunk_z') is not None:
             self.chunk_z = f3_data['chunk_z']
+        if f3_data.get('light_level') is not None:
+            self.light_level = f3_data['light_level']
+            # Mobs can spawn on any block with light < 8 — treat this as a
+            # standing risk flag rather than a one-tick event.
+            self.mob_spawn_risk = self.light_level < 8
+        if f3_data.get('day_count') is not None:
+            self.day_count = f3_data['day_count']
         self._ticks_since_f3 = 0
         print(f"[F3] pos=({getattr(self,'pos_x','?')},{self.y_level},{getattr(self,'pos_z','?')}) "
               f"facing={getattr(self,'facing','?')} biome={self.biome} "
               f"chunk=({getattr(self,'chunk_x','?')},{getattr(self,'chunk_z','?')}) "
-              f"fps={getattr(self,'fps','?')}")
+              f"fps={getattr(self,'fps','?')} light={self.light_level} day={self.day_count} "
+              f"mob_risk={self.mob_spawn_risk}")
 
     # Real F3 reads stay authoritative for this many ticks before the
     # keyword heuristic is trusted to take back over.
@@ -212,13 +270,16 @@ class WorldMemory:
         facing  = getattr(self, 'facing', 'unknown')
         pos_str = f'XZ=({pos_x},{pos_z})' if pos_x is not None else 'XZ=unknown'
         spawn_str = f'Spawn=({self.spawn_x},{self.spawn_y},{self.spawn_z})'
+        light_str = (f'{self.light_level}/15' if self.light_level is not None else 'unknown')
+        risk_str  = ' MOB SPAWN RISK (light<8)!' if self.mob_spawn_risk else ''
         summary = (
             f'[MEMORY] Lifetime: {self.total_ticks} ticks, {self.deaths} deaths. '
             f'Most seen: {top_str}. Recent: {recent}. '
             f'Pos: {pos_str} Y={self.y_level} facing={facing} biome={self.biome} ({y_range}). '
             f'{spawn_str}. '
-            f'{day_str} (tick {self.game_tick}/{config.MC_DAY_TICKS}). '
-            f'Hunger: {self.hunger_level}/20.'
+            f'{day_str} (tick {self.game_tick}/{config.MC_DAY_TICKS}, day {self.day_count}). '
+            f'Light: {light_str}.{risk_str} '
+            f'Hunger: {self.hunger_level}/20. Health: {self.health_pct:.0%}.'
         )
         if self.pickaxe_uses > config.PICKAXE_DURABILITY:
             summary += (' WARNING: pickaxe may be near breaking. '
