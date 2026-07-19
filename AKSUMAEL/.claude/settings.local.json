@@ -148,7 +148,9 @@
       "Bash(ps -p 39143 -o pid,cmd)",
       "Bash(ps -p 39144 -o pid,cmd)",
       "Bash(kill 39144 39143)",
-      "Bash(ps -o pid,etime,lstart,cmd -p 42130)"
+      "Bash(ps -o pid,etime,lstart,cmd -p 42130)",
+      "Bash(rm -rf ~/cuda-local /tmp/nvcctest)",
+      "Bash(rm -f nvidia-cuda-toolkit_12.0.140~12.0.1-4build4_amd64.deb nvidia-cuda-dev_12.0.146~12.0.1-4build4_amd64.deb)"
     ]
   }
 }
