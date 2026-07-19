@@ -5,6 +5,7 @@
 
 import json
 import os
+import tempfile
 import time
 import hashlib
 import threading
@@ -364,8 +365,14 @@ class SkillSystem:
                        for c in skill.name)
         path = os.path.join(self.dir, f'{safe}.json')
         try:
-            with open(path, 'w') as f:
-                json.dump(skill.to_dict(), f, indent=2)
+            # Write to a temp file in the same directory, then rename —
+            # os.replace is atomic on Linux, so a SIGTERM mid-write can
+            # never leave a truncated/corrupted skill file on disk.
+            dir_path = os.path.dirname(path)
+            with tempfile.NamedTemporaryFile('w', dir=dir_path, delete=False, suffix='.tmp') as tmp:
+                json.dump(skill.to_dict(), tmp, indent=2)
+                tmp_path = tmp.name
+            os.replace(tmp_path, path)
         except Exception as e:
             print(f'[SKILL] save error: {e}')
 
