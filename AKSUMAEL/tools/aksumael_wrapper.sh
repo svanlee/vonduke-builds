@@ -137,12 +137,10 @@ while true; do
         esac
     fi
 
-    # Restart if crashed (and not intentionally stopped)
+    # Auto-restart on crash is DISABLED — manual control only
     if [[ -n "$AKSUMAEL_PID" ]] && ! kill -0 "$AKSUMAEL_PID" 2>/dev/null; then
-        echo "[WRAPPER] AKSUMAEL crashed (PID $AKSUMAEL_PID). Waiting ${CRASH_RESTART_SEC}s then checking hardware..."
+        echo "[WRAPPER] AKSUMAEL exited (PID $AKSUMAEL_PID). Auto-restart disabled — restart manually."
         AKSUMAEL_PID=""
-        sleep "$CRASH_RESTART_SEC"
-        wait_for_hardware
-        start_aksumael
+        exit 0
     fi
 done
