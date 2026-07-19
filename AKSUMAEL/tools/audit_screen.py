@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Standalone diagnostic: capture a frame, run YOLO, ask Claude vision what's on screen."""
+"""Standalone diagnostic: capture a frame, run YOLO, ask local mesh-llm vision what's on screen."""
 import base64
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 
 import cv2
 from ultralytics import YOLO
-import anthropic
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_PATH = os.path.join(ROOT, "data", "audit_raw.jpg")
@@ -15,7 +17,7 @@ YOLO_MODEL_PATH = os.path.join(ROOT, "data", "models", "aksumael_mc.pt")
 LIVE_LOG_PATH = os.path.join(ROOT, "data", "live.log")
 
 CAMERA_INDEX = 2
-CLAUDE_MODEL = "claude-sonnet-5"
+MESH_LLM_URL = "http://localhost:9337/v1/chat/completions"
 PROMPT = (
     "This is a live Minecraft screenshot. What is the player currently doing "
     "or looking at? List all visible objects, any UI elements open, the "
@@ -74,29 +76,33 @@ def draw_annotations(frame, detections):
     return annotated
 
 
-def ask_claude(frame):
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set in env", file=sys.stderr)
-        return None
-
+def ask_mesh_llm(frame):
     b64 = base64.b64encode(
         cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])[1]
     ).decode()
 
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1024,
-        messages=[{
+    payload = json.dumps({
+        "model": "auto",
+        "max_tokens": 1024,
+        "messages": [{
             "role": "user",
             "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                 {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
             ],
         }],
-    )
-    return "\n".join(b.text for b in resp.content if b.type == "text")
+    }).encode()
+    req = urllib.request.Request(
+        MESH_LLM_URL, data=payload,
+        headers={"Content-Type": "application/json"}, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            data = json.loads(resp.read())
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"ERROR: mesh-llm request failed: {e}", file=sys.stderr)
+        return None
 
 
 def main():
@@ -116,8 +122,8 @@ def main():
     else:
         print("(none)")
 
-    print("\n=== Claude vision analysis ===")
-    answer = ask_claude(frame)
+    print("\n=== mesh-llm vision analysis ===")
+    answer = ask_mesh_llm(frame)
     if answer:
         print(answer)
 

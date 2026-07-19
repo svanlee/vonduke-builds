@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fill empty YOLO survey label files using Claude vision API.
+Fill empty YOLO survey label files using the local mesh-llm vision server.
 Run from ~/vonduke-builds/AKSUMAEL/:
     python3 tools/label_empty_surveys.py
 
@@ -20,8 +20,7 @@ from pathlib import Path
 # ── Paths ──────────────────────────────────────────────────────
 AKSUMAEL_DIR = Path(__file__).parent.parent.resolve()
 DATASET_ROOT  = AKSUMAEL_DIR / "data" / "yolo_dataset"
-KEY_FILE      = Path.home() / ".config" / "anthropic" / "key"
-CLAUDE_MODEL  = "claude-sonnet-5"
+MESH_LLM_URL  = "http://localhost:9337/v1/chat/completions"
 
 # ── 44 classes ─────────────────────────────────────────────────
 CLASSES = {
@@ -72,50 +71,35 @@ Output ONLY the annotation lines — no explanation, no markdown, no JSON.
 If truly no objects are visible, output nothing (empty response is fine)."""
 
 
-def load_key() -> str:
-    if not KEY_FILE.exists():
-        sys.exit(f"[ERROR] API key not found at {KEY_FILE}")
-    return KEY_FILE.read_text().strip()
-
-
 def img_to_b64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
-def call_claude(api_key: str, img_path: Path) -> str:
+def call_mesh_llm(img_path: Path) -> str:
     b64 = img_to_b64(img_path)
     payload = json.dumps({
-        "model": CLAUDE_MODEL,
+        "model": "auto",
         "max_tokens": 512,
-        "system": SYSTEM,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": b64,
-                }},
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": [
                 {"type": "text",
                  "text": "Annotate all visible objects in this Minecraft screenshot."},
-            ],
-        }],
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ]},
+        ],
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
+        MESH_LLM_URL,
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
+        headers={"Content-Type": "application/json"},
     )
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with urllib.request.urlopen(req, timeout=40) as resp:
                 data = json.loads(resp.read())
-            return data["content"][0]["text"].strip()
+            return data["choices"][0]["message"]["content"].strip()
         except urllib.error.HTTPError as e:
             body = e.read().decode()
             print(f"    HTTP {e.code}: {body[:150]}")
@@ -149,9 +133,9 @@ def validate(line: str):
     return f"{cid} {vals[0]:.6f} {vals[1]:.6f} {vals[2]:.6f} {vals[3]:.6f}"
 
 
-def label_one(api_key: str, img_path: Path, label_path: Path) -> int:
+def label_one(img_path: Path, label_path: Path) -> int:
     print(f"  {img_path.name} ... ", end="", flush=True)
-    raw = call_claude(api_key, img_path)
+    raw = call_mesh_llm(img_path)
     lines = []
     for line in raw.splitlines():
         cleaned = validate(line)
@@ -165,9 +149,6 @@ def label_one(api_key: str, img_path: Path, label_path: Path) -> int:
 
 
 def main():
-    api_key = load_key()
-    print(f"[LABELER] key loaded ({len(api_key)} chars)")
-
     total_images = 0
     total_boxes  = 0
 
@@ -186,7 +167,7 @@ def main():
             if not img_path.exists():
                 print(f"  [missing image] {lbl_path.stem}")
                 continue
-            boxes = label_one(api_key, img_path, lbl_path)
+            boxes = label_one(img_path, lbl_path)
             total_images += 1
             total_boxes  += boxes
             time.sleep(0.4)   # gentle rate-limit

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone screen audit: grab a frame, run YOLO, ask Claude vision, tail live.log.
+"""Standalone screen audit: grab a frame, run YOLO, ask local mesh-llm vision, tail live.log.
 
 No AKSUMAEL package imports — safe to run in isolation for diagnostics.
 """
@@ -20,8 +20,7 @@ YOLO_MODEL_PATH = os.path.join(ROOT, "data", "models", "aksumael_mc.pt")
 LIVE_LOG_PATH = os.path.join(ROOT, "data", "live.log")
 
 CAMERA_INDEX = 2
-CLAUDE_MODEL = "claude-sonnet-5"
-ANTHROPIC_VERSION = "2023-06-01"
+MESH_LLM_URL = "http://localhost:9337/v1/chat/completions"
 PROMPT = (
     "This is a live Minecraft screenshot. Describe exactly what the player "
     "is looking at: visible terrain, mobs, items, UI state (inventory "
@@ -77,47 +76,41 @@ def draw_annotations(frame, detections):
     return annotated
 
 
-def ask_claude(frame):
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set in env", file=sys.stderr)
-        return None
-
+def ask_mesh_llm(frame):
     b64 = base64.b64encode(
         cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])[1]
     ).decode()
 
     payload = {
-        "model": CLAUDE_MODEL,
+        "model": "auto",
         "max_tokens": 1024,
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                 {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
             ],
         }],
     }
 
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
+        MESH_LLM_URL,
         data=json.dumps(payload).encode(),
-        headers={
-            "content-type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-        },
+        headers={"content-type": "application/json"},
         method="POST",
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=40) as resp:
             body = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
-        print(f"ERROR: Claude API request failed: {e.code} {e.read().decode()}", file=sys.stderr)
+        print(f"ERROR: mesh-llm request failed: {e.code} {e.read().decode()}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"ERROR: mesh-llm request failed: {e}", file=sys.stderr)
         return None
 
-    return "\n".join(b["text"] for b in body.get("content", []) if b.get("type") == "text")
+    return body["choices"][0]["message"]["content"].strip()
 
 
 def tail_log(path, n=15):
@@ -146,10 +139,10 @@ def main():
     for d in detections:
         print(f'{d["label"]:20s} conf={d["conf"]:.2f}  box={d["box"]}')
 
-    print("\n=== Claude vision response ===")
-    claude_text = ask_claude(frame)
-    if claude_text:
-        print(claude_text)
+    print("\n=== mesh-llm vision response ===")
+    mesh_text = ask_mesh_llm(frame)
+    if mesh_text:
+        print(mesh_text)
     else:
         print("(no response)")
 

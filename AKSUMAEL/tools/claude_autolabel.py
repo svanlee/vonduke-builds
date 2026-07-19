@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ╔══════════════════════════════════════════════════════╗
-# ║  AKSUMAEL v1.0.0 — Claude Auto-Labeler                ║
-# ║  Auto-label survey frames using Claude vision,        ║
-# ║  open-vocabulary — can name a class that doesn't      ║
-# ║  exist yet, not just pick from the known list.        ║
+# ║  AKSUMAEL v1.0.0 — Auto-Labeler                       ║
+# ║  Auto-label survey frames using local mesh-llm        ║
+# ║  vision, open-vocabulary — can name a class that      ║
+# ║  doesn't exist yet, not just pick from the known list.║
 # ╚══════════════════════════════════════════════════════╝
 #
 # Produces YOLO-format label files in data/yolo_dataset/labels/train/
