@@ -1,18 +1,20 @@
 """
-AK-01 Robocar environment — ROS2 Nav2 rover on a Raspberry Pi 4
-(192.168.0.104), mecanum chassis.
+AK-01 Robocar environment — ROS2 Nav2 rover, mecanum chassis.
+
+Onboard compute today: Raspberry Pi 4 (192.168.0.104), no GPU — raw
+frames from /camera/image_raw travel to Victus (the RTX 2060S machine
+this AKSUMAEL process runs on) for YOLO. The Pi 4 will soon be REPLACED
+by a D-Robotics RDK X5, which does self-contained onboard inference and
+takes high-level directives from the overseer instead — see
+local_inference below. Same eventual pattern as envs/vehicle_env.py's
+Jetson/RDK X5 path: processed state in, high-level directives out.
 
 Comms: ROS2 topics via rclpy, gated on ROS2_ENABLED=1.
-
-Compute split: the Pi 4 has no GPU and can't run YOLO onboard — unlike
-envs/vehicle_env.py's Jetson (own GPU, sends back processed detections),
-raw frames from /camera/image_raw DO travel to Victus here so its YOLO
-can process them.
 
 Topics:
   /cmd_vel          (geometry_msgs/Twist)   — publish, direct velocity commands
   /goal_pose        (geometry_msgs/PoseStamped) — publish, Nav2 goals
-  /camera/image_raw (sensor_msgs/Image)     — subscribe, raw frames
+  /camera/image_raw (sensor_msgs/Image)     — subscribe, raw frames (Pi 4 only)
   /odom             (nav_msgs/Odometry)     — subscribe, position/speed/heading
   /scan             (sensor_msgs/LaserScan) — subscribe, lidar
 
@@ -27,6 +29,11 @@ from envs.base_env import BaseEnvironment
 log = logging.getLogger(__name__)
 ROS2_ENABLED = os.environ.get('ROS2_ENABLED', '0') == '1'
 
+# ZeroMQ address for the RDK X5's processed-state feed (only used when
+# local_inference=True) — update to match its network config once it
+# replaces the Pi 4.
+RDK_X5_STATE_ADDR = 'tcp://192.168.0.104:5558'
+
 
 class RobocarEnv(BaseEnvironment):
     """
@@ -34,7 +41,16 @@ class RobocarEnv(BaseEnvironment):
     telemetry when rclpy isn't installed or ROS2_ENABLED isn't set.
     """
 
-    def __init__(self):
+    def __init__(self, local_inference: bool = False):
+        """
+        local_inference: False while the Pi 4 is the onboard compute (no
+            GPU — get_frame() pulls raw /camera/image_raw for Victus YOLO).
+            Flip to True once the RDK X5 replacement is active — it runs
+            inference onboard, so get_frame() returns a blank placeholder
+            and get_processed_state() polls its ZeroMQ state feed instead,
+            mirroring envs/vehicle_env.py's Jetson/RDK X5 pattern.
+        """
+        self.local_inference = local_inference
         self._rclpy = None
         self._node = None
         self._pub_cmd_vel = None
@@ -42,6 +58,22 @@ class RobocarEnv(BaseEnvironment):
         self._last_frame = None
         self._last_odom = {}
         self._last_scan = None
+        self._zmq_ctx = None
+        self._state_sock = None
+        self._last_state = {}
+        if self.local_inference:
+            try:
+                import zmq
+                ctx = zmq.Context()
+                self._zmq_ctx = ctx
+                self._state_sock = ctx.socket(zmq.SUB)
+                self._state_sock.connect(RDK_X5_STATE_ADDR)
+                self._state_sock.setsockopt(zmq.SUBSCRIBE, b'')
+                log.info('[RobocarEnv] local_inference=True — connected to RDK X5 state feed')
+            except ImportError:
+                log.warning('[RobocarEnv] zmq not installed — RDK X5 state feed unavailable')
+            except Exception as e:
+                log.warning(f'[RobocarEnv] RDK X5 state connect failed: {e}')
         if not ROS2_ENABLED:
             log.info('[RobocarEnv] disabled (set ROS2_ENABLED=1 to enable)')
             return
@@ -99,8 +131,32 @@ class RobocarEnv(BaseEnvironment):
     def _on_scan(self, msg):
         self._last_scan = msg
 
+    def get_processed_state(self) -> dict:
+        """
+        RDK X5 only (local_inference=True): poll its already-computed
+        detections + state over ZeroMQ — mirrors
+        VehicleEnv.get_processed_state(). No-op (returns last-seen state,
+        possibly {}) while the Pi 4 is still onboard.
+        """
+        if self._state_sock is None:
+            return self._last_state
+        try:
+            if self._state_sock.poll(timeout=50):
+                self._last_state = self._state_sock.recv_json()
+        except Exception as e:
+            log.debug(f'[RobocarEnv] state recv error: {e}')
+        return self._last_state
+
     def get_frame(self) -> np.ndarray:
-        """Pi 4 has no GPU — pull the raw frame here so Victus YOLO can run on it."""
+        """
+        Pi 4 (local_inference=False, current): no onboard GPU — pull the
+        raw ROS2 frame here so Victus YOLO can run on it.
+        RDK X5 (local_inference=True, future): self-contained onboard
+        inference — always returns a blank placeholder; use
+        get_processed_state() for its detections instead.
+        """
+        if self.local_inference:
+            return np.zeros((480, 640, 3), dtype=np.uint8)
         self._spin()
         if self._last_frame is not None:
             return self._last_frame

@@ -1,18 +1,21 @@
 """
 GOAT Racer One / AKV vehicle environment stub.
 
-Hardware: Traxxas 1/10 AWD, Jetson Orin Nano 8GB (onboard GPU), Intel
-          RealSense D435, VESC motor controller, sensored brushless,
-          LiPo 2S 5000mAh.
+Hardware: Traxxas 1/10 AWD, Jetson Orin Nano 8GB (onboard GPU) — or a
+          D-Robotics RDK X5, same role — Intel RealSense D435, VESC
+          motor controller, sensored brushless, LiPo 2S 5000mAh.
 Comms: ZeroMQ/Protobuf (not heavy ROS2).
 Waypoints: AprilTags.
 
-Compute split: the Jetson Orin Nano has its own GPU and runs YOLO + the
-ONNX driving policy locally — it does NOT ship raw camera frames to
-Victus. This env sends high-level directives and receives back
-already-processed state (detections + speed/heading/battery/waypoint)
-over ZeroMQ. Contrast with envs/robocar_env.py (AK-01, Pi 4, no GPU),
-where raw frames DO need to travel to Victus for inference.
+Compute split: whichever onboard compute this vehicle carries (Jetson
+Orin Nano or RDK X5) has its own GPU/NPU and runs YOLO + the driving
+policy locally — it does NOT ship raw camera frames to Victus (the RTX
+2060S machine this AKSUMAEL process runs on). This env sends high-level
+directives and receives back already-processed state (detections +
+speed/heading/battery/waypoint) over ZeroMQ. Contrast with
+envs/robocar_env.py (AK-01) — its current Pi 4 has no onboard compute so
+raw frames DO travel to Victus for inference, though it will follow this
+same processed-state pattern once it's replaced by an RDK X5.
 
 Set AKSUMAEL_ENV=vehicle to activate.
 """
