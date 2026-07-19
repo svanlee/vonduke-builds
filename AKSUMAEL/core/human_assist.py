@@ -335,11 +335,31 @@ class HumanAssist:
         self._prev_buttons = buttons
 
         # Start always toggles mode, in either mode, so a human stuck in
-        # AI mode can always take back control.
+        # AI mode can always take back control. This must be a pure
+        # internal state flip — it never emits a keyboard/mouse packet
+        # itself, and it returns immediately so this tick's stick/trigger
+        # state (which may be stale relative to the mode that just
+        # changed) never reaches action dispatch below (2026-07-19,
+        # urgent fix: toggling Start while LT was physically held used to
+        # phantom-fire a SHIFT press — see _prev_lt_held note below).
         if rising & 0x0080:
             self.human_mode = not self.human_mode
             if self.human_mode:
                 print('[HumanAssist] Switched to HUMAN mode')
+                # Resync the trigger edge-detect baseline to whatever's
+                # physically held right now. Without this, a trigger
+                # already held at the instant mode is entered reads as a
+                # brand-new press-edge next dispatch tick — against a
+                # stale _prev_*_held left over from before (False at
+                # startup, or force-reset False by the AI-mode branch
+                # below) — and fires a phantom SHIFT/CTRL key_hold
+                # 'down'. Mash Start while resting a finger on LT and
+                # that repeats on every toggle: a burst of real SHIFT
+                # presses in quick succession, which is exactly what
+                # trips Windows Sticky Keys. This was the actual source
+                # of the flood, not a retap loop.
+                self._prev_lt_held = lt > TRIGGER_THRESHOLD
+                self._prev_rt_held = rt > TRIGGER_THRESHOLD
             else:
                 print('[HumanAssist] Switched to AI mode')
                 # Don't leave a key/mouse button physically down from the
@@ -349,11 +369,9 @@ class HumanAssist:
                                            'source': 'human'})
                     self._mining = False
                 self.executor.release_all()
-                # release_all() just cleared shift/ctrl on the HID side —
-                # forget any pending hold state so re-entering human mode
-                # with LT/RT still physically held re-sends the down edge.
                 self._prev_lt_held = False
                 self._prev_rt_held = False
+            return
 
         if not self.human_mode:
             return
