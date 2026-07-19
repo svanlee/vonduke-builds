@@ -4,7 +4,7 @@ so we track what it mines/picks up and inject a summary into Claude's context.""
 from collections import defaultdict
 import json, os
 
-INVENTORY_PATH = "data/inventory.json"
+INVENTORY_PATH = "data/cognitive/inventory.json"
 
 # Low-value blocks worth dropping once the inventory is full.
 JUNK_ITEMS = ("cobblestone", "dirt", "gravel")

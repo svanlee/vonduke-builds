@@ -70,12 +70,14 @@ Valid goal strings: find_and_chop_tree, mine_stone, mine_iron, mine_diamonds, cr
 Respond with ONLY the JSON directive, nothing else."""
 
 
-def _call_overseer(snapshot: dict):
+def _call_overseer(tick: int, snapshot: dict):
     global _last_directive, _busy
     try:
         prompt = _build_prompt(snapshot)
         raw = call_claude_direct(prompt, max_tokens=300, timeout=OVERSEER_TIMEOUT)
         if not raw:
+            print(f'[Overseer] tick {tick} call failed — no response '
+                  f'(check ANTHROPIC_API_KEY / account credit balance)')
             return
         raw = raw.strip()
         # Strip markdown code fences if present
@@ -114,5 +116,6 @@ def maybe_call(tick: int, snapshot: dict):
         _call_timestamps.append(now)
     _last_called_tick = tick
     _busy = True
-    _thread = threading.Thread(target=_call_overseer, args=(snapshot,), daemon=True)
+    print(f'[Overseer] tick {tick} fired')
+    _thread = threading.Thread(target=_call_overseer, args=(tick, snapshot), daemon=True)
     _thread.start()
