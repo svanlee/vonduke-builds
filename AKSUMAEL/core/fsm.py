@@ -114,6 +114,25 @@ FLEE_TICKS              = 8      # ~2s at config.LOOP_INTERVAL_SEC=0.25
 LOW_HEALTH_FRAC         = 0.50   # health_pct below this counts as "health < 10/20"
 CREEPER_CLOSE_BBOX_AREA = 8000   # px^2 — creeper bbox this large is close enough to detonate
 
+# ── Mob persistence / ambient-mob filter (2026-07-18) ──────────────────────
+# A hostile label seen this many consecutive ticks without health_pct ever
+# dropping more than MOB_HEALTH_DROP_THRESHOLD since it first appeared is
+# treated as ambient (harmless/stuck/false-positive) and excluded from
+# Priority 2 COMBAT routing — see the mob-tracking block in tick(). A gap of
+# MOB_ABSENT_TICKS_TO_RESET+ ticks with no detection clears the streak, so a
+# mob that leaves and comes back starts the clock over as a fresh sighting.
+MOB_AMBIENT_TICKS          = 15
+MOB_HEALTH_DROP_THRESHOLD  = 0.05
+MOB_ABSENT_TICKS_TO_RESET  = 3
+
+# ── State watchdog (2026-07-18) ─────────────────────────────────────────────
+# Safety net for any state (not just COMBAT) that stalls without the normal
+# per-state give-up logic ever tripping. Forces EXPLORE after this many
+# consecutive ticks in the same state with no sign of progress (a new mine
+# target, a position change, or reward above WATCHDOG_REWARD_THRESH).
+WATCHDOG_TICKS         = 90
+WATCHDOG_REWARD_THRESH = 0.15
+
 
 def _bbox_area(box) -> float:
     if not box or len(box) != 4:
@@ -542,10 +561,26 @@ class GameFSM:
         # rebuild_fort tracking
         self._fort_place_index = 0
 
+        # Mob persistence tracking (see MOB_AMBIENT_TICKS below) — a hostile
+        # label detected every tick for a long stretch without ever actually
+        # damaging the player is almost certainly a stationary/harmless false
+        # sighting (color-proxy noise, a mob stuck on the far side of a wall,
+        # etc.), not a real ongoing threat. Without this, Priority 2 routes
+        # to COMBAT every single tick and the FSM can never escape it.
+        self._mob_seen_ticks: dict[str, int] = {}            # label -> consecutive ticks seen
+        self._mob_health_at_first_sight: dict[str, float] = {}  # label -> health when streak started
+        self._mob_absent_ticks: dict[str, int] = {}          # label -> consecutive ticks NOT seen
+
+        # State watchdog (see WATCHDOG_TICKS below) — separate from
+        # _state_ticks because some state handlers deliberately rewrite
+        # _state_ticks mid-state (e.g. _do_approach holding it back for a
+        # leaves target), which would corrupt a shared stuck-detector.
+        self._same_state_ticks = 0
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0,
-             goal: str = None, frame=None):
+             goal: str = None, frame=None, reward: float = 0.0):
         """
         Evaluate one FSM tick.
 
@@ -558,12 +593,32 @@ class GameFSM:
                          only by MINE's color-cluster break check (see
                          COLOR_BREAK_FRACTION above); every other code path
                          works fine without it.
+            reward:      This tick's reward signal (see WATCHDOG_REWARD_THRESH
+                         above) — defaults to 0.0 for callers that don't have
+                         one available yet.
 
         Returns:
             (State, action_dict)
         """
         self._state_ticks += 1
         self._total_ticks += 1
+
+        # ── Watchdog: force EXPLORE if stuck in one state too long ────────
+        # Evaluated before every other priority (including fall/hunger) so a
+        # genuinely stalled state always gets rescued regardless of what a
+        # lower-priority check would otherwise decide this tick. Skipped
+        # while EAT is active — HungerBehavior owns that state's pacing and
+        # shouldn't be yanked away from a meal in progress.
+        if reward is not None and reward > WATCHDOG_REWARD_THRESH:
+            self._same_state_ticks = 0
+        else:
+            self._same_state_ticks += 1
+        if self.state != State.EAT and self._same_state_ticks > WATCHDOG_TICKS:
+            print(f'[WATCHDOG] state={self.state.value} stuck for '
+                  f'{self._same_state_ticks} ticks → forcing EXPLORE')
+            self._same_state_ticks = 0
+            return self._goto(State.EXPLORE, _idle())
+
         fw, fh = _infer_frame_dims(objects)
 
         # ── Priority 0: fall detection ─────────────────────────────
@@ -603,9 +658,52 @@ class GameFSM:
             return self._goto(State.EAT, _idle())
 
         # ── Priority 2: hostile mob → flee ────────────────────────
-        mob = _pick_best(objects, HOSTILE_MOBS)
+        # Mob persistence tracking (see MOB_AMBIENT_TICKS above): a hostile
+        # label detected every tick for a long stretch without health_pct
+        # ever dropping counts as ambient (harmless/stuck/false-positive)
+        # and is excluded from routing below — otherwise a static false
+        # sighting (e.g. color-detector noise) locks the FSM in COMBAT
+        # forever since Priority 2 wins every tick.
+        health_pct = getattr(world_mem, 'health_pct', None) if world_mem is not None else None
+        _hostile_hits = {
+            o.get('label', '').lower(): o
+            for o in objects
+            if o.get('label', '').lower() in HOSTILE_MOBS
+            and o.get('conf', 0.0) >= MIN_CONF
+        }
+        _ambient_labels = set()
+        for label in list(self._mob_seen_ticks.keys()):
+            if label not in _hostile_hits:
+                self._mob_absent_ticks[label] = self._mob_absent_ticks.get(label, 0) + 1
+                if self._mob_absent_ticks[label] >= MOB_ABSENT_TICKS_TO_RESET:
+                    self._mob_seen_ticks.pop(label, None)
+                    self._mob_health_at_first_sight.pop(label, None)
+                    self._mob_absent_ticks.pop(label, None)
+        for label in _hostile_hits:
+            self._mob_absent_ticks[label] = 0
+            if label not in self._mob_seen_ticks:
+                self._mob_seen_ticks[label] = 1
+                self._mob_health_at_first_sight[label] = health_pct if health_pct is not None else 1.0
+            else:
+                self._mob_seen_ticks[label] += 1
+            first_health = self._mob_health_at_first_sight.get(label, 1.0)
+            health_dropped = (health_pct is not None
+                              and (first_health - health_pct) > MOB_HEALTH_DROP_THRESHOLD)
+            if health_dropped:
+                # Took real damage since this streak started — the mob is
+                # "real" again; treat it like a fresh sighting from here.
+                self._mob_seen_ticks[label] = 1
+                self._mob_health_at_first_sight[label] = health_pct
+            elif self._mob_seen_ticks[label] == MOB_AMBIENT_TICKS:
+                print(f'[FSM] {label} seen {MOB_AMBIENT_TICKS} ticks with no '
+                      f'health loss → treating as ambient, excluding from COMBAT')
+                _ambient_labels.add(label)
+            elif self._mob_seen_ticks[label] > MOB_AMBIENT_TICKS:
+                _ambient_labels.add(label)
+
+        _combat_candidates = [o for o in objects if o.get('label', '').lower() not in _ambient_labels]
+        mob = _pick_best(_combat_candidates, HOSTILE_MOBS)
         if mob:
-            health_pct = getattr(world_mem, 'health_pct', None) if world_mem is not None else None
             low_health = health_pct is not None and health_pct < LOW_HEALTH_FRAC
             creeper_close = (mob.get('label', '').lower() == 'creeper'
                              and _bbox_area(mob.get('box')) > CREEPER_CLOSE_BBOX_AREA)
@@ -1531,4 +1629,5 @@ class GameFSM:
                     world_mem.cumulative_pitch_dy = 30
             self.state        = new_state
             self._state_ticks = 0
+            self._same_state_ticks = 0
         return self.state, action
