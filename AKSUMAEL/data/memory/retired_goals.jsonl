@@ -15,3 +15,11 @@
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1783972888.81978}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1783973399.4035132}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3850, "ts": 1783976942.1065717}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 580, "ts": 1784026039.1007702}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 508, "ts": 1784026748.0684617}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 508, "ts": 1784027702.3028898}
+{"goal": "gather 20 oak logs and 20 birch logs by breaking tree blocks directly (not crafting, not picking up dropped items)", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 236, "ts": 1784042007.468121}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 738, "ts": 1784042344.4233363}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784043249.9442225}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1784043828.2032576}
+{"goal": "craft_stone_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 162, "ts": 1784052985.245542}
