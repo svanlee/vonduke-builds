@@ -72,6 +72,14 @@ LLM_EVERY_N_TICKS      = 30    # call LLM every 30 ticks (~15s) while in EXPLORE
 LLM_EVERY_N_TICKS_MINE = 60    # slower cadence while actively MINE-ing/chopping —
                                 # the FSM already drives per-tick aim+click, so the
                                 # LLM only needs to check in occasionally (cheaper, faster loop)
+LLM_MIN_TICK_GAP = 5    # floor on ticks between LLM calls even for a forced
+                        # "reconsider" (skill/goal mismatch) — without this, a
+                        # mismatch that re-detects every tick (e.g. an
+                        # off-goal skill still in view) forced an LLM call on
+                        # every single tick instead of respecting any cadence
+                        # (37-55s ticks observed 2026-07-19). Bypassed when
+                        # the FSM state just changed or the goal stack is
+                        # empty, so a genuinely new situation isn't delayed.
 LOOK_SENSITIVITY   = 15    # pixels per "look left/right" action (tune as needed)
 
 # ── Scan / Identify / Pathfinder ──────────────────────────────

@@ -324,6 +324,17 @@ def run():
     fsm_state        = None  # updated each tick for console logging
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
+    # Forced-reconsideration gate (2026-07-19) — force_llm_reconsider used to
+    # bypass LLM_EVERY_N_TICKS cadence entirely, and a persistent skill/goal
+    # mismatch (e.g. an off-goal skill re-detected every tick) re-set the
+    # flag every tick, so the LLM got called on every single tick instead of
+    # its intended cadence (37-55s ticks observed in prod). A forced
+    # reconsideration now only actually fires the LLM when the FSM state
+    # just changed, the goal stack is empty (nothing queued to fall back
+    # on), or at least LLM_MIN_TICK_GAP ticks have passed since the last
+    # real call — otherwise it waits, same as a normal cadence tick would.
+    _last_llm_tick       = 0
+    _last_llm_fsm_state  = None
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
     # Aim-stall watchdog (2026-07-17) — counts consecutive ticks the FSM
     # spends aiming without ever landing a click. The goal-gated DIRECT-CHOP
@@ -1379,11 +1390,20 @@ def run():
 
                 # Fall back to LLM — EXPLORE/EAT every LLM_EVERY_N_TICKS, or
                 # MINE every LLM_EVERY_N_TICKS_MINE (see _llm_interval above).
-                # force_llm_reconsider (skill-replay escape) bypasses both the
-                # cadence gate and the frame-diff skip below — a skill/goal
-                # mismatch was just aborted and needs an actual fresh decision,
-                # not the cached last_action reused verbatim.
-                elif force_llm_reconsider or tick % _llm_interval == 0:
+                # force_llm_reconsider (skill-replay escape) bypasses the
+                # frame-diff skip below — a skill/goal mismatch was just
+                # aborted and needs an actual fresh decision, not the cached
+                # last_action reused verbatim. It does NOT bypass the
+                # last_llm_tick gate: a *repeating* mismatch keeps re-setting
+                # force_llm_reconsider every tick, and without this gate that
+                # meant an LLM call every single tick (see comment on
+                # _last_llm_tick above). Still lets a genuinely new situation
+                # through immediately via the state-changed / empty-stack
+                # checks, instead of always waiting the full gap.
+                elif (tick % _llm_interval == 0) or (force_llm_reconsider and (
+                        fsm_state != _last_llm_fsm_state
+                        or len(goals.stack) == 0
+                        or (tick - _last_llm_tick) >= config.LLM_MIN_TICK_GAP)):
                     _reconsider = force_llm_reconsider
                     force_llm_reconsider = False   # consume the one-shot flag
                     # Frame-diff gate: skip call if scene hasn't changed enough
@@ -1494,6 +1514,8 @@ def run():
                             history = world.cross_session_summary() + '\n' + history
                         action_dict = ask_vision(frame, history, objects, phase=progression.phase)
                         _llm_call_count += 1
+                        _last_llm_tick      = tick
+                        _last_llm_fsm_state = fsm_state
                         world_mem.record_llm_call()
                         src_tag = 'LLM'
                         last_action = action_dict

@@ -70,16 +70,24 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
 
     global _last_provider
     raw, provider = route_llm_call(
-        # Generous budget/timeout — the local model 'thinks' before
-        # answering, often burning 200-300+ tokens on hidden reasoning
-        # before the actual JSON reply (see inventory_reader.py /
-        # chest_manager.py, which hit and fixed this same issue). This is
-        # the highest-frequency, highest-stakes call in the whole loop —
-        # starving it caused the response to get cut off mid-thought,
-        # fail to parse, and silently fall back to a 'wait'/confidence:0.0
-        # no-op almost every tick.
+        # Generous token budget — the local model 'thinks' before answering,
+        # often burning 200-300+ tokens on hidden reasoning before the
+        # actual JSON reply (see inventory_reader.py / chest_manager.py,
+        # which hit and fixed this same issue). Starving max_tokens caused
+        # the response to get cut off mid-thought, fail to parse, and
+        # silently fall back to a 'wait'/confidence:0.0 no-op almost every
+        # tick.
+        #
+        # timeout/local_retries tightened 2026-07-19: this call is
+        # synchronous in the main tick loop, so a slow/failing local server
+        # blocks gameplay directly. config.LOCAL_LLM_TIMEOUT (20s) is
+        # already calibrated to this model's real ~11-15s response time;
+        # the old timeout=45/local_retries=3 only mattered when local was
+        # actually erroring, where it meant up to ~135s of dead time before
+        # falling back to the safe default. local_retries=1 caps that at a
+        # single timeout instead of stacking three.
         prompt, max_tokens=1200, images=[frame_to_b64(frame)],
-        timeout=45, local_retries=3)
+        timeout=config.LOCAL_LLM_TIMEOUT, local_retries=1)
 
     if provider is not None:
         _call_counts[provider] += 1

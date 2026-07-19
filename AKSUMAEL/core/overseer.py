@@ -15,16 +15,25 @@ Directive schema:
 
 import json
 import threading
+import time
 from core.llm_router import call_claude_direct
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
 OVERSEER_TIMEOUT  = 8.0       # seconds — drop the call if it takes longer
+
+# Hard wall-clock cap, independent of OVERSEER_INTERVAL — the tick-count
+# gate alone assumes a roughly steady tick rate, but tick duration in this
+# codebase is variable (it can spike well above LOOP_INTERVAL_SEC), so
+# OVERSEER_INTERVAL ticks can pass in well under a minute of wall time.
+# This is the actual backstop against tripping the Claude API rate limit.
+OVERSEER_MAX_PER_MINUTE = 6
 
 _last_directive   = {"action": "continue"}
 _last_called_tick = 0
 _lock             = threading.Lock()
 _thread           = None
 _busy             = False
+_call_timestamps  = []        # monotonic times of recent calls, for the per-minute cap
 
 
 def get_last_directive() -> dict:
@@ -89,12 +98,20 @@ def _call_overseer(snapshot: dict):
 
 
 def maybe_call(tick: int, snapshot: dict):
-    """Called every tick from runtime.py. Fires the overseer every OVERSEER_INTERVAL ticks."""
+    """Called every tick from runtime.py. Fires the overseer every OVERSEER_INTERVAL
+    ticks, subject to a hard OVERSEER_MAX_PER_MINUTE wall-clock cap."""
     global _last_called_tick, _thread, _busy
     if tick - _last_called_tick < OVERSEER_INTERVAL:
         return
     if _busy:
         return
+    now = time.monotonic()
+    with _lock:
+        global _call_timestamps
+        _call_timestamps = [t for t in _call_timestamps if now - t < 60.0]
+        if len(_call_timestamps) >= OVERSEER_MAX_PER_MINUTE:
+            return
+        _call_timestamps.append(now)
     _last_called_tick = tick
     _busy = True
     _thread = threading.Thread(target=_call_overseer, args=(snapshot,), daemon=True)
