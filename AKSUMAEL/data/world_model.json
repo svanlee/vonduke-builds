@@ -1,658 +1,38 @@
 {
-  "session_num": 78,
-  "last_saved": 1784463403.9626992,
+  "session_num": 79,
+  "last_saved": 1784479171.3645225,
   "history": [
     {
-      "tick": 275,
-      "session": 78,
-      "ts": 1784463169.1566858,
+      "tick": 207,
+      "session": 79,
+      "ts": 1784479076.1464012,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.89
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.87
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
         },
         {
           "label": "xp_bar",
-          "conf": 0.8
+          "conf": 0.82
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.5
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.38
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.25
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.704
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 276,
-      "session": 78,
-      "ts": 1784463208.4530654,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.84
+          "label": "armor_bar",
+          "conf": 0.73
         },
         {
           "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.49
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.26
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.19
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.692
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 277,
-      "session": 78,
-      "ts": 1784463208.978083,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
+          "conf": 0.17
         },
         {
           "label": "xp_bar",
-          "conf": 0.8
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.44
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.4
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.16
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.684
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 278,
-      "session": 78,
-      "ts": 1784463209.504443,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.41
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.32
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.2
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.712
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 279,
-      "session": 78,
-      "ts": 1784463210.0331285,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.83
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.42
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.24
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.388
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.684
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 280,
-      "session": 78,
-      "ts": 1784463210.5660384,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.83
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.46
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.26
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.696
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 281,
-      "session": 78,
-      "ts": 1784463249.811245,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.81
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.79
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.46
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.26
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.388
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.708
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 282,
-      "session": 78,
-      "ts": 1784463250.3366735,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.77
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.51
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.43
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.35
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.16
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.696
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 283,
-      "session": 78,
-      "ts": 1784463250.863968,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.89
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.51
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.4
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.38
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.34
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "gold_ore",
           "conf": 0.11
         },
         {
@@ -661,79 +41,47 @@
         },
         {
           "label": "log",
-          "conf": 0.684
+          "conf": 0.75
         },
         {
           "label": "leaves",
           "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
         }
       ],
-      "action": "wait"
+      "action": "1"
     },
     {
-      "tick": 284,
-      "session": 78,
-      "ts": 1784463251.3913927,
+      "tick": 208,
+      "session": 79,
+      "ts": 1784479077.6713443,
       "objects": [
         {
           "label": "hotbar",
           "conf": 0.9
         },
         {
-          "label": "redstone_ore",
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "health_bar",
           "conf": 0.86
         },
         {
           "label": "xp_bar",
-          "conf": 0.78
+          "conf": 0.82
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.4
+          "label": "armor_bar",
+          "conf": 0.73
         },
         {
-          "label": "diamond_ore",
-          "conf": 0.37
+          "label": "xp_bar",
+          "conf": 0.19
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.34
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.28
+          "label": "xp_bar",
+          "conf": 0.11
         },
         {
           "label": "log",
@@ -741,167 +89,599 @@
         },
         {
           "label": "log",
-          "conf": 0.712
+          "conf": 0.75
         },
         {
           "label": "leaves",
           "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
         }
       ],
-      "action": "wait"
+      "action": "1"
     },
     {
-      "tick": 285,
-      "session": 78,
-      "ts": 1784463251.9164474,
+      "tick": 209,
+      "session": 79,
+      "ts": 1784479079.2029681,
       "objects": [
         {
           "label": "hotbar",
           "conf": 0.9
         },
         {
-          "label": "redstone_ore",
+          "label": "hunger_bar",
+          "conf": 0.87
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.7
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.19
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.14
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.608
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 210,
+      "session": 79,
+      "ts": 1784479080.7315862,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.63
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.27
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.11
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.688
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 211,
+      "session": 79,
+      "ts": 1784479082.2568839,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.65
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.24
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.11
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 212,
+      "session": 79,
+      "ts": 1784479083.7844107,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.67
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.22
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.748
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 213,
+      "session": 79,
+      "ts": 1784479085.3088753,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.65
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.26
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 214,
+      "session": 79,
+      "ts": 1784479087.835579,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.69
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.25
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 215,
+      "session": 79,
+      "ts": 1784479089.8624456,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.83
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.74
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.16
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.444
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 216,
+      "session": 79,
+      "ts": 1784479091.8895943,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.9
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.66
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.11
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 217,
+      "session": 79,
+      "ts": 1784479093.419783,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.16
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.11
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.724
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 218,
+      "session": 79,
+      "ts": 1784479094.9446707,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.8
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.25
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.11
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 219,
+      "session": 79,
+      "ts": 1784479096.4700196,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.81
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.14
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 220,
+      "session": 79,
+      "ts": 1784479097.9992437,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.87
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.72
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.19
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.1
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
+          "conf": 0.75
+        }
+      ],
+      "action": "1"
+    },
+    {
+      "tick": 221,
+      "session": 79,
+      "ts": 1784479099.5300593,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.9
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.87
+        },
+        {
+          "label": "hunger_bar",
           "conf": 0.87
         },
         {
           "label": "xp_bar",
-          "conf": 0.78
+          "conf": 0.84
         },
         {
-          "label": "diamond_ore",
-          "conf": 0.37
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.36
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.34
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.29
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.684
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 286,
-      "session": 78,
-      "ts": 1784463291.3651989,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
+          "label": "armor_bar",
+          "conf": 0.72
         },
         {
           "label": "xp_bar",
-          "conf": 0.77
+          "conf": 0.15
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.49
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.37
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.36
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.34
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "lapis_ore",
-          "conf": 0.14
-        },
-        {
-          "label": "redstone_ore",
+          "label": "xp_bar",
           "conf": 0.13
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.11
         },
         {
           "label": "log",
@@ -909,638 +689,46 @@
         },
         {
           "label": "log",
-          "conf": 0.692
+          "conf": 0.75
         },
         {
           "label": "leaves",
           "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
         }
       ],
-      "action": "wait"
+      "action": "1"
     },
     {
-      "tick": 287,
-      "session": 78,
-      "ts": 1784463347.5918834,
+      "tick": 222,
+      "session": 79,
+      "ts": 1784479137.734408,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.9
+          "conf": 0.89
         },
         {
-          "label": "redstone_ore",
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
           "conf": 0.85
         },
         {
           "label": "xp_bar",
-          "conf": 0.79
+          "conf": 0.82
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.64
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.61
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.43
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.37
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.32
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.27
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.12
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.11
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 288,
-      "session": 78,
-      "ts": 1784463348.117847,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.74
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.64
-        },
-        {
-          "label": "redstone_ore",
+          "label": "armor_bar",
           "conf": 0.63
         },
         {
-          "label": "diamond_ore",
-          "conf": 0.37
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.35
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.25
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.25
-        },
-        {
-          "label": "lapis_ore",
-          "conf": 0.19
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.17
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.12
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.1
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 289,
-      "session": 78,
-      "ts": 1784463348.6432924,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
-        },
-        {
           "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.61
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.56
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.38
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.3
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.23
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.22
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.18
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.12
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 290,
-      "session": 78,
-      "ts": 1784463349.170026,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.73
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.65
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.59
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.34
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.27
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.27
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.22
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.16
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.12
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.1
-        },
-        {
-          "label": "lapis_ore",
-          "conf": 0.1
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 291,
-      "session": 78,
-      "ts": 1784463349.6971977,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.72
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.64
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.49
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.33
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "redstone_ore",
           "conf": 0.28
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.26
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.24
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.21
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.14
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.11
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "wait"
-    },
-    {
-      "tick": 292,
-      "session": 78,
-      "ts": 1784463386.61008,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.9
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.86
-        },
-        {
           "label": "xp_bar",
-          "conf": 0.78
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.67
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.62
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.52
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.4
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.37
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.31
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.23
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.23
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.14
-        },
-        {
-          "label": "gold_ore",
           "conf": 0.13
         },
         {
@@ -1556,96 +744,44 @@
           "conf": 0.75
         },
         {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
           "label": "chicken",
-          "conf": 0.75
+          "conf": 0.704
         }
       ],
       "action": "wait"
     },
     {
-      "tick": 293,
-      "session": 78,
-      "ts": 1784463387.1369164,
+      "tick": 223,
+      "session": 79,
+      "ts": 1784479137.766724,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.9
+          "conf": 0.89
         },
         {
-          "label": "redstone_ore",
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
           "conf": 0.86
         },
         {
           "label": "xp_bar",
-          "conf": 0.78
+          "conf": 0.82
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.64
+          "label": "armor_bar",
+          "conf": 0.65
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.59
+          "label": "xp_bar",
+          "conf": 0.25
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.48
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.36
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.27
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.22
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.17
-        },
-        {
-          "label": "gold_ore",
+          "label": "xp_bar",
           "conf": 0.14
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.13
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.11
         },
         {
           "label": "log",
@@ -1657,30 +793,6 @@
         },
         {
           "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "skeleton",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        },
-        {
-          "label": "cow",
-          "conf": 0.75
-        },
-        {
-          "label": "pig",
           "conf": 0.75
         },
         {
@@ -1695,73 +807,37 @@
       "action": "wait"
     },
     {
-      "tick": 294,
-      "session": 78,
-      "ts": 1784463387.6669085,
+      "tick": 224,
+      "session": 79,
+      "ts": 1784479138.0092418,
       "objects": [
         {
           "label": "hotbar",
-          "conf": 0.9
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
         },
         {
           "label": "xp_bar",
-          "conf": 0.78
+          "conf": 0.82
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.69
+          "label": "armor_bar",
+          "conf": 0.65
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.63
+          "label": "xp_bar",
+          "conf": 0.25
         },
         {
-          "label": "redstone_ore",
-          "conf": 0.62
-        },
-        {
-          "label": "diamond_ore",
-          "conf": 0.38
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.35
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.26
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.21
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.19
-        },
-        {
-          "label": "gold_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.15
-        },
-        {
-          "label": "lapis_ore",
+          "label": "xp_bar",
           "conf": 0.14
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.12
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.11
-        },
-        {
-          "label": "redstone_ore",
-          "conf": 0.1
         },
         {
           "label": "log",
@@ -1776,27 +852,115 @@
           "conf": 0.75
         },
         {
-          "label": "birch_log",
+          "label": "sheep",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 225,
+      "session": 79,
+      "ts": 1784479138.2594926,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.65
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.25
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.14
+        },
+        {
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "skeleton",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "spider",
+          "label": "leaves",
           "conf": 0.75
         },
         {
-          "label": "cow",
+          "label": "sheep",
           "conf": 0.75
         },
         {
-          "label": "pig",
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 226,
+      "session": 79,
+      "ts": 1784479138.5092747,
+      "objects": [
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.82
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.65
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.25
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.14
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
           "conf": 0.75
         },
         {
@@ -1924,6 +1088,21 @@
             33.0
           ],
           "tick": 460
+        }
+      },
+      "threats_seen": [],
+      "resources": {},
+      "visited_at": 50
+    },
+    "-3_2": {
+      "ores_seen": {
+        "emerald_ore": {
+          "pos": [
+            -37.0,
+            633,
+            33.0
+          ],
+          "tick": 174
         }
       },
       "threats_seen": [],

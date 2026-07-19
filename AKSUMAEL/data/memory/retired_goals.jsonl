@@ -53,3 +53,4 @@
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1784428721.9576235}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1784462990.7986856}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1784465517.37995}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [-37.0, 633, 33.0], "tick": 206, "ts": 1784479065.9808857}
