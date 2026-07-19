@@ -139,8 +139,35 @@ class InnerMonologue:
             self.claude_call_count += 1
         return raw.strip() if raw else None
 
+    def push_external(self, text: str):
+        """Append a thought generated outside the normal update() cadence
+        (e.g. an Axon voice Q&A answer — see axon/hub.py) directly to disk
+        in the same schema update() writes. axon/hub.py runs as its own
+        separate process (see its module docstring), so it has no access
+        to this live InnerMonologue instance or to core.capture's
+        in-process push_monologue_line() queue — writing straight to
+        FILE is the only way its answer reaches this process. recent()
+        reloads from disk every call (see below), so it shows up in the
+        overlay strip on the next tick without any other plumbing."""
+        text = (text or '').strip()
+        if not text:
+            return
+        with self._lock:
+            self.thoughts = _load(self.FILE, self.thoughts)
+            self.thoughts.append({'tick': None, 'ts': time.time(), 'thought': text})
+            self.thoughts = self.thoughts[-MAX_THOUGHTS:]
+            _save(self.FILE, self.thoughts)
+
     def recent(self, n: int = 5) -> str:
         with self._lock:
+            # Reload from disk rather than trusting self.thoughts alone —
+            # push_monologue_line() (below) appends from axon/hub.py's
+            # separate process, so a fresh line from there only becomes
+            # visible here (and to ui/labeling.py's overlay strip) by
+            # re-reading the shared file each call. The file is tiny
+            # (MAX_THOUGHTS entries), so this is cheap enough for a
+            # once-per-tick read.
+            self.thoughts = _load(self.FILE, self.thoughts)
             return '\n'.join(t['thought'] for t in self.thoughts[-n:])
 
 

@@ -90,6 +90,7 @@ from memory.progression      import ProgressionTracker
 from memory.minecraft_kb     import MinecraftKB
 from memory.rl_policy        import RLPolicy
 from memory                  import chest_memory
+from memory                  import EpisodicMemory, SemanticMemory, ProceduralMemory, MemoryContext
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
 from core.human_assist       import HumanAssist
@@ -162,6 +163,15 @@ def run():
     cognitive   = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
+
+    # Self-built memory system (episodic/semantic/procedural) — see
+    # memory/context.py. episodic_mem.record() is called below on every
+    # FSM state transition; mem_context.build_context_for_llm() feeds the
+    # overseer (core/overseer.py) and axon/hub.py's voice Q&A.
+    episodic_mem   = EpisodicMemory()
+    semantic_mem   = SemanticMemory()
+    procedural_mem = ProceduralMemory()
+    mem_context    = MemoryContext(episodic_mem, semantic_mem, procedural_mem)
 
     # systemd sends SIGTERM on every `systemctl --user stop aksumael`
     # (autotrain retraining cycles do this routinely). Python's default
@@ -325,6 +335,7 @@ def run():
     _menu_stuck_since    = 0      # tick when menu was first detected open
     MENU_STUCK_TICKS     = 20     # close menu after this many ticks with no action
     fsm_state        = None  # updated each tick for console logging
+    _prev_fsm_state  = None  # last state recorded to episodic_mem (see FSM tick, below)
     _llm_call_count  = 0     # total LLM calls this session
     _last_llm_frame  = None  # frame used in last LLM call (for frame-diff skip)
     # Forced-reconsideration gate (2026-07-19) — force_llm_reconsider used to
@@ -795,6 +806,28 @@ def run():
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
                                               goal=goals.current_goal(), frame=frame)
 
+            # Cross-process FSM state (v1.4) — mirrored onto world_mem so
+            # axon/hub.py, running as its own separate process, can read
+            # it via data/world_memory.json for voice Q&A context.
+            world_mem.fsm_state = fsm_state.value if fsm_state else 'UNKNOWN'
+
+            # Episodic memory (self-built memory system, see memory/episodic.py)
+            # — record one row per FSM state transition, not every tick, so
+            # the log reads as a history of what happened rather than a
+            # per-tick firehose.
+            if fsm_state is not None and fsm_state != _prev_fsm_state:
+                episodic_mem.record({
+                    'timestamp':    time.time(),
+                    'fsm_state':    fsm_state.value,
+                    'goal':         goals.current_goal(),
+                    'action':       (fsm_action.get('action', '') if isinstance(fsm_action, dict)
+                                      else str(fsm_action or '')),
+                    'outcome':      (fsm_action.get('observation', '') if isinstance(fsm_action, dict)
+                                      else ''),
+                    'observations': [o.get('label', '?') for o in objects[:5]],
+                })
+                _prev_fsm_state = fsm_state
+
             # rebuild_fort placed its chest this tick — record the location
             # so it can be found again later (memory/chest_memory.py), and
             # remember it as the base location (core/fsm.py's
@@ -835,6 +868,12 @@ def run():
                 'recent_actions': list(_overseer_recent_actions),
                 'inventory':      dict(list(inventory.items.items())[:8]),
                 'reward_avg':     reward.average(),
+                'memory_context': mem_context.build_context_for_llm(
+                    fsm_state=fsm_state.value if fsm_state else 'UNKNOWN',
+                    goal=goals.current_goal(),
+                    health_pct=world_mem.health_pct,
+                    hunger_pct=world_mem.hunger_pct,
+                    recent_monologue=cognitive.monologue.recent(n=3)),
             })
             _overseer_directive = get_last_directive()
             if _overseer_directive != _overseer_seen_directive:

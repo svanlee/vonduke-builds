@@ -61,6 +61,7 @@ Current agent state:
 - Last 5 actions: {snapshot.get('recent_actions', [])}
 - Inventory summary: {snapshot.get('inventory', {})}
 - Reward trend (last 10): {snapshot.get('reward_avg', '?')}
+{snapshot.get('memory_context', '')}
 
 Your job: assess whether the agent is making progress toward its goal or is stuck/misaligned. Return a JSON directive (no markdown, just JSON):
 
