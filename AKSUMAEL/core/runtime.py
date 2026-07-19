@@ -92,6 +92,7 @@ from memory.rl_policy        import RLPolicy
 from memory                  import chest_memory
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
+from core.human_assist       import HumanAssist
 from audio.tts               import TTSEngine
 from audio.game_ear          import GameEar
 from skills.skill_system     import SkillSystem, SkillReplayer
@@ -176,6 +177,8 @@ def run():
     signal.signal(signal.SIGTERM, lambda signum, frame: (_ for _ in ()).throw(KeyboardInterrupt))
 
     router    = ControllerRouter()
+    human_assist = HumanAssist(executor)
+    human_assist.start()
     tts       = TTSEngine()
     ear       = GameEar()          # graceful if no audio device
     skills    = SkillSystem()
@@ -557,6 +560,17 @@ def run():
             # YOLOThread runs YOLO at GPU speed; we read its latest results.
             objects = pipeline.latest_objects
 
+            # ── Human-assist mode gate (core/human_assist.py) ──────
+            # Feed fresh context every tick regardless of mode so imitation
+            # rows are never stale, then — if a human has taken the wheel via
+            # the controller's Start button — skip the entire AI tick body
+            # below (no FSM, no AI-originated HID output) and let
+            # HumanAssist's own 20Hz thread drive the game directly.
+            human_assist.update_context(objects, world_mem, fsm_state)
+            if human_assist.human_mode:
+                time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
+                continue
+
             # ── Color-based ore detection ───────────────────────
             # Catches diamond/emerald/gold ore that YOLO misses by scanning
             # for their distinctive HSV color signatures. Color detections
@@ -766,10 +780,14 @@ def run():
                                               goal=goals.current_goal(), frame=frame)
 
             # rebuild_fort placed its chest this tick — record the location
-            # so it can be found again later (memory/chest_memory.py).
+            # so it can be found again later (memory/chest_memory.py), and
+            # remember it as the base location (core/fsm.py's
+            # _resolve_fort_coords reads world_mem.base_coords first).
             if isinstance(fsm_action, dict) and fsm_action.get('chest_coords'):
                 _cx, _cy, _cz = fsm_action['chest_coords']
                 chest_memory.record_chest(_cx, _cy, _cz)
+                world_mem.base_coords = [_cx, _cy, _cz]
+                world_mem.save()
 
             # Aim-stall tracking — see _aim_stall_ticks comment above. Tracks
             # the FSM's own action regardless of which goal is currently
@@ -1892,6 +1910,7 @@ def run():
         time.sleep(1.5)
         executor.close()
         router.stop()
+        human_assist.stop()
         if ear.enabled:
             ear.stop()
         tts.stop()
