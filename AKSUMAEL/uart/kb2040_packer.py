@@ -164,19 +164,35 @@ def key_to_hid(key_name: str) -> tuple:
 
 def action_dict_to_packets(action_dict: dict,
                             platform: str = 'pc',
-                            held_buttons: int = 0) -> list:
+                            held_buttons: int = 0,
+                            held_modifiers: int = 0) -> list:
     packets = []
-    key     = action_dict.get('key')
-    click   = action_dict.get('click')
-    gamepad = action_dict.get('gamepad')
-    look    = action_dict.get('look')
+    key      = action_dict.get('key')
+    click    = action_dict.get('click')
+    gamepad  = action_dict.get('gamepad')
+    look     = action_dict.get('look')
+    key_hold = action_dict.get('key_hold')
 
-    # Keyboard
-    if key and str(key).lower() not in ('null', 'none', 'wait', ''):
+    # Held modifier key (Shift/Ctrl/etc) — press-only or release-only, no
+    # auto-release. Mirrors 'mouse_hold' below: rp2040/code.py's
+    # send_keyboard() reports are full HID state with no auto-up, so a
+    # genuine "hold" means sending the down report once and the up report
+    # once, not retapping every poll tick — retapping is what a rapid
+    # SHIFT press/release loop looks like to Windows, which is exactly
+    # what trips Sticky Keys (2026-07-19). held_modifiers is the caller's
+    # already-updated bitmask (KB2040Serial owns it) — this just reports it.
+    if key_hold in ('down', 'up'):
+        packets.append(pack_keyboard(keys=[], modifiers=held_modifiers))
+
+    # Keyboard tap (press+release) — carries forward any currently-held
+    # modifier (e.g. a hotbar tap while LT/sneak is held) instead of
+    # clobbering it with 0, same reasoning as held_buttons for mouse-look
+    # below: every TYPE_KB report is full state, not a delta.
+    elif key and str(key).lower() not in ('null', 'none', 'wait', ''):
         hid, mod = key_to_hid(str(key))
         if hid or mod:   # mod-only (e.g. plain "ctrl") is still a valid press
-            packets.append(pack_keyboard(keys=[hid] if hid else [], modifiers=mod))
-            packets.append(pack_keyboard())   # release
+            packets.append(pack_keyboard(keys=[hid] if hid else [], modifiers=held_modifiers | mod))
+            packets.append(pack_keyboard(modifiers=held_modifiers))   # release (keep held modifier)
 
     # Absolute click
     if click and click not in ('null', None):
@@ -252,16 +268,22 @@ class KB2040Serial:
         # packet sent while a 'mouse_hold' is active must echo this back
         # or the firmware will release the button (2026-07-17).
         self._held_mouse_buttons = 0
+        # Currently-held keyboard modifier bitmask (MOD_MAP bits) — see
+        # action_dict_to_packets' held_modifiers param. Same full-state-report
+        # reasoning as _held_mouse_buttons above, for 'key_hold' actions.
+        self._held_modifiers = 0
         self._connect()
 
     def _connect(self, quiet=False):
         try:
             import serial as pyserial
-            self._ser = pyserial.Serial(self.port, self.baud, timeout=0.1)
+            self._ser = pyserial.Serial(self.port, self.baud, timeout=0.1,
+                                        write_timeout=0.5)
             time.sleep(0.15)
             # Send release-all to clear any stale HID state
             self._ser.write(pack_release_all())
             self._held_mouse_buttons = 0
+            self._held_modifiers = 0
             if not quiet:
                 print(f'[KB2040] connected on {self.port} @ {self.baud}')
         except ImportError:
@@ -324,9 +346,18 @@ class KB2040Serial:
             else:
                 self._held_mouse_buttons &= ~_btn
 
+        key_hold = action_dict.get('key_hold')
+        if key_hold in ('down', 'up'):
+            _, mod = key_to_hid(str(action_dict.get('key', '')))
+            if key_hold == 'down':
+                self._held_modifiers |= mod
+            else:
+                self._held_modifiers &= ~mod
+
         ok = True
         for pkt in action_dict_to_packets(action_dict, platform,
-                                          held_buttons=self._held_mouse_buttons):
+                                          held_buttons=self._held_mouse_buttons,
+                                          held_modifiers=self._held_modifiers):
             ok &= self.send(pkt)
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
@@ -334,6 +365,7 @@ class KB2040Serial:
 
     def release_all(self):
         self._held_mouse_buttons = 0
+        self._held_modifiers = 0
         self.send(pack_release_all())
 
     def reset_device(self):
