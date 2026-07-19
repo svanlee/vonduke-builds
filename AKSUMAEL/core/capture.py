@@ -263,6 +263,7 @@ class VideoCapturePipeline:
         self.capture = CaptureThread(device_index)
         self.yolo_t  = YOLOThread(yolo_detector, self.capture, self._dq)
         self.display = DisplayThread(self._dq, labeling_ui)
+        self._overlay_text = ''
 
     # ── Forwarded properties ──────────────────────────────────────────────
 
@@ -288,6 +289,29 @@ class VideoCapturePipeline:
         """True when the user has pressed 'q' in the display window."""
         return self.display.quit
 
+    def set_overlay_text(self, text: str):
+        """Set the inner-monologue caption drawn at the bottom of the preview
+        frame by poll_display(). Called from the main decision loop."""
+        self._overlay_text = text or ''
+
+    def _draw_overlay(self, frame):
+        """Burn self._overlay_text onto frame as a wrapped, outlined caption."""
+        if not self._overlay_text or frame is None:
+            return
+        import textwrap
+        h, w = frame.shape[:2]
+        lines = textwrap.wrap(self._overlay_text, width=80) or ['']
+        lines = lines[-3:]   # keep it to the last 3 wrapped lines
+        font        = cv2.FONT_HERSHEY_SIMPLEX
+        scale       = 0.5
+        thickness   = 1
+        line_height = 18
+        y = h - 10 - line_height * (len(lines) - 1)
+        for line in lines:
+            cv2.putText(frame, line, (10, y), font, scale, (0, 0, 0), thickness + 2, cv2.LINE_AA)
+            cv2.putText(frame, line, (10, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+            y += line_height
+
     def poll_display(self, window_name: str = 'AKSUMAEL') -> bool:
         """
         Call this from the MAIN THREAD each tick to update the display window.
@@ -298,6 +322,7 @@ class VideoCapturePipeline:
         Returns False when the user presses 'q' (signal to exit), True otherwise.
         """
         frame, objs = self.display.get_display_frame()
+        self._draw_overlay(frame)
         if frame is None:
             key = self._safe_wait_key()
         elif self.display._ui is not None:

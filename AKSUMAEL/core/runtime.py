@@ -338,6 +338,7 @@ def run():
     # real call — otherwise it waits, same as a normal cadence tick would.
     _last_llm_tick       = 0
     _last_llm_fsm_state  = None
+    _last_spoken_thought = None   # dedupe TTS of inner-monologue thoughts
     _last_scan_tick  = -config.SCAN_COOLDOWN_TICKS   # fire scan on first EXPLORE tick
     # Aim-stall watchdog (2026-07-17) — counts consecutive ticks the FSM
     # spends aiming without ever landing a click. The goal-gated DIRECT-CHOP
@@ -704,6 +705,7 @@ def run():
                 break
             if pipeline.quit:
                 break
+            pipeline.set_overlay_text(cognitive.monologue.recent(n=1))
             if ui.enabled:
                 ui_r = ui.consume_reward()
                 if ui_r > 0:
@@ -1458,6 +1460,9 @@ def run():
                         _thought = cognitive.monologue.recent(n=1)
                         if _thought:
                             history += f'\n[THOUGHT] {_thought}'
+                            if _thought != _last_spoken_thought:
+                                tts.say(_thought)
+                                _last_spoken_thought = _thought
 
                         # Episode memory — past attempts at a similar goal,
                         # JARVIS-1 style ("last time you tried X..."). Local
