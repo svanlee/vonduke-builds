@@ -1,134 +1,114 @@
 {
-  "session_num": 74,
-  "last_saved": 1784417436.821912,
+  "session_num": 76,
+  "last_saved": 1784425855.8552415,
   "history": [
     {
-      "tick": 44,
-      "session": 74,
-      "ts": 1784417364.3416555,
+      "tick": 814,
+      "session": 76,
+      "ts": 1784425519.5738873,
       "objects": [
         {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
           "label": "hotbar",
-          "conf": 0.91
+          "conf": 0.89
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.87
         },
         {
           "label": "xp_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.86
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 815,
+      "session": 76,
+      "ts": 1784425560.2893755,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
           "conf": 0.88
         },
         {
-          "label": "health_bar",
+          "label": "armor_bar",
           "conf": 0.87
         },
         {
-          "label": "hunger_bar",
-          "conf": 0.82
+          "label": "xp_bar",
+          "conf": 0.86
         },
         {
-          "label": "armor_bar",
-          "conf": 0.45
-        },
-        {
-          "label": "leaves",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
-          "conf": 0.75
+          "label": "log",
+          "conf": 0.2
         },
         {
           "label": "spider",
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 45,
-      "session": 74,
-      "ts": 1784417365.8573797,
+      "tick": 816,
+      "session": 76,
+      "ts": 1784425574.8203413,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
+          "label": "armor_bar",
+          "conf": 0.9
         },
         {
           "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "xp_bar",
           "conf": 0.86
         },
         {
           "label": "hunger_bar",
           "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.67
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.27
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.12
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 46,
-      "session": 74,
-      "ts": 1784417366.8738668,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.67
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.13
         },
         {
           "label": "xp_bar",
           "conf": 0.13
         },
         {
-          "label": "leaves",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -136,39 +116,43 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 47,
-      "session": 74,
-      "ts": 1784417368.387911,
+      "tick": 817,
+      "session": 76,
+      "ts": 1784425589.2938535,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
           "label": "health_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.83
+          "conf": 0.9
         },
         {
           "label": "armor_bar",
-          "conf": 0.69
+          "conf": 0.9
         },
         {
-          "label": "leaves",
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "leaves",
           "conf": 0.75
         },
         {
@@ -176,43 +160,39 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 48,
-      "session": 74,
-      "ts": 1784417369.9026856,
+      "tick": 818,
+      "session": 76,
+      "ts": 1784425603.2498493,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.85
-        },
-        {
           "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
+          "conf": 0.9
         },
         {
           "label": "armor_bar",
-          "conf": 0.6
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.85
         },
         {
           "label": "xp_bar",
-          "conf": 0.11
+          "conf": 0.85
         },
         {
-          "label": "leaves",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -220,47 +200,279 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 49,
-      "session": 74,
-      "ts": 1784417388.5836895,
+      "tick": 819,
+      "session": 76,
+      "ts": 1784425617.1857398,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
+          "label": "health_bar",
+          "conf": 0.9
         },
         {
-          "label": "health_bar",
-          "conf": 0.85
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
         },
         {
           "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 820,
+      "session": 76,
+      "ts": 1784425631.139949,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 821,
+      "session": 76,
+      "ts": 1784425645.1178157,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 822,
+      "session": 76,
+      "ts": 1784425659.0891352,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 823,
+      "session": 76,
+      "ts": 1784425689.2491825,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 824,
+      "session": 76,
+      "ts": 1784425703.154325,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.89
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.85
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 825,
+      "session": 76,
+      "ts": 1784425717.2041872,
+      "objects": [
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
           "conf": 0.84
         },
         {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.71
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.15
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.13
-        },
-        {
-          "label": "leaves",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -268,411 +480,39 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 50,
-      "session": 74,
-      "ts": 1784417389.5935721,
+      "tick": 826,
+      "session": 76,
+      "ts": 1784425731.120764,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
           "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.85
+          "conf": 0.9
         },
         {
           "label": "armor_bar",
-          "conf": 0.61
+          "conf": 0.9
         },
-        {
-          "label": "xp_bar",
-          "conf": 0.13
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 51,
-      "session": 74,
-      "ts": 1784417401.0065088,
-      "objects": [
         {
           "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.87
+          "conf": 0.88
         },
         {
           "label": "hunger_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.12
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 52,
-      "session": 74,
-      "ts": 1784417402.5184987,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.61
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 53,
-      "session": 74,
-      "ts": 1784417404.0308304,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.56
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.12
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 54,
-      "session": 74,
-      "ts": 1784417405.5420415,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.67
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.17
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.12
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 55,
-      "session": 74,
-      "ts": 1784417407.0525591,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.87
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.71
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.19
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.13
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 56,
-      "session": 74,
-      "ts": 1784417408.56683,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.61
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.19
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.14
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 57,
-      "session": 74,
-      "ts": 1784417426.6547642,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.84
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.47
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.14
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.1
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 58,
-      "session": 74,
-      "ts": 1784417428.1654336,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.87
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
+          "conf": 0.88
         },
         {
           "label": "xp_bar",
           "conf": 0.82
         },
         {
-          "label": "armor_bar",
-          "conf": 0.64
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.19
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.14
-        },
-        {
-          "label": "leaves",
+          "label": "log",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -680,51 +520,39 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 59,
-      "session": 74,
-      "ts": 1784417429.6776266,
+      "tick": 827,
+      "session": 76,
+      "ts": 1784425745.1238256,
       "objects": [
         {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
           "label": "hotbar",
-          "conf": 0.91
+          "conf": 0.88
         },
         {
           "label": "hunger_bar",
-          "conf": 0.86
+          "conf": 0.88
         },
         {
           "label": "xp_bar",
           "conf": 0.83
         },
         {
-          "label": "health_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.56
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.3
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.13
-        },
-        {
           "label": "log",
-          "conf": 0.408
-        },
-        {
-          "label": "leaves",
           "conf": 0.75
         },
         {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -732,195 +560,39 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
     },
     {
-      "tick": 60,
-      "session": 74,
-      "ts": 1784417431.1881874,
+      "tick": 828,
+      "session": 76,
+      "ts": 1784425759.0852964,
       "objects": [
         {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.86
-        },
-        {
           "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
+          "conf": 0.9
         },
         {
           "label": "armor_bar",
-          "conf": 0.73
+          "conf": 0.9
         },
-        {
-          "label": "hunger_bar",
-          "conf": 0.21
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.12
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 61,
-      "session": 74,
-      "ts": 1784417432.7049947,
-      "objects": [
         {
           "label": "hotbar",
-          "conf": 0.91
+          "conf": 0.88
         },
         {
           "label": "hunger_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.83
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.65
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.19
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.11
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 62,
-      "session": 74,
-      "ts": 1784417434.2157106,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
-        },
-        {
-          "label": "xp_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.86
-        },
-        {
-          "label": "health_bar",
-          "conf": 0.85
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.72
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.16
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
-          "conf": 0.75
-        },
-        {
-          "label": "spider",
-          "conf": 0.75
-        }
-      ],
-      "action": "s"
-    },
-    {
-      "tick": 63,
-      "session": 74,
-      "ts": 1784417435.7261395,
-      "objects": [
-        {
-          "label": "hotbar",
-          "conf": 0.91
+          "conf": 0.88
         },
         {
           "label": "xp_bar",
           "conf": 0.84
         },
         {
-          "label": "health_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "hunger_bar",
-          "conf": 0.82
-        },
-        {
-          "label": "armor_bar",
-          "conf": 0.74
-        },
-        {
           "label": "log",
           "conf": 0.75
         },
         {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "zombie",
+          "label": "log",
           "conf": 0.75
         },
         {
@@ -928,7 +600,207 @@
           "conf": 0.75
         }
       ],
-      "action": "s"
+      "action": "wait"
+    },
+    {
+      "tick": 829,
+      "session": 76,
+      "ts": 1784425773.043957,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.84
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 830,
+      "session": 76,
+      "ts": 1784425786.519511,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.84
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 831,
+      "session": 76,
+      "ts": 1784425816.4786003,
+      "objects": [
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.84
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 832,
+      "session": 76,
+      "ts": 1784425829.873274,
+      "objects": [
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.89
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.84
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
+    },
+    {
+      "tick": 833,
+      "session": 76,
+      "ts": 1784425843.2586317,
+      "objects": [
+        {
+          "label": "armor_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "health_bar",
+          "conf": 0.9
+        },
+        {
+          "label": "hunger_bar",
+          "conf": 0.89
+        },
+        {
+          "label": "hotbar",
+          "conf": 0.88
+        },
+        {
+          "label": "xp_bar",
+          "conf": 0.84
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "spider",
+          "conf": 0.75
+        }
+      ],
+      "action": "wait"
     }
   ],
   "chunks": {
@@ -1015,6 +887,37 @@
     },
     "-1_-2": {
       "ores_seen": {},
+      "threats_seen": [],
+      "resources": {},
+      "visited_at": 50
+    },
+    "-1_2": {
+      "ores_seen": {
+        "emerald_ore": {
+          "pos": [
+            -6.0,
+            64,
+            33.0
+          ],
+          "tick": 362
+        },
+        "lapis_ore": {
+          "pos": [
+            -6.0,
+            64,
+            33.0
+          ],
+          "tick": 283
+        },
+        "coal_ore": {
+          "pos": [
+            -6.0,
+            64,
+            33.0
+          ],
+          "tick": 460
+        }
+      },
       "threats_seen": [],
       "resources": {},
       "visited_at": 50
