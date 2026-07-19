@@ -13,8 +13,76 @@
 import threading
 import queue
 import time
+import textwrap
 import cv2
 import config
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inner-monologue strip — thread-safe queue + rolling buffer + typewriter.
+#
+# Monologue text is generated on background threads (cognitive.py's LLM
+# calls, the overseer, ...) at unpredictable moments. push_monologue_line()
+# is the single thread-safe entry point any of them call; poll_display()
+# (main thread, every frame) drains the queue, keeps the last
+# MONOLOGUE_MAX_LINES raw lines, and reveals the newest one character at a
+# time so the strip reads as AKSUMAEL typing live instead of a caption that
+# only ever shows the single latest snapshot of text.
+MONOLOGUE_MAX_LINES       = 8
+MONOLOGUE_WRAP_WIDTH      = 58
+MONOLOGUE_CHARS_PER_FRAME = 2
+
+_monologue_queue  = queue.Queue()
+_monologue_buffer = []   # raw (unwrapped) lines, oldest first, len <= MONOLOGUE_MAX_LINES
+_monologue_typed  = 0    # chars revealed so far of the newest (still-typing) line
+
+
+def push_monologue_line(text: str):
+    """Push a new inner-monologue line onto the display strip.
+
+    Thread-safe — call from any thread that generates AKSUMAEL's internal
+    monologue (overseer directives, cognitive/LLM thought generation, FSM
+    reasoning, ...):
+
+        from core.capture import push_monologue_line
+        push_monologue_line('heading toward the diamond ore')
+    """
+    text = (text or '').strip()
+    if text:
+        _monologue_queue.put(text)
+
+
+def _drain_monologue_queue():
+    """Move newly-pushed lines from the queue into the rolling buffer.
+    Main-thread only — called from poll_display() once per frame."""
+    global _monologue_typed
+    appended = False
+    while True:
+        try:
+            line = _monologue_queue.get_nowait()
+        except queue.Empty:
+            break
+        _monologue_buffer.append(line)
+        del _monologue_buffer[:-MONOLOGUE_MAX_LINES]
+        appended = True
+    if appended:
+        _monologue_typed = 0   # a new line arrived — it starts typing from scratch
+
+
+def _monologue_render_lines() -> list:
+    """Advance the typewriter animation by one frame and return the wrapped
+    display lines (oldest first; the newest may still be mid-typing)."""
+    global _monologue_typed
+    if not _monologue_buffer:
+        return []
+    *done, newest = _monologue_buffer
+    _monologue_typed = min(_monologue_typed + MONOLOGUE_CHARS_PER_FRAME, len(newest))
+
+    lines = []
+    for text in done:
+        lines.extend(textwrap.wrap(text, width=MONOLOGUE_WRAP_WIDTH) or [''])
+    lines.extend(textwrap.wrap(newest[:_monologue_typed], width=MONOLOGUE_WRAP_WIDTH) or [''])
+    return lines
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +332,9 @@ class VideoCapturePipeline:
         self.yolo_t  = YOLOThread(yolo_detector, self.capture, self._dq)
         self.display = DisplayThread(self._dq, labeling_ui)
         self._overlay_text = ''
+        self._fsm_text = ''
+        self._ctrl_connected = False
+        self._human_mode = False
 
     # ── Forwarded properties ──────────────────────────────────────────────
 
@@ -290,18 +361,70 @@ class VideoCapturePipeline:
         return self.display.quit
 
     def set_overlay_text(self, text: str):
-        """Set the inner-monologue caption drawn at the bottom of the preview
-        frame by poll_display(). Called from the main decision loop."""
-        self._overlay_text = text or ''
+        """Set the inner-monologue caption. When a LabelingUI is attached,
+        forward straight to it — it draws the caption in its own black
+        letterbox strip below the video (ui/labeling.py::_draw_monologue).
+        Only the plain cv2.imshow fallback (no LabelingUI) burns it onto
+        the raw frame itself via _draw_overlay, since that path has no
+        separate canvas area to put it in."""
+        if self.display._ui is not None:
+            self.display._ui.set_overlay_text(text)
+            self._overlay_text = ''
+        else:
+            self._overlay_text = text or ''
+
+    def set_fsm_state(self, state_name: str):
+        """Set the FSM state label drawn top-left by poll_display(). Called
+        from the main decision loop — plain attribute write, no lock needed
+        since poll_display() only ever runs on that same main thread."""
+        self._fsm_text = state_name or ''
+
+    def set_controller_status(self, connected: bool, human_mode: bool):
+        """Set the controller/mode indicator drawn top-right by
+        poll_display(). Called from the main decision loop."""
+        self._ctrl_connected = bool(connected)
+        self._human_mode = bool(human_mode)
+
+    def _draw_hud(self, frame):
+        """Burn the FSM-state label (top-left) and controller/mode indicator
+        (top-right) onto frame. Pure drawing over an in-memory array — no
+        I/O, safe to call every poll_display() tick on the main thread."""
+        if frame is None:
+            return
+        h, w = frame.shape[:2]
+
+        if self._fsm_text:
+            cv2.putText(frame, self._fsm_text, (10, 34), cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0, (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.putText(frame, self._fsm_text, (10, 34), cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0, (255, 255, 255), 2, cv2.LINE_AA)
+
+        if not self._ctrl_connected:
+            color, label = (0, 0, 255), 'NO CTRL'      # red (BGR) — no controller
+        elif self._human_mode:
+            color, label = (0, 220, 255), 'HUMAN'      # yellow — Scott driving
+        else:
+            color, label = (0, 200, 0), 'AI'           # green — AI driving
+        box_w, box_h = 110, 34
+        x1, y1 = w - box_w - 10, 10
+        x2, y2 = w - 10, 10 + box_h
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 2)
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        tx = x1 + (box_w - tw) // 2
+        ty = y1 + (box_h + th) // 2
+        cv2.putText(frame, label, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 0, 0), 2, cv2.LINE_AA)
 
     def _draw_overlay(self, frame):
-        """Burn self._overlay_text onto frame as a wrapped, outlined caption."""
+        """Burn self._overlay_text onto frame as a wrapped, outlined caption.
+        Text arrives pre-wrapped (one physical line per '\\n') from the
+        monologue buffer — see push_monologue_line() / _monologue_render_lines()."""
         if not self._overlay_text or frame is None:
             return
-        import textwrap
         h, w = frame.shape[:2]
-        lines = textwrap.wrap(self._overlay_text, width=80) or ['']
-        lines = lines[-3:]   # keep it to the last 3 wrapped lines
+        lines = self._overlay_text.split('\n')
+        lines = lines[-3:]   # keep it to the last 3 lines
         font        = cv2.FONT_HERSHEY_SIMPLEX
         scale       = 0.5
         thickness   = 1
@@ -322,7 +445,10 @@ class VideoCapturePipeline:
         Returns False when the user presses 'q' (signal to exit), True otherwise.
         """
         frame, objs = self.display.get_display_frame()
+        _drain_monologue_queue()
+        self.set_overlay_text('\n'.join(_monologue_render_lines()))
         self._draw_overlay(frame)
+        self._draw_hud(frame)
         if frame is None:
             key = self._safe_wait_key()
         elif self.display._ui is not None:
