@@ -19,16 +19,19 @@
 #                  to actually walk — this is a deliberate addition,
 #                  easy to rip out if unwanted)
 #   A           -> jump (space)
-#   B           -> sprint toggle (left ctrl, assumes "Toggle Sprint" is
-#                  on in the game's controls options)
+#   B           -> unused
 #   X           -> attack/mine (left mouse, real press-and-hold so
 #                  block-break progress doesn't reset every tick)
 #   Y           -> use/place (right mouse, single tap)
-#   D-pad up/dn -> hotbar scroll (number keys 1-9)
-#   LT          -> crouch (left shift, retapped each poll tick — see
-#                  _dispatch note on why there's no true "hold")
-#   RT          -> interact (right mouse, alternate to Y)
-#   Start       -> toggle HUMAN / AI mode
+#   D-pad up/dn -> hotbar scroll (relative, wraps through slots 1-9)
+#   D-pad l/r   -> hotbar slot select (same wraparound, opposite step)
+#   LT          -> crouch/sneak (left shift, true hold — pressed once on
+#                  LT down, released once on LT up via 'key_hold'; see
+#                  uart/kb2040_packer.py. Retapping shift every poll tick
+#                  is what used to trip Windows Sticky Keys, 2026-07-19)
+#   RT          -> sprint (left ctrl, true hold, same mechanism as LT)
+#   RB/LB       -> unused
+#   Start       -> toggle HUMAN / AI mode (never sends a keyboard key)
 import json
 import os
 import sqlite3
@@ -106,7 +109,6 @@ class HumanAssist:
         self._prev_lt_held = False
         self._prev_rt_held = False
         self._mining       = False
-        self._sprint_on    = False
         self._hotbar_idx   = 0
 
         # Context supplied by core/runtime.py each main-loop tick so
@@ -212,6 +214,12 @@ class HumanAssist:
                                                'source': 'human'})
                         self._mining = False
                     self.executor.release_all()
+                    # release_all() just cleared shift/ctrl on the HID side —
+                    # forget any pending hold state so a still-held LT/RT on
+                    # reconnect re-sends the down edge instead of assuming
+                    # it's still asserted (2026-07-19).
+                    self._prev_lt_held = False
+                    self._prev_rt_held = False
                     print('[HumanAssist] Switched to AI mode (controller lost mid-session)')
 
     def stop(self):
@@ -270,6 +278,8 @@ class HumanAssist:
                     self._rt = self._norm_trigger(event.code, event.value)
                 elif event.code == ecodes.ABS_HAT0Y:
                     self._handle_dpad(event.value)
+                elif event.code == ecodes.ABS_HAT0X:
+                    self._handle_dpad(event.value)
             elif event.type == ecodes.EV_KEY:
                 btn_map = {
                     ecodes.BTN_A:     0x0001,
@@ -288,9 +298,11 @@ class HumanAssist:
                         self._buttons &= ~mask
 
     def _handle_dpad(self, value):
-        # ABS_HAT0Y: -1 = up, +1 = down, 0 = released. Only fire on the
+        # Shared by both d-pad axes: ABS_HAT0Y (-1=up/+1=down) and
+        # ABS_HAT0X (-1=left/+1=right), 0 = released. Only fires on the
         # press edge (0 -> nonzero) so a held d-pad doesn't spam the
-        # hotbar every event.
+        # hotbar every event. up/left step back a slot, down/right step
+        # forward — same wraparound cycle for both scroll and select.
         if value == -1:
             self._hotbar_idx = (self._hotbar_idx - 1) % 9
             self._queue_hotbar = True
@@ -337,6 +349,11 @@ class HumanAssist:
                                            'source': 'human'})
                     self._mining = False
                 self.executor.release_all()
+                # release_all() just cleared shift/ctrl on the HID side —
+                # forget any pending hold state so re-entering human mode
+                # with LT/RT still physically held re-sends the down edge.
+                self._prev_lt_held = False
+                self._prev_rt_held = False
 
         if not self.human_mode:
             return
@@ -375,11 +392,7 @@ class HumanAssist:
             self.executor.execute({'key': 'space', 'source': 'human'})
             action_parts.append('jump')
 
-        # B -> sprint toggle
-        if rising & 0x0002:
-            self._sprint_on = not self._sprint_on
-            self.executor.execute({'key': 'lctrl', 'source': 'human'})
-            action_parts.append('sprint_on' if self._sprint_on else 'sprint_off')
+        # B -> unused
 
         # X -> attack/mine, real press-and-hold via mouse_hold (matches
         # core/runtime.py's mining code — a plain tap resets block-break
@@ -406,21 +419,33 @@ class HumanAssist:
             self.executor.execute({'key': slot, 'source': 'human'})
             action_parts.append(f'hotbar_{slot}')
 
-        # LT -> crouch. No true keyboard hold exists on this HID path, so
-        # retap each poll tick for ~one interval, same approach as
-        # movement above.
+        # LT -> crouch/sneak, true hold: press shift once on the LT-down
+        # edge, release it once on the LT-up edge (key_hold in
+        # uart/kb2040_packer.py). Retapping shift every poll tick used to
+        # send a full press+release pair at 20Hz for as long as LT was
+        # held — a rapid-fire SHIFT loop that trips Windows Sticky Keys
+        # (2026-07-19).
         lt_held = lt > TRIGGER_THRESHOLD
-        if lt_held:
-            self.executor.execute({'key': 'lshift', 'delay_ms': POLL_INTERVAL_MS,
-                                   'source': 'human'})
+        if lt_held and not self._prev_lt_held:
+            self.executor.execute({'key_hold': 'down', 'key': 'lshift', 'source': 'human'})
+            action_parts.append('crouch_start')
+        elif not lt_held and self._prev_lt_held:
+            self.executor.execute({'key_hold': 'up', 'key': 'lshift', 'source': 'human'})
+            action_parts.append('crouch_stop')
+        elif lt_held:
             action_parts.append('crouch')
         self._prev_lt_held = lt_held
 
-        # RT -> interact (alternate right click, tap on rising edge only)
+        # RT -> sprint, same true-hold mechanism as LT.
         rt_held = rt > TRIGGER_THRESHOLD
         if rt_held and not self._prev_rt_held:
-            self.executor.execute({'mouse_button': 'right', 'source': 'human'})
-            action_parts.append('interact')
+            self.executor.execute({'key_hold': 'down', 'key': 'lctrl', 'source': 'human'})
+            action_parts.append('sprint_start')
+        elif not rt_held and self._prev_rt_held:
+            self.executor.execute({'key_hold': 'up', 'key': 'lctrl', 'source': 'human'})
+            action_parts.append('sprint_stop')
+        elif rt_held:
+            action_parts.append('sprint')
         self._prev_rt_held = rt_held
 
         action_taken = '+'.join(action_parts) if action_parts else 'idle'
