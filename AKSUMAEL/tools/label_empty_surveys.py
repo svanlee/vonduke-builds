@@ -40,6 +40,15 @@ CLASSES = {
 
 CLASS_LIST_STR = "\n".join(f"{i}: {name}" for i, name in CLASSES.items())
 
+# HUD bars are burned into a fixed screen position by the game itself —
+# bottom band of the frame — so a claimed detection of one of these classes
+# outside that band is a hallucination, not a real box. See 2026-07-19:
+# this script placed hotbar/health_bar/etc. boxes near the top-left of
+# frames (and even on a non-Minecraft Windows dialog screenshot), which
+# then fed straight into the training set with no review step.
+_HUD_BAR_CLASS_IDS = {0, 1, 2, 3, 4}   # health_bar, hunger_bar, armor_bar, xp_bar, hotbar
+_HUD_BAR_Y_RANGE    = (0.75, 1.0)
+
 SYSTEM = f"""You are labeling Minecraft screenshots for YOLO object detection training.
 Image resolution: 640 × 360 pixels.
 
@@ -133,6 +142,10 @@ def validate(line: str):
         return None
     if not all(0.0 <= v <= 1.0 for v in vals):
         return None
+    if cid in _HUD_BAR_CLASS_IDS:
+        cy = vals[1]
+        if not (_HUD_BAR_Y_RANGE[0] <= cy <= _HUD_BAR_Y_RANGE[1]):
+            return None
     return f"{cid} {vals[0]:.6f} {vals[1]:.6f} {vals[2]:.6f} {vals[3]:.6f}"
 
 

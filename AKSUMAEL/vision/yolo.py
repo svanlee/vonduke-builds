@@ -7,6 +7,17 @@ import json
 import os
 import config
 
+# HUD bars are burned into a fixed screen position by the game itself, so a
+# detection with one of these labels is only plausible in the bottom band
+# of the frame — see memory/hud_reader.py's HUD_ROW_Y_FRAC (0.86-0.94) for
+# the same convention applied to raw-pixel health/hunger reading. Anything
+# labeled this way but sitting outside that band is the model mistaking a
+# background pattern for a HUD bar (seen 2026-07-19: a ghost "hotbar" box
+# firing at 0.75 conf on background terrain mid-screen — well above
+# YOLO_CONF_THRESHOLD, so it wasn't caught by the unknown-confidence path).
+_HUD_BAR_LABELS  = {'health_bar', 'hunger_bar', 'armor_bar', 'xp_bar', 'hotbar'}
+_HUD_BAR_Y_FRAC  = (0.75, 1.0)
+
 
 class YOLODetector:
     def __init__(self):
@@ -94,6 +105,7 @@ class YOLODetector:
             # already dropped — see 2026-07-15, trees clearly visible in a
             # captured frame but never appearing in detections at all.
             results = self.model(frame, verbose=False, conf=config.YOLO_CONF_THRESHOLD)[0]
+            frame_h = frame.shape[0]
             out = []
             for b in results.boxes:
                 conf  = round(float(b.conf), 2)
@@ -104,6 +116,11 @@ class YOLODetector:
                 # Check user label DB
                 box_key = self._box_key(box)
                 user_label = self.label_db.get(box_key)
+
+                if (user_label or label) in _HUD_BAR_LABELS:
+                    cy_frac = ((box[1] + box[3]) / 2) / frame_h
+                    if not (_HUD_BAR_Y_FRAC[0] <= cy_frac <= _HUD_BAR_Y_FRAC[1]):
+                        continue   # off-band — noise, not a real HUD bar
 
                 obj = {
                     'cls':        cls,
