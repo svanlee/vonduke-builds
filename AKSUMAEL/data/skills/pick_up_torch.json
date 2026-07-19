@@ -20,5 +20,16 @@
         "source": "skill"
       },
       "delay_after_ms": 400
-    },
-    {
+    }
+  ],
+  "avg_reward": 0.5,
+  "uses": 0,
+  "created": 1784460585.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false
+}
