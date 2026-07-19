@@ -242,7 +242,7 @@ I2C_DEADZONE   = 15
 BLEND_MODE = "aksumael_only"
 
 # ── Audio ─────────────────────────────────────────────────────
-ENABLE_TTS      = False    # AKSUMAEL speaks (pyttsx3, no mic needed)
+ENABLE_TTS      = True     # AKSUMAEL speaks (pyttsx3, no mic needed)
 ENABLE_GAME_EAR = True    # AKSUMAEL hears game audio (graceful if no device)
 
 # TTS: "pyttsx3" (offline) | "elevenlabs" (cloud)
