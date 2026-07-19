@@ -23,6 +23,7 @@ import os
 import time
 
 import config
+from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import route_llm_call
 
 COGNITIVE_DIR = 'data/cognitive'
@@ -89,6 +90,7 @@ class InnerMonologue:
             if bad:
                 fails = f' Recent failures: {", ".join(bad)}.'
         prompt = (
+            f'{AKSUMAEL_IDENTITY}\n'
             'You are the inner monologue of a Minecraft AI. In ONE short sentence '
             '(max 20 words), think out loud about what to do next. '
             f'Current goal: {goal or "explore"}. Visible: {", ".join(labels) or "nothing"}. '
