@@ -14,8 +14,16 @@ VISION_PROVIDER = "local"
 
 LOCAL_LLM_URL     = "http://localhost:9337/v1"
 LOCAL_LLM_MODEL   = "auto"
-LOCAL_LLM_TIMEOUT = 20      # seconds — vision calls on this model measure ~11-15s;
-                            # 8s was cutting them off before a response ever came back
+LOCAL_LLM_TIMEOUT = 40      # seconds — live 2026-07-19 measurement shows this model's
+                            # vision calls actually taking 30-38s (slower than the
+                            # ~11-15s this was originally tuned for), not a hang;
+                            # cutting this to 20s made every real vision call fail
+                            # ("all LLM tiers failed") instead of just running less
+                            # often. Tick latency is controlled by calling this less
+                            # frequently (see LLM_MIN_TICK_GAP / LLM_EVERY_N_TICKS in
+                            # core/runtime.py), not by starving the model of time to
+                            # answer — 8s was cutting them off before a response ever
+                            # came back, and 20s turned out to do the same thing.
 LOCAL_LLM_ENABLED = True
 
 # Inventory reads ask the local vision model to return structured JSON, but
