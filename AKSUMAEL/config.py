@@ -349,8 +349,16 @@ MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
 # memory.goals.GoalStack.check_injected_goals), so no separate polling
 # path is needed in core/runtime.py.
 AXON_WHISPER_MODEL = "base"     # tiny/base/small — bigger is slower but more accurate
-AXON_WAKE_WORDS    = ["aksumael", "axon"]
-AXON_MIC_INDEX     = -1         # -1 = system default input device
+AXON_WAKE_WORDS    = ["computer"]
+
+# ── Audio device selection (audio/device_probe.py) ─────────────
+# None = auto-detect at startup by name keyword priority (Victus > USB
+# Audio > HDMI Audio > default), so the same config works unmodified
+# whichever box AKSUMAEL is running on (T7 "Aksumael" has no mic/speaker;
+# the HP Victus and the Z490 desktop build do). Set to an int sounddevice
+# index to force a specific device instead.
+AUDIO_INPUT_DEVICE  = None
+AUDIO_OUTPUT_DEVICE = None
 
 # ── Self-Improving Loop (JARVIS-1+ architecture) ───────────────
 # Goal retirement — how long (ticks) an unachievable goal is allowed to

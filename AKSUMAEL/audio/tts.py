@@ -3,11 +3,13 @@
 # ║  pyttsx3 (offline) or ElevenLabs (cloud, better)    ║
 # ╚══════════════════════════════════════════════════════╝
 
+import os
 import threading
 import queue
 import time
 import config
 from audio.voice_persona import get_line
+from audio.device_probe import select_devices, alsa_card
 
 
 class TTSEngine:
@@ -23,8 +25,12 @@ class TTSEngine:
         self._engine = None
         self._thread = None
         self._running = False
+        self._out_device = None
+        self._out_alsa   = None
 
         if self.enabled:
+            _, _, _, self._out_device = select_devices()
+            self._out_alsa = alsa_card(self._out_device)
             self._init_engine()
             self._start_worker()
 
@@ -37,6 +43,12 @@ class TTSEngine:
     def _init_pyttsx3(self):
         try:
             import pyttsx3
+            if self._out_alsa:
+                # pyttsx3's Linux espeak driver shells out to `aplay <file>
+                # -q` with no device flag, so it always plays through
+                # ALSA's implicit "default" PCM. ALSA_CARD redirects that
+                # default to our probed card, scoped to this process only.
+                os.environ['ALSA_CARD'] = self._out_alsa.split(':', 1)[1].split(',')[0]
             self._engine = pyttsx3.init()
             # Tune voice rate and volume for Cortana-ish feel
             self._engine.setProperty('rate', 175)    # slightly faster than default
@@ -125,9 +137,11 @@ class TTSEngine:
                                  stream=True, timeout=10)
             if resp.status_code == 200:
                 # Stream audio to aplay (Linux)
-                proc = subprocess.Popen(['aplay', '-q', '-f', 'S16_LE',
-                                         '-r', '22050', '-c', '1', '-'],
-                                        stdin=subprocess.PIPE)
+                aplay_cmd = ['aplay', '-q']
+                if self._out_alsa:
+                    aplay_cmd += ['-D', self._out_alsa]
+                aplay_cmd += ['-f', 'S16_LE', '-r', '22050', '-c', '1', '-']
+                proc = subprocess.Popen(aplay_cmd, stdin=subprocess.PIPE)
                 for chunk in resp.iter_content(chunk_size=4096):
                     proc.stdin.write(chunk)
                 proc.stdin.close()
