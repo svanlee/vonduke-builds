@@ -1,0 +1,9 @@
+{
+  "id": "return_to_base",
+  "name": "Return to Base",
+  "category": "vehicle",
+  "description": "Navigate back to the AprilTag marked as home base",
+  "env": "vehicle",
+  "actions": [],
+  "tags": ["vehicle", "navigation", "base"]
+}

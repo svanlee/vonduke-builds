@@ -362,3 +362,22 @@ def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
     return route_llm_call(prompt, max_tokens=max_tokens, images=images,
                            timeout=timeout, local_retries=local_retries,
                            use_cloud=True)
+
+
+def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
+                        timeout: float = 15.0) -> str:
+    """
+    Explicit entry point for calls that must go to Claude specifically
+    (e.g. core/overseer.py strategic decisions), skipping local mesh-llm
+    and Gemini entirely — unlike route_llm_call(), which only reaches
+    Claude as an emergency backup after both of those fail.
+
+    Returns the raw text response, or None on failure — never raises.
+    """
+    if not config.ANTHROPIC_API_KEY:
+        return None
+    _CLAUDE_LIMITER.acquire()
+    result = _try_claude(prompt, max_tokens, images, timeout)
+    if result is not None:
+        _record('claude')
+    return result

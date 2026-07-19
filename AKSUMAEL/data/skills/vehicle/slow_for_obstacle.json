@@ -1,0 +1,11 @@
+{
+  "id": "slow_for_obstacle",
+  "name": "Slow for Obstacle",
+  "category": "vehicle",
+  "description": "Reduce speed when depth sensor detects close obstacle",
+  "env": "vehicle",
+  "actions": [
+    {"type": "throttle", "value": 0.15, "steering": 0.0, "duration_ticks": 3}
+  ],
+  "tags": ["vehicle", "obstacle", "safety"]
+}

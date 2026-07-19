@@ -16,3 +16,5 @@ runs/
 yolov8*.pt
 yolo11*.pt
 yolo26*.pt
+
+.notes/

@@ -1,0 +1,11 @@
+{
+  "id": "emergency_stop",
+  "name": "Emergency Stop",
+  "category": "vehicle",
+  "description": "Immediate full brake — obstacle or out-of-bounds",
+  "env": "vehicle",
+  "actions": [
+    {"type": "brake", "value": 1.0, "throttle": 0.0, "steering": 0.0, "duration_ticks": 5}
+  ],
+  "tags": ["vehicle", "safety", "emergency"]
+}

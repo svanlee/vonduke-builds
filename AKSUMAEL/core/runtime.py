@@ -76,6 +76,7 @@ from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
 from core.episode_memory     import EpisodeMemory
 from core.curriculum         import CurriculumGenerator
+from core.overseer           import maybe_call as overseer_tick, get_last_directive
 from core                    import code_skill_generator
 from core                    import feature_extractor
 from core                    import policy_blender
@@ -347,6 +348,12 @@ def run():
     CHEST_COOLDOWN_TICKS = 200    # min ticks between chest opens (avoid spamming Claude)
     BASE_X, BASE_Z        = -6, -3   # spawn / base coordinates
     _prev_replay_active = False  # replayer.is_active() as of last tick
+    # Overseer (Claude strategic brain, core/overseer.py) — polled every
+    # tick but only actually calls out every OVERSEER_INTERVAL ticks, on a
+    # background thread, so it never blocks this loop.
+    _overseer_recent_actions = []       # last 5 action strings, for the snapshot
+    _overseer_seen_directive = {"action": "continue"}  # last directive acted on
+    _overseer_flee_ticks_left = 0       # >0 forces the flee action_dict override below
     # Skill pre/postcondition verification (v1.1) — snapshot inventory when a
     # skill replay starts, diff it against the post-replay inventory to
     # decide whether the skill's postconditions were actually met.
@@ -756,6 +763,36 @@ def run():
             else:
                 _aim_stall_ticks = 0
 
+            # ── Overseer (Claude strategic brain, core/overseer.py) ────
+            # Fires a background-thread call every OVERSEER_INTERVAL ticks;
+            # never blocks this loop. The directive from the *last completed*
+            # call is picked up here every tick and acted on once.
+            _overseer_recent_actions.append(_fsm_action_str or 'idle')
+            del _overseer_recent_actions[:-5]
+            overseer_tick(tick, {
+                'env':            'minecraft',
+                'fsm_state':      fsm_state.value if fsm_state else 'UNKNOWN',
+                'state_ticks':    getattr(fsm, '_same_state_ticks', 0),
+                'current_goal':   goals.current_goal(),
+                'health_pct':     world_mem.health_pct,
+                'hunger_pct':     world_mem.hunger_pct,
+                'position':       (f'{world_mem.pos_x},{world_mem.pos_z}'
+                                    if world_mem.pos_x is not None else 'unknown'),
+                'heading':        getattr(world_mem, 'facing', 'unknown'),
+                'objects':        [o.get('label', '?') for o in objects[:5]],
+                'recent_actions': list(_overseer_recent_actions),
+                'inventory':      dict(list(inventory.items.items())[:8]),
+                'reward_avg':     reward.average(),
+            })
+            _overseer_directive = get_last_directive()
+            if _overseer_directive != _overseer_seen_directive:
+                _overseer_seen_directive = _overseer_directive
+                _overseer_action = _overseer_directive.get('action', 'continue')
+                if _overseer_action == 'override_goal' and _overseer_directive.get('goal'):
+                    goals.push(_overseer_directive['goal'])
+                elif _overseer_action == 'flee':
+                    _overseer_flee_ticks_left = 8   # matches fsm.FLEE_TICKS
+
             # ── DIRECT CHOP override ──────────────────────────────
             # When goal=tree and color detection sees a log/leaves, bypass
             # all skill/FSM/aim complexity and just left-click center screen.
@@ -908,7 +945,16 @@ def run():
             used_skill  = None
             src_tag     = 'idle'
 
-            if replayer.is_active():
+            if _overseer_flee_ticks_left > 0:
+                # Emergency override from core/overseer.py — pre-empts
+                # skills/FSM/replay entirely, same as the FSM's own FLEE.
+                _overseer_flee_ticks_left -= 1
+                action_dict = {'key': 'shift+s', 'action': 'overseer:flee',
+                               'observation': 'Overseer-directed flee',
+                               'confidence': 0.9}
+                src_tag = 'OVERSEER:flee'
+
+            elif replayer.is_active():
                 name = replayer._current.name[:10] if replayer._current else '?'
                 src_tag = f'REPLAY:{name}'
 
