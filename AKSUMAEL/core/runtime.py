@@ -89,6 +89,7 @@ from memory.goal_interpreter import GoalInterpreter
 from memory.progression      import ProgressionTracker
 from memory.minecraft_kb     import MinecraftKB
 from memory.rl_policy        import RLPolicy
+from memory                  import chest_memory
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
 from audio.tts               import TTSEngine
@@ -752,6 +753,12 @@ def run():
 
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
                                               goal=goals.current_goal(), frame=frame)
+
+            # rebuild_fort placed its chest this tick — record the location
+            # so it can be found again later (memory/chest_memory.py).
+            if isinstance(fsm_action, dict) and fsm_action.get('chest_coords'):
+                _cx, _cy, _cz = fsm_action['chest_coords']
+                chest_memory.record_chest(_cx, _cy, _cz)
 
             # Aim-stall tracking — see _aim_stall_ticks comment above. Tracks
             # the FSM's own action regardless of which goal is currently
@@ -1559,12 +1566,16 @@ def run():
             if (_craft_condition
                     and not replayer.is_active()
                     and crafting_behavior.should_trigger(objects)):
-                crafting_behavior.run(objects=objects)
+                _crafted = crafting_behavior.run(objects=objects)
+                if _crafted:
+                    inventory.on_craft_success(_crafted)
             # 2x2: trigger proactively (no table needed) — e.g. turn logs→planks
             # or planks→sticks so we're ready when a table appears.
             elif (not replayer.is_active()
                     and crafting_behavior.should_trigger_2x2()):
-                crafting_behavior.run(objects=objects)
+                _crafted = crafting_behavior.run(objects=objects)
+                if _crafted:
+                    inventory.on_craft_success(_crafted)
 
             # ── Drop junk when inventory is full ─────────────────
             if not replayer.is_active() and not _menu_open:
@@ -1583,6 +1594,10 @@ def run():
                 if chest_items:
                     world_mem.chest_inv = {**world_mem.chest_inv, **chest_items}
                     print(f'[CHEST] merged contents: {chest_items}')
+                if world_mem.pos_x is not None and world_mem.pos_z is not None:
+                    chest_memory.record_chest(
+                        world_mem.pos_x, world_mem.y_level, world_mem.pos_z,
+                        chest_items or None)
                 chest_mgr.close(executor)
                 _last_chest_tick = tick
 

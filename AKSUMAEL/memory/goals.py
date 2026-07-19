@@ -29,6 +29,11 @@ _CRAFT_RESULT_ITEM = {
 _PLANK_VARIANTS = ("oak_planks", "spruce_planks", "birch_planks",
                    "jungle_planks", "acacia_planks", "dark_oak_planks")
 
+# rebuild_fort auto-trigger — mirrors core/fsm.py's BASE_EXCLUSION_RADIUS
+# (not imported directly: memory/ doesn't depend on core/).
+_FORT_PLANK_THRESHOLD = 10
+_FORT_BASE_RADIUS     = 30
+
 GOAL_PRIORITIES = {
     "survive_night": 10,
     "eat": 9,
@@ -135,6 +140,24 @@ class GoalStack:
             _wood_goal = inventory.wood_subgoal()
             if _wood_goal:
                 self.push(_wood_goal)
+
+        # Base rebuild — enough planks banked and standing near the
+        # remembered base point. core/fsm.py's rebuild_fort handler does
+        # the actual building once this goal is active; only fires from
+        # explore so it never interrupts a goal already in progress.
+        plank_total = sum(inventory.items.get(p, 0) for p in _PLANK_VARIANTS)
+        base_sx = getattr(world_memory, 'spawn_x', None)
+        base_sz = getattr(world_memory, 'spawn_z', None)
+        pos_x   = getattr(world_memory, 'pos_x', None)
+        pos_z   = getattr(world_memory, 'pos_z', None)
+        near_base = (
+            pos_x is not None and pos_z is not None
+            and base_sx is not None and base_sz is not None
+            and ((pos_x - base_sx) ** 2 + (pos_z - base_sz) ** 2) ** 0.5 <= _FORT_BASE_RADIUS
+        )
+        if (plank_total >= _FORT_PLANK_THRESHOLD and near_base
+                and self.current == "explore" and not self.has_goal("rebuild_fort")):
+            self.push("rebuild_fort")
 
         # Need food — hunger below 60% and no food in inventory
         hunger_frac = (world_memory.hunger_level / 20.0
