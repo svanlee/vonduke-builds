@@ -25,6 +25,7 @@ import config
 from memory.goals import INJECTED_GOALS_PATH, GOALS_PATH
 from axon.command_parser import parse
 from axon.speaker import Speaker
+from audio.device_probe import select_devices, alsa_card
 
 WAKE_CHUNK_SEC = 3.0    # rolling window while waiting for the wake word
 COMMAND_SEC    = 5.0    # recording length after the wake word fires
@@ -65,9 +66,18 @@ def _read_current_goal() -> str:
 
 class AxonHub:
     def __init__(self):
-        self.speaker = Speaker()
+        self._in_device = None
+        self._out_device = None
+        self._select_audio_devices()
+        self.speaker = Speaker(alsa_device=alsa_card(self._out_device))
         self._model = None
         self.enabled = self._probe()
+
+    def _select_audio_devices(self):
+        in_idx, in_dev, out_idx, out_dev = select_devices()
+        self._in_device_idx = in_idx
+        self._in_device      = in_dev
+        self._out_device     = out_dev
 
     def _probe(self) -> bool:
         try:
@@ -101,9 +111,8 @@ class AxonHub:
     def _record(self, seconds: float):
         import sounddevice as sd
         frames = int(seconds * SAMPLE_RATE)
-        device = None if config.AXON_MIC_INDEX < 0 else config.AXON_MIC_INDEX
         audio = sd.rec(frames, samplerate=SAMPLE_RATE, channels=1,
-                        dtype='float32', device=device, blocking=True)
+                        dtype='float32', device=self._in_device_idx, blocking=True)
         return audio.flatten()
 
     def _transcribe(self, audio) -> str:

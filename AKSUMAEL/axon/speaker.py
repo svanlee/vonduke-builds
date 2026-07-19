@@ -4,15 +4,24 @@
 # ║  back to espeak/espeak-ng; silent no-op if neither)  ║
 # ╚══════════════════════════════════════════════════════╝
 
+import os
 import shutil
 import subprocess
 
 
 class Speaker:
-    def __init__(self):
+    def __init__(self, alsa_device: str = None):
         self._engine = None
         self._espeak_bin = None
         self._mode = None
+        if alsa_device:
+            # Neither pyttsx3's espeak driver nor the plain `espeak` CLI
+            # take a device argument on Linux — both shell out to ALSA's
+            # implicit "default" PCM. ALSA_CARD redirects that default to
+            # our probed card, scoped to this process only.
+            card = alsa_device.split(':', 1)[1].split(',')[0] if ':' in alsa_device else None
+            if card:
+                os.environ['ALSA_CARD'] = card
         if not self._init_pyttsx3():
             self._init_espeak()
 
