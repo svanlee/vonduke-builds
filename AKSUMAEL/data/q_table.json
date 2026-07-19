@@ -32,7 +32,8 @@
     "leaves_tree_b68e8c": 3.3828014364080445,
     "leaves_tree_079222": 3.702813344396249,
     "leaves_tree_061af6": 3.681211316278896,
-    "oak_planks_9f7d59": 3.7608495636304964
+    "oak_planks_9f7d59": 3.7608495636304964,
+    "mob_cf2971": 3.9039697762631804
   },
   "armor_bar,emerald_ore,health_bar": {
     "mine_emerald_ore": 0.8117347326278601,
@@ -404,5 +405,13 @@
   "armor_bar,diamond_ore,health_bar": {
     "leaves_tree_f075ea": 3.724362298138974
   },
-  "armor_bar,gravel,health_bar": {}
+  "armor_bar,gravel,health_bar": {},
+  "birch_log,chicken,cow": {
+    "hunt_sheep": 0.6211726948669658
+  },
+  "armor_bar,cow,health_bar": {},
+  "armor_bar,chicken,cow": {},
+  "armor_bar,birch_log,cow": {},
+  "armor_bar,cow,creeper": {},
+  "chicken,health_bar,hotbar": {}
 }

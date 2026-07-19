@@ -136,10 +136,10 @@
   "avg_reward": 0.5,
   "uses": 0,
   "created": 1752278400.0,
-  "last_used": 1784291342.9668102,
+  "last_used": 1784462991.311268,
   "preconditions": {},
   "postconditions": {},
-  "success_count": 1,
+  "success_count": 2,
   "failed_count": 0,
   "blacklisted": false,
   "universal": false
