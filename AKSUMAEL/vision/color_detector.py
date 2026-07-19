@@ -125,6 +125,14 @@ ORE_COLOR_RANGES = [
     # pixel cluster (shadow, night sky, cave wall); high min_px to require a
     # sizeable coherent blob, but still expect false positives in dark caves.
     ('spider',            0,   30,    0,   50,    5,   40,  250),
+
+    # ── Passive mobs — added for hunting when hungry (FSM EAT state) ──
+    # Same labels as PASSIVE_MOBS in core/fsm.py so these match the
+    # existing animal-targeting logic identically to a real YOLO detection.
+    ('cow',              10,   30,   30,  120,   10,   80,  100),
+    ('pig',               0,   15,  100,  200,  120,  200,  150),
+    ('sheep',             0,  179,    0,   30,  180,  255,  200),
+    ('chicken',           0,  179,    0,   30,  150,  255,  150),
 ]
 
 # Exclude bottom 25 % of frame (HUD area) from color detection
