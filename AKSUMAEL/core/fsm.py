@@ -654,7 +654,7 @@ class GameFSM:
         }
 
         # ── Priority 1: hunger ────────────────────────────────────
-        if hunger_frac < 0.40:
+        if hunger_frac < 0.20:
             return self._goto(State.EAT, _idle())
 
         # ── Priority 2: hostile mob → flee ────────────────────────
@@ -748,9 +748,17 @@ class GameFSM:
         s = self.state
 
         if s == State.EAT:
-            if hunger_frac >= 0.40:
+            # If hunger recovered, go back to what we were doing
+            if hunger_frac >= 0.20:
                 return self._goto(State.EXPLORE, _idle())
-            return self.state, _idle()
+            # If we can see an animal right now, hunt it immediately
+            if animal_obj:
+                print(f'[FSM] EAT: animal visible ({animal_obj.get("label")}) → HUNT')
+                return self._goto(State.HUNT, self._begin_hunt(animal_obj))
+            # No animal visible — explore to find one
+            # (don't just idle — go find food)
+            print('[FSM] EAT: no food/animal visible → exploring for food')
+            return self._do_explore(world_mem, goal)
 
         elif s == State.COLLECT:
             return self._do_collect()
