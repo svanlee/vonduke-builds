@@ -28,8 +28,7 @@ WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
 ExecStart=/home/ros/vonduke-builds/AKSUMAEL/tools/start_mastermind.sh
 Environment=MQTT_HOST=127.0.0.1
 Environment=MQTT_PORT=1883
-Restart=on-failure
-RestartSec=10
+Restart=no
 
 [Install]
 WantedBy=multi-user.target

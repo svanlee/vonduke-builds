@@ -7,8 +7,7 @@ Wants=aksumael.service
 Type=simple
 WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
 ExecStart=/usr/bin/bash /home/ros/vonduke-builds/AKSUMAEL/tools/start_axon.sh
-Restart=on-failure
-RestartSec=10
+Restart=no
 StandardOutput=append:/tmp/axon.log
 StandardError=append:/tmp/axon.log
 
