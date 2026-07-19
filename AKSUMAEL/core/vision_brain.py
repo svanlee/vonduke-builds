@@ -1,6 +1,7 @@
 import json
 
 import config
+from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import route_llm_call, frame_to_b64
 
 _call_counts = {'local': 0, 'gemini': 0, 'claude': 0}
@@ -31,7 +32,8 @@ def _format_detections(objects: list) -> str:
     return 'YOLO detections:\n' + '\n'.join(lines)
 
 
-_VISION_PROMPT = """{context}
+_VISION_PROMPT = """{identity}
+{context}
 
 Recent history:
 {recent_history}
@@ -66,7 +68,8 @@ def ask_vision(frame, recent_history: str = "", objects: list = None,
     """
     base_context = config.game_context_for_phase(phase)
     context = f"{base_context}\n\n{_format_detections(objects or [])}"
-    prompt = _VISION_PROMPT.format(context=context, recent_history=recent_history)
+    prompt = _VISION_PROMPT.format(identity=AKSUMAEL_IDENTITY, context=context,
+                                   recent_history=recent_history)
 
     global _last_provider
     raw, provider = route_llm_call(

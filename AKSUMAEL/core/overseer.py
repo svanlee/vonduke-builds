@@ -16,6 +16,7 @@ Directive schema:
 import json
 import threading
 import time
+from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import call_claude_direct
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
@@ -43,7 +44,8 @@ def get_last_directive() -> dict:
 
 def _build_prompt(snapshot: dict) -> str:
     """Build the overseer prompt from the current agent snapshot."""
-    return f"""You are the Aksūmal Overseer — the strategic intelligence for an autonomous robot agent.
+    return f"""{AKSUMAEL_IDENTITY}
+You are the Aksūmal Overseer — the strategic intelligence for an autonomous robot agent.
 
 Current agent state:
 - Environment: {snapshot.get('env', 'minecraft')}
