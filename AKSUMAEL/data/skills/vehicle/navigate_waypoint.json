@@ -1,0 +1,11 @@
+{
+  "id": "navigate_waypoint",
+  "name": "Navigate to Waypoint",
+  "category": "vehicle",
+  "description": "Drive to an AprilTag waypoint using learned policy",
+  "env": "vehicle",
+  "actions": [
+    {"type": "throttle", "value": 0.4, "steering": 0.0, "duration_ticks": 1}
+  ],
+  "tags": ["vehicle", "navigation", "apriltag"]
+}
