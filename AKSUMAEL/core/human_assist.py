@@ -85,6 +85,7 @@ class HumanAssist:
 
         self._device     = None
         self._available  = False
+        self._evdev_missing = False   # true once we know evdev itself isn't installed
         self._axis_range = {}
         self._thread     = None
         self._running    = False
@@ -118,7 +119,12 @@ class HumanAssist:
         self._find_device()
 
     # ── Device discovery ────────────────────────────────────────
-    def _find_device(self):
+    # Probed once at startup and then re-probed on a timer (see
+    # _supervisor_loop) so plugging a controller in after AKSUMAEL is
+    # already running doesn't require a restart to pick it up.
+    PROBE_INTERVAL_SEC = 5
+
+    def _find_device(self, quiet: bool = False) -> bool:
         try:
             from evdev import list_devices, InputDevice, ecodes
             for path in list_devices():
@@ -129,12 +135,19 @@ class HumanAssist:
                     self._available = True
                     self._read_axis_ranges()
                     print(f'[HumanAssist] found controller: {dev.name} ({path})')
-                    return
-            print('[HumanAssist] no Xbox controller found on /dev/input — human-assist disabled')
+                    return True
+            if not quiet:
+                print(f'[HumanAssist] no Xbox controller found on /dev/input — '
+                      f'will keep checking every {self.PROBE_INTERVAL_SEC}s')
+            return False
         except ImportError:
             print('[HumanAssist] python-evdev not installed — human-assist disabled')
+            self._evdev_missing = True
+            return False
         except Exception as e:
-            print(f'[HumanAssist] controller detection error: {e}')
+            if not quiet:
+                print(f'[HumanAssist] controller detection error: {e}')
+            return False
 
     def _read_axis_ranges(self):
         from evdev import ecodes
@@ -160,16 +173,46 @@ class HumanAssist:
 
     # ── Lifecycle ────────────────────────────────────────────────
     def start(self):
-        if not self._available:
+        if self._evdev_missing:
             return
         self._running = True
-        self._event_thread = threading.Thread(target=self._event_loop, daemon=True,
-                                               name='human_assist_evdev')
-        self._event_thread.start()
-        self._thread = threading.Thread(target=self._dispatch_loop, daemon=True,
-                                        name='human_assist_dispatch')
+        self._thread = threading.Thread(target=self._supervisor_loop, daemon=True,
+                                        name='human_assist_supervisor')
         self._thread.start()
-        print('[HumanAssist] controller threads started (20Hz dispatch)')
+        print(f'[HumanAssist] supervisor started — '
+              f'{"controller already connected" if self._available else "probing for a controller"}')
+
+    def _supervisor_loop(self):
+        """Owns the connect/disconnect lifecycle: launches the event+dispatch
+        threads once a controller is found, waits for them to end (which
+        only happens on physical disconnect — see _event_loop/_dispatch_loop),
+        then goes back to probing on a timer so a controller plugged in
+        after AKSUMAEL started still gets picked up without a restart."""
+        while self._running:
+            if not self._available:
+                self._find_device(quiet=True)
+            if not self._available:
+                time.sleep(self.PROBE_INTERVAL_SEC)
+                continue
+
+            self._event_thread = threading.Thread(target=self._event_loop, daemon=True,
+                                                   name='human_assist_evdev')
+            self._event_thread.start()
+            print('[HumanAssist] controller connected — dispatch loop starting (20Hz)')
+            self._dispatch_loop()   # blocks until _running=False or the device drops
+            if self._running:
+                print('[HumanAssist] controller disconnected — will keep probing '
+                      f'every {self.PROBE_INTERVAL_SEC}s')
+                if self.human_mode:
+                    # Nobody's holding the controller anymore — don't leave
+                    # the FSM paused indefinitely or a key/click stuck down.
+                    self.human_mode = False
+                    if self._mining:
+                        self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
+                                               'source': 'human'})
+                        self._mining = False
+                    self.executor.release_all()
+                    print('[HumanAssist] Switched to AI mode (controller lost mid-session)')
 
     def stop(self):
         self._running = False
@@ -258,7 +301,7 @@ class HumanAssist:
     # ── 20Hz dispatch: map state -> HID actions + record episode ──
     def _dispatch_loop(self):
         self._queue_hotbar = False
-        while self._running:
+        while self._running and self._available:
             t0 = time.time()
             try:
                 self._dispatch_once()

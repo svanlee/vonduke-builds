@@ -1,13 +1,13 @@
 {
   "seen_objects": {
-    "hotbar": 71876,
-    "xp_bar": 80498,
-    "health_bar": 78109,
-    "armor_bar": 77366,
-    "hunger_bar": 59838,
+    "hotbar": 71974,
+    "xp_bar": 80724,
+    "health_bar": 78207,
+    "armor_bar": 77464,
+    "hunger_bar": 59939,
     "coal_ore": 7635,
     "diamond_ore": 3033,
-    "emerald_ore": 31232,
+    "emerald_ore": 31233,
     "redstone_ore": 47394,
     "lapis_ore": 23434,
     "gold_ore": 10955,
@@ -15,30 +15,22 @@
     "torch": 22,
     "crosshair": 77,
     "oak_planks": 45,
-    "log": 23551,
-    "leaves": 20253,
+    "log": 23735,
+    "leaves": 20351,
     "birch_log": 8256,
     "pig": 578,
-    "chicken": 861,
+    "chicken": 881,
     "cobblestone": 2,
     "gravel": 4,
     "stone": 16,
-    "spider": 2087,
+    "spider": 2102,
     "zombie": 1258,
     "skeleton": 534,
     "creeper": 23,
-    "cow": 1366,
-    "sheep": 639
+    "cow": 1388,
+    "sheep": 654
   },
   "recent_events": [
-    {
-      "t": "10:36:50",
-      "event": "survey sweep"
-    },
-    {
-      "t": "10:39:32",
-      "event": "chopped log"
-    },
     {
       "t": "10:41:13",
       "event": "survey sweep"
@@ -110,47 +102,54 @@
     {
       "t": "12:13:47",
       "event": "survey sweep"
+    },
+    {
+      "t": "12:34:42",
+      "event": "chopped log"
+    },
+    {
+      "t": "12:36:16",
+      "event": "survey sweep"
     }
   ],
-  "total_ticks": 133550,
+  "total_ticks": 133650,
   "deaths": 916,
-  "surveys": 4794,
+  "surveys": 4795,
   "depth_estimate": 63,
-  "hunger_level": 19,
-  "game_tick": 12550,
+  "hunger_level": 20,
+  "game_tick": 12650,
   "pickaxe_uses": 497,
   "y_level": 63,
   "biome": "overworld",
-  "wood_count": 54,
+  "wood_count": 55,
   "food_items": [],
   "animals_seen": {
     "pig": 132579,
-    "chicken": 133516,
-    "cow": 133550,
-    "sheep": 133400
+    "chicken": 133645,
+    "cow": 133593,
+    "sheep": 133641
   },
   "near_water": false,
-  "llm_calls": 2095,
+  "llm_calls": 2107,
   "known_trees": [
-    {
-      "x": 6.6,
-      "z": 60.0,
-      "timestamp": 1784478343.7264183
-    },
     {
       "x": -33.0,
       "z": 61.0,
-      "timestamp": 1784478677.0760164
+      "timestamp": 1784479138.7631
     }
   ],
   "fort_location": null,
-  "base_coords": null,
+  "base_coords": [
+    40,
+    75,
+    -44
+  ],
   "home": null,
-  "facing": "south",
+  "facing": "west",
   "fps": 39,
   "chunk_x": -4,
   "chunk_z": 3,
   "light_level": null,
   "day_count": null,
-  "last_saved": "2026-07-19 12:31:17"
+  "last_saved": "2026-07-19 12:42:41"
 }
