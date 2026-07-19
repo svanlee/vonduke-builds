@@ -56,6 +56,27 @@ class InventoryTracker:
                 self.items['wood'] += qty
                 print(f'[INV] wood: {before_wood} -> {self.items["wood"]}')
 
+    # Approximate output count per successful craft (behaviors/crafting.py
+    # CraftingBehavior.run() only confirms a recipe fired, not the exact
+    # stack size produced — these mirror vanilla yields closely enough for
+    # the estimate this tracker already is).
+    _CRAFT_YIELDS = {
+        'oak_planks': ('oak_planks', 4), 'spruce_planks': ('spruce_planks', 4),
+        'birch_planks': ('birch_planks', 4), 'jungle_planks': ('jungle_planks', 4),
+        'acacia_planks': ('acacia_planks', 4), 'dark_oak_planks': ('dark_oak_planks', 4),
+        'stick': ('stick', 4),
+        'torch': ('torch', 4), 'torch_charcoal': ('torch', 4),
+    }
+
+    def on_craft_success(self, recipe_name: str):
+        """Record the output of a successful CraftingBehavior.run() (see
+        core/runtime.py) — recipe_name is whatever it returned. Defaults to
+        +1 of the recipe's own name (true for tools/table/furnace/chest)."""
+        item, qty = self._CRAFT_YIELDS.get(recipe_name, (recipe_name, 1))
+        before = self.items[item]
+        self.items[item] += qty
+        print(f'[INV] {item}: {before} -> {self.items[item]} (+{qty} from craft:{recipe_name})')
+
     def wood_count(self) -> int:
         """Total logs across every tracked wood key."""
         return (self.items.get('wood', 0) + self.items.get('oak_log', 0)

@@ -270,20 +270,44 @@ STRAIGHT_DOWN_EXEMPT    = ORE_TARGETS | TREE_TARGETS
 # memory/world_memory.py's update_f3()).
 FALL_JUMP_TICKS = 2
 
-# ── rebuild_fort (2026-07-18) ───────────────────────────────────────────
+# ── rebuild_fort (2026-07-19) ───────────────────────────────────────────
 # Fallback-scope implementation of the injectable rebuild_fort goal: this
 # bot has no live "expected vs actual block" comparison (that needs a real
-# block-presence read, which doesn't exist here), so instead of a full HTN
-# wall-repair it navigates to the remembered fort/base point and places
-# cobblestone at a fixed 3x3 floor pattern around it.
+# block-presence read, which doesn't exist here) or true 3D aim, so instead
+# of a full HTN wall-repair it navigates to the remembered fort/base point
+# and blind-places a fixed build plan around it — floor, then a 2-high
+# perimeter wall, then one chest — relying on Minecraft's own placement
+# rule (a block always lands adjacent to whatever face the crosshair is
+# over) to spread the pattern out from repeated "look, click" ticks, the
+# same trick the original 8-cell floor ring used.
 FORT_APPROACH_DIST  = 2.0   # stop navigating once within this many blocks
-FORT_FLOOR_OFFSETS  = [(dx, dz) for dx in (-1, 0, 1) for dz in (-1, 0, 1)
-                       if not (dx == 0 and dz == 0)]   # 8 cells around centre
-# Hotbar slot assumed to hold cobblestone for placement. The FSM has no
-# live hotbar-slot read (only behaviors/inventory_reader.py does, and it's
-# a runtime-level behavior, not available inside core/fsm.py) — hardcoded
-# per the rebuild_fort fallback spec; adjust if cobblestone sits elsewhere.
-FORT_COBBLESTONE_SLOT = '3'
+FORT_HALF_SIZE       = 2   # 5x5 footprint: offsets run -2..+2 on each axis
+_FORT_RANGE          = range(-FORT_HALF_SIZE, FORT_HALF_SIZE + 1)
+FORT_FLOOR_OFFSETS  = [(dx, dz) for dx in _FORT_RANGE for dz in _FORT_RANGE
+                       if not (dx == 0 and dz == 0)]   # 24 cells, centre excluded (player stands there)
+# Perimeter of the 5x5 footprint — the cells actually on the outer edge —
+# each placed at two heights to make a 2-block-high wall.
+FORT_WALL_OFFSETS   = [(dx, dz) for dx in _FORT_RANGE for dz in _FORT_RANGE
+                       if abs(dx) == FORT_HALF_SIZE or abs(dz) == FORT_HALF_SIZE]
+FORT_WALL_LAYERS    = (0, 1)   # two placement passes per perimeter cell
+# Chest sits one cell in from a corner — inside the walls, reachable from centre.
+FORT_CHEST_OFFSET   = (FORT_HALF_SIZE - 1, FORT_HALF_SIZE - 1)
+# Hotbar slots assumed to hold each material. The FSM has no live
+# hotbar-slot read (only behaviors/inventory_reader.py does, and it's a
+# runtime-level behavior, not available inside core/fsm.py) — hardcoded
+# per the rebuild_fort fallback spec; adjust if materials sit elsewhere.
+FORT_FLOOR_SLOT  = '3'   # dirt/cobblestone
+FORT_WALL_SLOT   = '4'   # planks/logs
+FORT_CHEST_SLOT  = '5'   # chest
+
+# Full sequential build plan: (phase, ox, oz, layer, hotbar_slot). Consumed
+# one entry per tick by _do_rebuild_fort via self._fort_place_index.
+FORT_BUILD_PLAN = (
+    [('floor', ox, oz, 0, FORT_FLOOR_SLOT) for ox, oz in FORT_FLOOR_OFFSETS]
+    + [('wall', ox, oz, layer, FORT_WALL_SLOT)
+       for layer in FORT_WALL_LAYERS for ox, oz in FORT_WALL_OFFSETS]
+    + [('chest', FORT_CHEST_OFFSET[0], FORT_CHEST_OFFSET[1], 0, FORT_CHEST_SLOT)]
+)
 
 
 # ── State enum ────────────────────────────────────────────────────────────────
@@ -606,14 +630,16 @@ class GameFSM:
         # ── Watchdog: force EXPLORE if stuck in one state too long ────────
         # Evaluated before every other priority (including fall/hunger) so a
         # genuinely stalled state always gets rescued regardless of what a
-        # lower-priority check would otherwise decide this tick. Skipped
-        # while EAT is active — HungerBehavior owns that state's pacing and
-        # shouldn't be yanked away from a meal in progress.
+        # lower-priority check would otherwise decide this tick. EAT used to
+        # be exempted here (HungerBehavior "owns" that state's pacing), but
+        # that exemption let a broken EAT loop run all night doing nothing
+        # (2026-07-19) — a stuck EAT is exactly the kind of stall this
+        # watchdog exists to catch, so it's no longer special-cased.
         if reward is not None and reward > WATCHDOG_REWARD_THRESH:
             self._same_state_ticks = 0
         else:
             self._same_state_ticks += 1
-        if self.state != State.EAT and self._same_state_ticks > WATCHDOG_TICKS:
+        if self._same_state_ticks > WATCHDOG_TICKS:
             print(f'[WATCHDOG] state={self.state.value} stuck for '
                   f'{self._same_state_ticks} ticks → forcing EXPLORE')
             self._same_state_ticks = 0
@@ -877,9 +903,9 @@ class GameFSM:
 
     def _do_rebuild_fort(self, world_mem):
         """rebuild_fort goal handler: navigate to the remembered fort/base
-        point, then place cobblestone at a fixed 3x3 floor pattern around it
-        (see FORT_FLOOR_OFFSETS). Returns None if we can't navigate yet (no
-        F3 fix, no facing, no fort coords) — caller falls back to blind
+        point, then work through FORT_BUILD_PLAN — a 5x5 floor, a 2-high
+        perimeter wall, and one chest. Returns None if we can't navigate yet
+        (no F3 fix, no facing, no fort coords) — caller falls back to blind
         explore sweep in that case."""
         fort = _resolve_fort_coords(world_mem)
         px = getattr(world_mem, 'pos_x', None)
@@ -907,23 +933,34 @@ class GameFSM:
             ad['confidence']  = 0.5
             return ad
 
-        # Close enough — place the next block in the hardcoded floor pattern.
-        if self._fort_place_index >= len(FORT_FLOOR_OFFSETS):
+        # Close enough — place the next step in the hardcoded build plan
+        # (floor, then 2-high perimeter wall, then a chest — see
+        # FORT_BUILD_PLAN above).
+        if self._fort_place_index >= len(FORT_BUILD_PLAN):
             ad['action']      = 'rebuild_fort:done'
-            ad['observation'] = 'Fort floor pattern complete'
+            ad['observation'] = 'Fort build plan complete'
             ad['confidence']  = 0.7
             self._fort_place_index = 0   # reset in case the goal gets re-injected
             return ad
 
-        ox, oz = FORT_FLOOR_OFFSETS[self._fort_place_index]
-        ad['key']         = FORT_COBBLESTONE_SLOT   # select cobblestone hotbar slot
-        ad['look']        = {'dx': 0, 'dy': 30}      # look down toward the floor
+        phase, ox, oz, layer, slot = FORT_BUILD_PLAN[self._fort_place_index]
+        # Floor: look straight down. Wall layer 0: level pitch (placing
+        # against the floor block's side). Wall layer 1 / chest: look
+        # slightly up to stack the second course. Same blind "look and
+        # click, let Minecraft's face-adjacency rule spread the pattern"
+        # trick the floor ring already relied on — no real 3D aim here.
+        pitch = 30 if phase == 'floor' else (0 if layer == 0 else -20)
+        ad['key']         = slot
+        ad['look']        = {'dx': 0, 'dy': pitch}
         ad['click']       = [50.0, 50.0]
         ad['button']      = 'right'
-        ad['action']      = f'rebuild_fort:place({fx + ox:.0f},{fz + oz:.0f})'
-        ad['observation'] = (f'Placing cobblestone {self._fort_place_index + 1}/'
-                             f'{len(FORT_FLOOR_OFFSETS)} at fort floor')
+        ad['action']      = f'rebuild_fort:place_{phase}({fx + ox:.0f},{fz + oz:.0f})'
+        ad['observation'] = (f'Placing {phase} {self._fort_place_index + 1}/'
+                             f'{len(FORT_BUILD_PLAN)} at fort')
         ad['confidence']  = 0.6
+        if phase == 'chest':
+            # Runtime records this in memory/chest_memory.py once executed.
+            ad['chest_coords'] = (fx + ox, _fy, fz + oz)
         self._fort_place_index += 1
         return ad
 
