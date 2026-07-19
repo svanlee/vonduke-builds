@@ -349,7 +349,7 @@ MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
 # memory.goals.GoalStack.check_injected_goals), so no separate polling
 # path is needed in core/runtime.py.
 AXON_WHISPER_MODEL = "base"     # tiny/base/small — bigger is slower but more accurate
-AXON_WAKE_WORDS    = ["computer"]
+AXON_WAKE_WORDS    = ["computer", "aksumael"]
 
 # ── Audio device selection (audio/device_probe.py) ─────────────
 # None = auto-detect at startup by name keyword priority (Victus > USB
