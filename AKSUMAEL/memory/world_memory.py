@@ -76,6 +76,11 @@ class WorldMemory:
         # ── HUD pixel read (v1.3) — see memory/hud_reader.py ───────
         self.health_pct    = 1.0
         self.hunger_pct    = 1.0
+        # ── FSM state (v1.4) — mirrored here (not just kept in the FSM
+        # object) so axon/hub.py, which runs as its own separate process
+        # (see axon/hub.py module docstring), can read AKSUMAEL's current
+        # state off disk for voice Q&A context (memory/context.py).
+        self.fsm_state     = 'UNKNOWN'
         self._load()
 
     def _load(self):
@@ -108,6 +113,7 @@ class WorldMemory:
                 self.chunk_z       = d.get('chunk_z')
                 self.light_level   = d.get('light_level')
                 self.day_count     = d.get('day_count')
+                self.fsm_state     = d.get('fsm_state', 'UNKNOWN')
             except Exception:
                 pass
 
@@ -140,6 +146,7 @@ class WorldMemory:
             'chunk_z':       self.chunk_z,
             'light_level':   self.light_level,
             'day_count':     self.day_count,
+            'fsm_state':     self.fsm_state,
             'last_saved':    time.strftime('%Y-%m-%d %H:%M:%S'),
         }
         with open(MEMORY_FILE, 'w') as f:

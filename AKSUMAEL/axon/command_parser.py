@@ -35,6 +35,27 @@ _STATUS_PATTERN = re.compile(
 )
 
 
+def parse_deterministic(transcript: str) -> dict | None:
+    """Try only the free (non-LLM) status/rule matches. Returns None if
+    nothing matched, rather than falling through to the LLM goal-parse —
+    callers (e.g. axon/hub.py) use that None to decide whether a transcript
+    that matched no rule should be treated as a question (see
+    _looks_like_question in axon/hub.py) before ever paying for a local-LLM
+    call trying to force it into a goal."""
+    text = (transcript or "").strip()
+    if not text:
+        return {"type": "unknown"}
+
+    if _STATUS_PATTERN.search(text):
+        return {"type": "query", "query": "status"}
+
+    for pattern, goal, priority in _COMPILED_RULES:
+        if pattern.search(text):
+            return {"type": "goal", "goal": goal, "priority": priority, "source": "rule"}
+
+    return None
+
+
 def parse(transcript: str) -> dict:
     """
     Parse a voice command transcript into a structured intent:
@@ -46,12 +67,9 @@ def parse(transcript: str) -> dict:
     if not text:
         return {"type": "unknown"}
 
-    if _STATUS_PATTERN.search(text):
-        return {"type": "query", "query": "status"}
-
-    for pattern, goal, priority in _COMPILED_RULES:
-        if pattern.search(text):
-            return {"type": "goal", "goal": goal, "priority": priority, "source": "rule"}
+    det = parse_deterministic(text)
+    if det is not None:
+        return det
 
     return _parse_with_local_llm(text)
 
