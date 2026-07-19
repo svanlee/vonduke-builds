@@ -52,16 +52,40 @@ CREATE TABLE IF NOT EXISTS human_episodes (
 );
 """
 
-POLL_HZ            = 20
+POLL_HZ            = 60    # was 20 — 2026-07-19 latency pass. evdev event
+                            # capture itself is interrupt-driven (near-zero
+                            # added delay, see _event_loop's blocking
+                            # read_loop()); this is the dispatch-loop cadence
+                            # that turns cached stick/button state into HID
+                            # actions, so it's the real ceiling on responsiveness.
 POLL_INTERVAL_SEC  = 1.0 / POLL_HZ
 POLL_INTERVAL_MS   = int(POLL_INTERVAL_SEC * 1000)
 
+# Delay between the press and release packet of a discrete tap (jump,
+# hotbar, use/place) — see action_dict_to_packets/KB2040Serial.send_action,
+# which sleeps delay_ms after *every* packet it sends. Actions below that
+# don't pass their own delay_ms fall back to config.KEY_HOLD_MS (500ms,
+# tuned for the AI's 250ms FSM tick, see config.py) — that fallback used to
+# silently apply here too, blocking this 20/60Hz dispatch loop for up to a
+# full second per jump/hotbar/use-place tap and 500ms per look update
+# (single packet, no release to pair with — the 500ms sleep served no
+# purpose at all) or crouch/sprint/mine hold edge. HID_TAP_MS is just long
+# enough for a game running at 60fps to see the key go down and back up as
+# two distinct frames; hold/look actions pass delay_ms=0 outright since
+# there's nothing after them to sequence against.
+HID_TAP_MS         = 15
+
 # Raw stick axes are normalised to -127..+127 (see _norm_axis, matching
-# input/controller_router.py's EvdevController).
-STICK_DEADZONE     = 12
+# input/controller_router.py's EvdevController). ~8000/32767 of full
+# deflection, converted to this module's -127..127 scale, to filter out
+# analog drift/noise near center regardless of the controller's actual
+# raw axis range (2026-07-19).
+STICK_DEADZONE     = 31
 LOOK_SENSITIVITY   = 0.15   # mouse-look dx/dy per raw stick unit
 MOVE_DEADZONE      = 40     # coarser deadzone for movement so light drift
                              # on the right stick doesn't walk the player
+                             # (already stricter than STICK_DEADZONE, so no
+                             # change needed here for the same drift-noise ask)
 TRIGGER_THRESHOLD  = 40     # 0-255 trigger value that counts as "pressed"
 
 HOTBAR_SLOTS = [str(n) for n in range(1, 10)]
@@ -200,7 +224,7 @@ class HumanAssist:
             self._event_thread = threading.Thread(target=self._event_loop, daemon=True,
                                                    name='human_assist_evdev')
             self._event_thread.start()
-            print('[HumanAssist] controller connected — dispatch loop starting (20Hz)')
+            print(f'[HumanAssist] controller connected — dispatch loop starting ({POLL_HZ}Hz)')
             self._dispatch_loop()   # blocks until _running=False or the device drops
             if self._running:
                 print('[HumanAssist] controller disconnected — will keep probing '
@@ -211,7 +235,7 @@ class HumanAssist:
                     self.human_mode = False
                     if self._mining:
                         self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                               'source': 'human'})
+                                               'delay_ms': 0, 'source': 'human'})
                         self._mining = False
                     self.executor.release_all()
                     # release_all() just cleared shift/ctrl on the HID side —
@@ -366,7 +390,7 @@ class HumanAssist:
                 # instant control was handed back to the FSM.
                 if self._mining:
                     self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                           'source': 'human'})
+                                           'delay_ms': 0, 'source': 'human'})
                     self._mining = False
                 self.executor.release_all()
                 self._prev_lt_held = False
@@ -383,7 +407,7 @@ class HumanAssist:
             dx = int(lx * LOOK_SENSITIVITY)
             dy = int(ly * LOOK_SENSITIVITY)
             if dx or dy:
-                self.executor.execute({'look': {'dx': dx, 'dy': dy}, 'source': 'human'})
+                self.executor.execute({'look': {'dx': dx, 'dy': dy}, 'delay_ms': 0, 'source': 'human'})
                 action_parts.append(f'look({dx},{dy})')
 
         # Right stick -> WASD movement. Not a real hardware hold (the
@@ -407,7 +431,7 @@ class HumanAssist:
 
         # A -> jump
         if rising & 0x0001:
-            self.executor.execute({'key': 'space', 'source': 'human'})
+            self.executor.execute({'key': 'space', 'delay_ms': HID_TAP_MS, 'source': 'human'})
             action_parts.append('jump')
 
         # B -> unused
@@ -417,24 +441,24 @@ class HumanAssist:
         # progress every time it fires).
         if rising & 0x0004:
             self.executor.execute({'mouse_hold': 'down', 'mouse_button_name': 'left',
-                                   'source': 'human'})
+                                   'delay_ms': 0, 'source': 'human'})
             self._mining = True
             action_parts.append('attack_start')
         if falling & 0x0004:
             self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                   'source': 'human'})
+                                   'delay_ms': 0, 'source': 'human'})
             self._mining = False
             action_parts.append('attack_stop')
 
         # Y -> use/place (single tap right click)
         if rising & 0x0008:
-            self.executor.execute({'mouse_button': 'right', 'source': 'human'})
+            self.executor.execute({'mouse_button': 'right', 'delay_ms': HID_TAP_MS, 'source': 'human'})
             action_parts.append('use_place')
 
         # D-pad -> hotbar scroll (edge-queued in _handle_dpad)
         if hotbar_pending:
             slot = HOTBAR_SLOTS[self._hotbar_idx]
-            self.executor.execute({'key': slot, 'source': 'human'})
+            self.executor.execute({'key': slot, 'delay_ms': HID_TAP_MS, 'source': 'human'})
             action_parts.append(f'hotbar_{slot}')
 
         # LT -> crouch/sneak, true hold: press shift once on the LT-down
@@ -445,10 +469,10 @@ class HumanAssist:
         # (2026-07-19).
         lt_held = lt > TRIGGER_THRESHOLD
         if lt_held and not self._prev_lt_held:
-            self.executor.execute({'key_hold': 'down', 'key': 'lshift', 'source': 'human'})
+            self.executor.execute({'key_hold': 'down', 'key': 'lshift', 'delay_ms': 0, 'source': 'human'})
             action_parts.append('crouch_start')
         elif not lt_held and self._prev_lt_held:
-            self.executor.execute({'key_hold': 'up', 'key': 'lshift', 'source': 'human'})
+            self.executor.execute({'key_hold': 'up', 'key': 'lshift', 'delay_ms': 0, 'source': 'human'})
             action_parts.append('crouch_stop')
         elif lt_held:
             action_parts.append('crouch')
@@ -457,10 +481,10 @@ class HumanAssist:
         # RT -> sprint, same true-hold mechanism as LT.
         rt_held = rt > TRIGGER_THRESHOLD
         if rt_held and not self._prev_rt_held:
-            self.executor.execute({'key_hold': 'down', 'key': 'lctrl', 'source': 'human'})
+            self.executor.execute({'key_hold': 'down', 'key': 'lctrl', 'delay_ms': 0, 'source': 'human'})
             action_parts.append('sprint_start')
         elif not rt_held and self._prev_rt_held:
-            self.executor.execute({'key_hold': 'up', 'key': 'lctrl', 'source': 'human'})
+            self.executor.execute({'key_hold': 'up', 'key': 'lctrl', 'delay_ms': 0, 'source': 'human'})
             action_parts.append('sprint_stop')
         elif rt_held:
             action_parts.append('sprint')
