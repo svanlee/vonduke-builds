@@ -569,6 +569,18 @@ def run():
             # HumanAssist's own 20Hz thread drive the game directly.
             human_assist.update_context(objects, world_mem, fsm_state)
             if human_assist.human_mode:
+                # Keep the preview window pumping (cv2.imshow must run every
+                # tick on the main thread) even though the AI tick body below
+                # is skipped — otherwise the window just freezes on whatever
+                # frame was last drawn the instant Scott takes the controller,
+                # instead of showing the HUMAN-mode indicator live.
+                pipeline.set_fsm_state(fsm_state.value if fsm_state else '')
+                pipeline.set_controller_status(connected=human_assist.is_available,
+                                               human_mode=True)
+                if not pipeline.poll_display():
+                    break
+                if pipeline.quit:
+                    break
                 time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
                 continue
 
@@ -701,11 +713,13 @@ def run():
             # ── Display (must run on main thread for Qt/OpenCV) ───
             # poll_display() calls cv2.imshow() here on the main thread,
             # avoiding the Qt "No such method GuiReceiver::showImage" spam.
+            pipeline.set_fsm_state(fsm_state.value if fsm_state else '')
+            pipeline.set_controller_status(connected=human_assist.is_available,
+                                           human_mode=human_assist.human_mode)
             if not pipeline.poll_display():
                 break
             if pipeline.quit:
                 break
-            pipeline.set_overlay_text(cognitive.monologue.recent(n=1))
             if ui.enabled:
                 ui_r = ui.consume_reward()
                 if ui_r > 0:

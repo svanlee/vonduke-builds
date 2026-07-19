@@ -67,6 +67,7 @@ class LabelingUI:
         self.quit           = False
         self.pending_reward = 0
         self.show_sidebar   = True
+        self._overlay_text  = ''   # inner-monologue caption (see set_overlay_text)
 
         # For correct mouse→frame coordinate mapping
         self._frame_h = 1
@@ -129,6 +130,12 @@ class LabelingUI:
     def update(self, frame, objects: list):
         self.frame   = frame
         self.objects = objects if objects else []
+
+    def set_overlay_text(self, text: str):
+        """Set the inner-monologue caption drawn in the black letterbox
+        strip below the video (see _draw_monologue) — called from the main
+        decision loop via VideoCapturePipeline.set_overlay_text()."""
+        self._overlay_text = text or ''
 
     # ── Render ─────────────────────────────────────────────────
     def render(self) -> bool:
@@ -206,6 +213,37 @@ class LabelingUI:
                           (0, 0, 0), -1)
             cv2.putText(canvas, tag, (dx1 + 1, ty), FONT, FONT_SM, col, 1,
                         cv2.LINE_AA)
+
+        self._draw_monologue(canvas, dh, area_h)
+
+    def _draw_monologue(self, canvas, video_bottom: int, area_h: int):
+        """Draw the inner-monologue caption in the black letterbox strip
+        between the scaled video frame and the HUD bar — white text on the
+        canvas's existing black background, not burned onto the video
+        frame itself (that overlaid the caption on the game feed and let
+        it get scaled/squashed along with the video).
+
+        self._overlay_text arrives pre-wrapped and newline-joined from
+        core/capture.py's monologue buffer/typewriter animation (see
+        push_monologue_line() and VideoCapturePipeline.poll_display()) —
+        one physical line per '\\n', newest line last and possibly still
+        mid-typing, so we just split and draw rather than re-wrapping."""
+        if not self._overlay_text:
+            return
+        strip_h = area_h - video_bottom
+        if strip_h < 14:
+            return   # frame fills the whole area — no black strip to use
+        scale       = FONT_LG
+        thickness   = 1
+        line_height = 26
+        max_lines   = max(1, strip_h // line_height)
+        lines = self._overlay_text.split('\n')
+        lines = lines[-max_lines:]
+        y = video_bottom + line_height
+        for line in lines:
+            cv2.putText(canvas, line, (8, y), FONT, scale, C_WHITE, thickness,
+                        cv2.LINE_AA)
+            y += line_height
 
     def _draw_sidebar(self, canvas):
         import cv2

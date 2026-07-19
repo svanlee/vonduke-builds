@@ -19,6 +19,7 @@ import time
 import config
 from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import call_claude_direct
+from core.capture import push_monologue_line
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
 OVERSEER_TIMEOUT  = 8.0       # seconds — drop the call if it takes longer
@@ -95,7 +96,9 @@ def _call_overseer(tick: int, snapshot: dict):
             _last_directive = directive
         action = directive.get('action', 'continue')
         if action != 'continue':
-            print(f'[OVERSEER] directive={action} | {directive.get("reason") or directive.get("message") or directive.get("goal", "")}')
+            msg = directive.get('reason') or directive.get('message') or directive.get('goal', '')
+            print(f'[OVERSEER] directive={action} | {msg}')
+            push_monologue_line(f'[Overseer] {action}: {msg}' if msg else f'[Overseer] {action}')
     except Exception as e:
         print(f'[OVERSEER] error: {e}')
     finally:
