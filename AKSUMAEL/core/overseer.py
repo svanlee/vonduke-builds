@@ -1,6 +1,6 @@
 # core/overseer.py
 """
-Aksūmal Overseer — Claude as the strategic brain.
+Aksūmal Overseer — local mesh-llm as the strategic brain.
 
 Called every OVERSEER_INTERVAL ticks from runtime.py.
 Receives a snapshot of current agent state, returns a high-level directive.
@@ -16,6 +16,7 @@ Directive schema:
 import json
 import threading
 import time
+import config
 from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import call_claude_direct
 
@@ -26,7 +27,7 @@ OVERSEER_TIMEOUT  = 8.0       # seconds — drop the call if it takes longer
 # gate alone assumes a roughly steady tick rate, but tick duration in this
 # codebase is variable (it can spike well above LOOP_INTERVAL_SEC), so
 # OVERSEER_INTERVAL ticks can pass in well under a minute of wall time.
-# This is the actual backstop against tripping the Claude API rate limit.
+# This is the actual backstop against saturating the local mesh-llm server.
 OVERSEER_MAX_PER_MINUTE = 6
 
 _last_directive   = {"action": "continue"}
@@ -79,7 +80,7 @@ def _call_overseer(tick: int, snapshot: dict):
         raw = call_claude_direct(prompt, max_tokens=300, timeout=OVERSEER_TIMEOUT)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
-                  f'(check ANTHROPIC_API_KEY / account credit balance)')
+                  f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')
             return
         raw = raw.strip()
         # Strip markdown code fences if present

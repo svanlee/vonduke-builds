@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Animal Auto-Labeler                ║
-# ║  Uses Claude vision to bootstrap animal/villager       ║
-# ║  training data from already-collected survey frames.  ║
+# ║  Uses local mesh-llm vision to bootstrap animal/       ║
+# ║  villager training data from already-collected survey ║
+# ║  frames.                                                ║
 # ╚══════════════════════════════════════════════════════╝
 #
 # AKSUMAEL's YOLO model has zero animal training examples — survey
 # frames get saved whenever the model is uncertain, but nothing ever
-# labels the animals in them. This script asks Claude to look at
-# recent survey frames and draw boxes around any animals/villagers it
-# finds, then writes those boxes as YOLO-format labels alongside the
-# existing (HUD-only) annotations.
+# labels the animals in them. This script asks the local mesh-llm vision
+# model to look at recent survey frames and draw boxes around any
+# animals/villagers it finds, then writes those boxes as YOLO-format
+# labels alongside the existing (HUD-only) annotations.
 #
 # Usage:
 #   python3 tools/auto_label_animals.py [N]     # label the N most recent survey frames (default 100)
@@ -20,9 +21,10 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 
 import yaml
-from anthropic import Anthropic
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -31,8 +33,7 @@ IMAGES_DIR    = f'{DATASET_DIR}/images/train'
 LABELS_DIR    = f'{DATASET_DIR}/labels/train'
 DATA_YAML     = f'{DATASET_DIR}/data.yaml'
 LABEL_DB_PATH = 'data/yolo_labels.json'
-KEY_PATH      = os.path.expanduser('~/.config/anthropic/key')
-MODEL         = 'claude-sonnet-5'
+MESH_LLM_URL  = 'http://localhost:9337/v1/chat/completions'
 
 TARGET_CLASSES = ['chicken', 'duck', 'cow', 'sheep', 'pig', 'villager', 'village_house']
 
@@ -53,11 +54,6 @@ Respond with ONLY a JSON array, no prose, no markdown fences. Example:
 
 If none of the target classes are visible, respond with exactly: []
 """
-
-
-def load_api_key() -> str:
-    with open(KEY_PATH) as f:
-        return f.read().strip()
 
 
 def load_data_yaml() -> dict:
@@ -119,26 +115,31 @@ def already_labeled(label_path: str, class_ids: set) -> bool:
     return False
 
 
-def call_claude(client: Anthropic, img_path: str) -> list:
+def call_mesh_llm(img_path: str) -> list:
     with open(img_path, 'rb') as f:
         b64 = base64.standard_b64encode(f.read()).decode('utf-8')
+
+    payload = json.dumps({
+        "model": "auto",
+        "max_tokens": 500,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ],
+        }],
+    }).encode()
 
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            resp = client.messages.create(
-                model=MODEL,
-                max_tokens=500,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {
-                            "type": "base64", "media_type": "image/jpeg", "data": b64}},
-                        {"type": "text", "text": PROMPT}
-                    ]
-                }]
-            )
-            text = next(b.text for b in resp.content if b.type == 'text').strip()
+            req = urllib.request.Request(
+                MESH_LLM_URL, data=payload,
+                headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                data = json.loads(resp.read())
+            text = data["choices"][0]["message"]["content"].strip()
             if text.startswith('```'):
                 text = '\n'.join(text.split('\n')[1:-1])
             return json.loads(text)
@@ -176,9 +177,6 @@ def box_to_yolo(det: dict) -> str:
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 
-    api_key = load_api_key()
-    client = Anthropic(api_key=api_key)
-
     yaml_cfg = load_data_yaml()
     names = {int(k): v for k, v in yaml_cfg['names'].items()}
     label_db = load_label_db()
@@ -200,7 +198,7 @@ def main():
         if already_labeled(label_path, target_ids):
             continue
 
-        detections = call_claude(client, img_path)
+        detections = call_mesh_llm(img_path)
         detections = [d for d in detections if isinstance(d, dict) and d.get('label') in TARGET_CLASSES]
         rejected = [d for d in detections if not is_valid_box(d)]
         for d in rejected:

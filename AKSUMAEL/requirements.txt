@@ -3,11 +3,12 @@
 
 # Vision
 opencv-python
-numpy
+numpy<2.5     # numba (whisper dep) and roboflow both cap at <2.5
 ultralytics          # YOLO
 
 # Vision providers
-anthropic            # Claude (optional)
+# (anthropic removed — AKSUMAEL runs fully offline against local mesh-llm,
+# no code in this repo imports the anthropic package anymore)
 
 # Action output
 pyserial             # UART to KB2040 or CH9329
@@ -17,7 +18,8 @@ evdev                # real controller on Pi
 smbus2               # I2C joystick
 
 # Audio — TTS
-pyttsx3
+piper-tts            # primary: offline neural voice (JARVIS-style British male)
+pyttsx3               # fallback if piper or its voice model is unavailable
 requests             # ElevenLabs
 
 # Audio — Game Ear (optional, graceful if missing)

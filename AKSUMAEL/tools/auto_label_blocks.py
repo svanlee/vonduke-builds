@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Block/Zero-Example Auto-Labeler    ║
-# ║  Uses Claude vision to bootstrap training data for     ║
-# ║  classes that currently have zero labeled examples.    ║
+# ║  Uses local mesh-llm vision to bootstrap training      ║
+# ║  data for classes that currently have zero labeled     ║
+# ║  examples.                                              ║
 # ╚══════════════════════════════════════════════════════╝
 #
 # Several YOLO classes (animals, torch, crafting_table, log) have
 # never been labeled despite appearing in hundreds of survey frames,
 # and several new block classes (oak_planks, cobblestone, oak_door,
 # stone, gravel) don't exist in the dataset yet at all. This script
-# asks Claude to look at every survey frame in the training set and
-# draw boxes around any instances of these classes, batching several
-# frames into each API call to keep this affordable at ~600+ frames.
+# asks the local mesh-llm vision model to look at every survey frame in
+# the training set and draw boxes around any instances of these classes,
+# batching several frames into each call to keep this efficient at
+# ~600+ frames.
 #
 # Usage:
 #   python3 tools/auto_label_blocks.py [N]   # label the N most recent survey frames (default: all)
@@ -21,9 +23,10 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 
 import yaml
-from anthropic import Anthropic
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -32,8 +35,7 @@ IMAGES_DIR    = f'{DATASET_DIR}/images/train'
 LABELS_DIR    = f'{DATASET_DIR}/labels/train'
 DATA_YAML     = f'{DATASET_DIR}/data.yaml'
 LABEL_DB_PATH = 'data/yolo_labels.json'
-KEY_PATH      = os.path.expanduser('~/.config/anthropic/key')
-MODEL         = 'claude-sonnet-5'
+MESH_LLM_URL  = 'http://localhost:9337/v1/chat/completions'
 
 # Zero-example classes that already exist in data.yaml.
 TARGET_CLASSES = [
@@ -73,11 +75,6 @@ detections for that image, no prose, no markdown fences. Example:
 Every index from 0 to {last} must be present as a key, using an empty array if nothing
 from the target classes is visible in that image.
 """
-
-
-def load_api_key() -> str:
-    with open(KEY_PATH) as f:
-        return f.read().strip()
 
 
 def load_data_yaml() -> dict:
@@ -139,28 +136,34 @@ def already_labeled(label_path: str, class_ids: set) -> bool:
     return False
 
 
-def call_claude_batch(client: Anthropic, img_paths: list) -> dict:
+def call_mesh_llm_batch(img_paths: list) -> dict:
     """Send a batch of images in one message; returns {index: [detections]}."""
     content = []
     for i, img_path in enumerate(img_paths):
         with open(img_path, 'rb') as f:
             b64 = base64.standard_b64encode(f.read()).decode('utf-8')
         content.append({"type": "text", "text": f"IMAGE {i}:"})
-        content.append({"type": "image", "source": {
-            "type": "base64", "media_type": "image/jpeg", "data": b64}})
+        content.append({"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
 
     prompt = PROMPT_HEADER.format(n=len(img_paths), last=len(img_paths) - 1)
     content.append({"type": "text", "text": prompt})
 
+    payload = json.dumps({
+        "model": "auto",
+        "max_tokens": 2000,
+        "messages": [{"role": "user", "content": content}],
+    }).encode()
+
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            resp = client.messages.create(
-                model=MODEL,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": content}]
-            )
-            text = next(b.text for b in resp.content if b.type == 'text').strip()
+            req = urllib.request.Request(
+                MESH_LLM_URL, data=payload,
+                headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+            text = data["choices"][0]["message"]["content"].strip()
             if text.startswith('```'):
                 text = '\n'.join(text.split('\n')[1:-1])
             return json.loads(text)
@@ -198,9 +201,6 @@ def box_to_yolo(det: dict) -> str:
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else None
 
-    api_key = load_api_key()
-    client = Anthropic(api_key=api_key)
-
     yaml_cfg = load_data_yaml()
     names = {int(k): v for k, v in yaml_cfg['names'].items()}
     label_db = load_label_db()
@@ -225,7 +225,7 @@ def main():
 
     for batch_start in range(0, len(pending), BATCH_SIZE):
         batch = pending[batch_start:batch_start + BATCH_SIZE]
-        result = call_claude_batch(client, batch)
+        result = call_mesh_llm_batch(batch)
         scanned += len(batch)
 
         for i, img_path in enumerate(batch):

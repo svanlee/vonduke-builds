@@ -4,13 +4,21 @@
 
 # ── Vision Provider ───────────────────────────────────────────
 # Platform: HP Victus (RTX 4050 Laptop GPU) + Samsung T7 SSD, robocar-hub @ 192.168.1.156
-# All LLM calls in the codebase go through core/llm_router.route_llm_call().
-# "local"  = primary for every call, no cost, no rate cap
-# "gemini" = occasional diversity/monitoring ping (every Nth call) when local
-#            succeeds; real synchronous fallback only when local fails
-# "claude" = emergency backup, paid — tried only if both local and Gemini fail
+# All LLM calls in the codebase go through core/llm_router.route_llm_call()
+# (or the try_claude()/call_claude_direct() aliases, which now route to the
+# same local tier). AKSUMAEL runs fully offline — every call, gameplay or
+# training/labeling, goes to the local mesh-llm server. There is no
+# automatic or manual fallback to Gemini or Claude; GEMINI_API_KEY and
+# ANTHROPIC_API_KEY below are read but unused by the router.
 import os
 VISION_PROVIDER = "local"
+
+# Single source of truth for LLM routing policy. "local" is the only
+# supported value — kept as a flag (rather than hardcoding the choice
+# inline everywhere) so a future cloud tier could be re-added without
+# touching every call site, but core/llm_router.py currently ignores
+# anything other than "local" and always calls mesh-llm.
+INFERENCE_BACKEND = "local"
 
 LOCAL_LLM_URL     = "http://localhost:9337/v1"
 LOCAL_LLM_MODEL   = "auto"
@@ -349,7 +357,15 @@ MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
 # memory.goals.GoalStack.check_injected_goals), so no separate polling
 # path is needed in core/runtime.py.
 AXON_WHISPER_MODEL = "base"     # tiny/base/small — bigger is slower but more accurate
-AXON_WAKE_WORDS    = ["computer", "aksumael"]
+# No wake word — axon/hub.py is always-listening (see MIN_COMMAND_WORDS
+# there for the false-trigger filter).
+
+# axon/speaker.py tries piper (offline neural TTS) first for a JARVIS-like
+# confident British voice, falling back to pyttsx3/espeak if piper or its
+# voice model isn't available. Re-fetch a missing model with:
+#   venv/bin/python3 -m piper.download_voices <name> --data-dir data/piper_voices
+AXON_PIPER_VOICE_DIR = "data/piper_voices"
+AXON_PIPER_VOICE     = "en_GB-alan-medium"   # alt: en_GB-northern_english_male-medium
 
 # ── Audio device selection (audio/device_probe.py) ─────────────
 # None = auto-detect at startup by name keyword priority (Victus > USB
@@ -376,8 +392,13 @@ SKILL_PROVEN_USES        = 5     # success_count threshold to mark 'proven'
 SKILL_BLACKLIST_FAILURES = 3     # failed_count threshold to blacklist
 
 # Inner monologue — real LLM-generated thought, gated to fire this often
-# (cheap haiku call, ~50 tokens) instead of every tick.
-MONOLOGUE_EVERY_N_TICKS  = 50
+# (cheap haiku call, ~50 tokens) instead of every tick. Wall-clock gated
+# (not tick-count gated) because tick duration swings wildly — a MINE/idle
+# tick is ~0.5s but a tick that triggers a vision-LLM call can take 30-40s
+# (see data/live.log) — a tick-count gate made the black-strip caption in
+# ui/labeling.py look "stuck" for minutes at a time whenever the loop hit
+# a run of slow ticks (2026-07-19).
+MONOLOGUE_EVERY_N_SECONDS = 8
 
 # Episode memory — rolling window persisted to data/memory/episodes.jsonl
 EPISODE_MEMORY_MAX        = 200

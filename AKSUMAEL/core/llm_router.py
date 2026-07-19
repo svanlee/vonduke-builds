@@ -1,21 +1,15 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL — Shared LLM Router                         ║
-# ║  Single choke point for every local/Gemini/Claude     ║
-# ║  call in the codebase. Routing policy:                ║
-# ║    1. Local mesh-llm (localhost:9337) handles every   ║
-# ║       gameplay call. This is the only tier used by    ║
-# ║       route_llm_call() by default.                    ║
-# ║    2. Gemini/Claude are NEVER used as automatic       ║
-# ║       fallbacks during gameplay. If local fails during ║
-# ║       a gameplay call, the error is logged and a safe  ║
-# ║       default (None) is returned — callers must not    ║
-# ║       fall through to a cloud API.                     ║
-# ║    3. Gemini/Claude are only reachable via             ║
-# ║       route_llm_call(..., use_cloud=True) or the       ║
-# ║       llm_train_call() wrapper, for explicit           ║
-# ║       training-related work (label generation,         ║
-# ║       reflection summaries, dataset annotation) — not  ║
-# ║       for the gameplay loop.                            ║
+# ║  Single choke point for every LLM call in the         ║
+# ║  codebase. Routing policy:                             ║
+# ║    Every call — gameplay or training/labeling — goes  ║
+# ║    to the local mesh-llm server (localhost:9337,       ║
+# ║    OpenAI-compatible /v1/chat/completions). AKSUMAEL   ║
+# ║    makes no outbound calls to Anthropic or Google;     ║
+# ║    it runs fully offline. GEMINI_API_KEY and           ║
+# ║    ANTHROPIC_API_KEY are read in config.py but unused  ║
+# ║    here — kept in case cloud fallback is reinstated    ║
+# ║    later.                                               ║
 # ╚══════════════════════════════════════════════════════╝
 
 import base64
@@ -27,48 +21,9 @@ import urllib.request
 
 import config
 
-GEMINI_INTERVAL = 15   # ping Gemini for diversity/monitoring every Nth call local serves
-
-CLAUDE_MAX_RETRIES  = 3
-CLAUDE_BACKOFF_BASE = 1.0   # seconds; doubles each retry (1s, 2s, 4s)
-
-
-class _RateLimiter:
-    """Token-bucket shared by every route_llm_call() invocation that reaches
-    Gemini or Claude, so real fallback traffic and the periodic diversity
-    ping can never together trip provider rate limits."""
-
-    def __init__(self, per_minute: float, burst: int):
-        self._rate     = per_minute / 60.0   # tokens per second
-        self._capacity = float(burst)
-        self._tokens   = float(burst)
-        self._last     = time.monotonic()
-        self._lock     = threading.Lock()
-
-    def acquire(self):
-        with self._lock:
-            now = time.monotonic()
-            self._tokens = min(self._capacity, self._tokens + (now - self._last) * self._rate)
-            self._last = now
-            if self._tokens < 1.0:
-                wait = (1.0 - self._tokens) / self._rate
-                self._tokens = 0.0
-            else:
-                self._tokens -= 1.0
-                wait = 0.0
-        if wait > 0:
-            time.sleep(wait)
-
-
-# Gemini free tier: 15 req/min, 1500 req/day — cap under that even with the
-# diversity ping added on top of real fallback traffic.
-_GEMINI_LIMITER = _RateLimiter(per_minute=10, burst=3)
-_CLAUDE_LIMITER = _RateLimiter(per_minute=20, burst=3)
-# Local model runs on-box — no external quota, so no rate limiter for it.
-
 _lock          = threading.Lock()
 _call_counter  = 0
-_call_counts   = {'local': 0, 'gemini': 0, 'gemini_ping': 0, 'claude': 0}
+_call_counts   = {'local': 0, 'gemini': 0, 'claude': 0}
 _last_provider = None
 
 
@@ -116,8 +71,7 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
     text is already folded into `prompt`.
 
     Returns the raw text response on success, or None on any failure
-    (connection refused, timeout, non-recoverable HTTP status) — None is the
-    signal for route_llm_call() to move on to Gemini.
+    (connection refused, timeout, non-recoverable HTTP status).
     """
     if not config.LOCAL_LLM_ENABLED:
         return None
@@ -171,75 +125,6 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
     return None
 
 
-def _try_gemini(prompt: str, max_tokens: int, images: list,
-                 timeout: float = 10.0) -> str:
-    """Real (synchronous) Gemini call. Returns the raw text response, or
-    None on any failure — never raises."""
-    if not config.GEMINI_API_KEY:
-        return None
-
-    parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}} for b64 in (images or [])]
-    parts.append({"text": prompt})
-
-    payload = {
-        "contents": [{"parts": parts}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
-    }
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{config.GEMINI_MODEL}:generateContent?key={config.GEMINI_API_KEY}")
-
-    try:
-        data = _post_json(url, payload, {'Content-Type': 'application/json'}, timeout)
-        candidates = data.get('candidates') or []
-        if not candidates:
-            return None
-        parts_out = candidates[0].get('content', {}).get('parts') or []
-        if not parts_out or 'text' not in parts_out[0]:
-            return None
-        return _strip_fences(parts_out[0]['text'].strip())
-    except Exception:
-        return None
-
-
-def _try_claude(prompt: str, max_tokens: int, images: list,
-                 timeout: float = 15.0) -> str:
-    """Emergency-backup Claude call, with retry/backoff on transient errors.
-    Returns the raw text response, or None on any failure — never raises."""
-    if not config.ANTHROPIC_API_KEY:
-        return None
-
-    content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}
-               for b64 in (images or [])]
-    content.append({"type": "text", "text": prompt})
-
-    payload = {"model": config.CLAUDE_MODEL, "max_tokens": max_tokens,
-               "messages": [{"role": "user", "content": content}]}
-    headers = {
-        'Content-Type': 'application/json',
-        'x-api-key': config.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-    }
-
-    for attempt in range(CLAUDE_MAX_RETRIES):
-        try:
-            data = _post_json("https://api.anthropic.com/v1/messages", payload, headers, timeout)
-            text_block = next(
-                (b for b in data.get('content', []) if b.get('type') == 'text'), None)
-            if text_block is None:
-                return None
-            return _strip_fences(text_block['text'].strip())
-        except urllib.error.HTTPError as e:
-            if e.code not in (429, 500, 502, 503, 529):
-                return None   # non-transient (bad request/auth) — don't retry
-        except Exception:
-            pass
-
-        if attempt < CLAUDE_MAX_RETRIES - 1:
-            time.sleep(CLAUDE_BACKOFF_BASE * (2 ** attempt))
-
-    return None
-
-
 def _record(provider: str):
     global _last_provider
     with _lock:
@@ -247,137 +132,83 @@ def _record(provider: str):
     _last_provider = provider
 
 
-def _ping_gemini_diversity(prompt: str, max_tokens: int, images: list, call_num: int):
-    """Fire-and-forget Gemini call for quality/diversity monitoring. Runs in
-    a background thread, never blocks the caller, and never replaces the
-    local result that was already returned — it only logs whether Gemini is
-    reachable right now."""
-    def _run():
-        _GEMINI_LIMITER.acquire()
-        ok = _try_gemini(prompt, max_tokens, images) is not None
-        with _lock:
-            _call_counts['gemini_ping'] += 1
-        print(f'[LLM_ROUTER] gemini diversity ping (call #{call_num}): '
-              f'{"reachable" if ok else "unreachable"}')
-
-    threading.Thread(target=_run, daemon=True).start()
-
-
 def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
                     timeout: float = 45.0, local_retries: int = 1,
                     use_cloud: bool = False):
     """
-    Route a single-turn LLM prompt.
+    Route a single-turn LLM prompt to the local mesh-llm server.
 
-    By default (use_cloud=False — the gameplay path) this ONLY calls local
-    mesh-llm. Gemini and Claude are never invoked as automatic fallbacks
-    during gameplay: if local fails, the failure is logged and (None, None)
-    is returned so the caller falls back to its own safe default (e.g. an
-    empty inventory, a 'wait' action) instead of silently hitting a cloud
-    API.
-
-    Cloud providers are only reachable when the caller explicitly opts in
-    with use_cloud=True (see also llm_train_call()), for training-related
-    work such as label generation, reflection summaries, or dataset
-    annotation — never for routine gameplay inference.
+    `use_cloud` is kept for call-site compatibility but has no effect —
+    AKSUMAEL no longer dials out to Gemini or Claude for any call, gameplay
+    or training. If local mesh-llm fails, (None, None) is returned so the
+    caller falls back to its own safe default (e.g. an empty inventory, a
+    'wait' action) instead of hitting a cloud API.
 
     Args:
         prompt:        the text prompt (already includes any context/detections).
         max_tokens:    max output tokens.
         images:        optional list of base64-encoded JPEG strings (see
                        frame_to_b64()) for multimodal calls.
-        timeout:       per-request timeout in seconds for the local tier.
-        local_retries: number of local-tier attempts before falling back.
-        use_cloud:     if True, allow Gemini/Claude as fallbacks when local
-                       fails. Reserved for explicit training calls — must
-                       stay False for gameplay inference.
+        timeout:       per-request timeout in seconds.
+        local_retries: number of attempts before giving up.
+        use_cloud:     unused — retained for backward-compatible call sites.
 
     Returns:
-        (text, provider) — provider is 'local', 'gemini', 'claude', or None
-        if every allowed tier failed. `text` is None iff provider is None.
+        (text, provider) — provider is 'local' or None if the call failed.
+        `text` is None iff provider is None.
     """
-    global _call_counter, _last_provider
+    global _call_counter
     with _lock:
         _call_counter += 1
-        call_num = _call_counter
 
     result = _try_local(prompt, max_tokens, images, timeout, local_retries)
     if result is not None:
         _record('local')
-        if use_cloud and call_num % GEMINI_INTERVAL == 0:
-            _ping_gemini_diversity(prompt, max_tokens, images, call_num)
         return result, 'local'
 
-    if not use_cloud:
-        print('[LLM_ROUTER] local mesh-llm failed on gameplay call — '
-              'cloud fallback disabled, returning safe default')
-        _last_provider = None
-        return None, None
-
-    # Local failed on an explicit training call — real (synchronous)
-    # fallback to Gemini.
-    _GEMINI_LIMITER.acquire()
-    result = _try_gemini(prompt, max_tokens, images)
-    if result is not None:
-        _record('gemini')
-        return result, 'gemini'
-
-    # Both local and Gemini failed — Claude is the emergency backup.
-    _CLAUDE_LIMITER.acquire()
-    result = _try_claude(prompt, max_tokens, images)
-    if result is not None:
-        _record('claude')
-        return result, 'claude'
-
+    print('[LLM_ROUTER] local mesh-llm call failed — returning safe default')
+    global _last_provider
     _last_provider = None
     return None, None
 
 
 def try_claude(prompt: str, max_tokens: int = 1024, images: list = None,
                 timeout: float = 15.0) -> str | None:
-    """Claude only — skips the local/Gemini tiers entirely. For callers
-    where output quality matters more than cost and call volume is low
-    (e.g. tools/claude_autolabel.py generating training-data labels,
-    where a bad label silently poisons the dataset rather than just
-    costing one wasted tick). Shares the same rate limiter, retry/
-    backoff, and call-count bookkeeping as the Claude tier inside
-    route_llm_call(). Returns the raw text response, or None on
+    """Routes to local mesh-llm. Kept as a named entry point for callers
+    (e.g. tools/claude_autolabel.py) that previously wanted Claude
+    specifically for label-quality reasons — AKSUMAEL no longer calls
+    Claude directly, so this is now equivalent to route_llm_call() against
+    the local tier only. Returns the raw text response, or None on
     failure — never raises."""
-    _CLAUDE_LIMITER.acquire()
-    result = _try_claude(prompt, max_tokens, images, timeout)
+    result = _try_local(prompt, max_tokens, images, timeout, retries=1)
     if result is not None:
-        _record('claude')
+        _record('local')
     return result
 
 
 def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
                     timeout: float = 45.0, local_retries: int = 1):
     """
-    Explicit entry point for training-related LLM work (label generation,
-    reflection summaries, dataset annotation) that is allowed to fall back
-    to Gemini/Claude when local mesh-llm fails. Do not call this from the
-    gameplay loop — use route_llm_call() (use_cloud defaults to False)
-    there instead.
+    Entry point for training-related LLM work (label generation, reflection
+    summaries, dataset annotation). Routes to local mesh-llm only — no
+    cloud fallback.
     """
     return route_llm_call(prompt, max_tokens=max_tokens, images=images,
-                           timeout=timeout, local_retries=local_retries,
-                           use_cloud=True)
+                           timeout=timeout, local_retries=local_retries)
 
 
 def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
                         timeout: float = 15.0) -> str:
     """
-    Explicit entry point for calls that must go to Claude specifically
-    (e.g. core/overseer.py strategic decisions), skipping local mesh-llm
-    and Gemini entirely — unlike route_llm_call(), which only reaches
-    Claude as an emergency backup after both of those fail.
+    Routes to local mesh-llm. Kept as a named entry point for callers
+    (e.g. core/overseer.py strategic decisions) that previously wanted
+    Claude specifically, skipping the general route_llm_call() path —
+    AKSUMAEL no longer calls Claude directly, so this is now equivalent to
+    a local-only call.
 
     Returns the raw text response, or None on failure — never raises.
     """
-    if not config.ANTHROPIC_API_KEY:
-        return None
-    _CLAUDE_LIMITER.acquire()
-    result = _try_claude(prompt, max_tokens, images, timeout)
+    result = _try_local(prompt, max_tokens, images, timeout, retries=1)
     if result is not None:
-        _record('claude')
+        _record('local')
     return result
