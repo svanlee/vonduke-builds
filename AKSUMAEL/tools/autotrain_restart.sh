@@ -73,7 +73,9 @@ print(f'[AUTOTRAIN-RESTART] mesh-llm did not become healthy within {timeout:.0f}
 sys.exit(1)
 EOF
 
-echo "[AUTOTRAIN-RESTART] restarting aksumael..."
-systemctl --user start aksumael
+
+# AKSUMAEL is started via run.sh, not systemd — this script's job ends once
+# mesh-llm is back up. run.sh (or the human at the console) brings aksumael
+# back after autotrain.
 
 echo "[AUTOTRAIN-RESTART] done."
