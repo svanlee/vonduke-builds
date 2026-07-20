@@ -1511,14 +1511,21 @@ def run():
 
                 # FSM takes over when no skill matched and FSM is actively
                 # targeting something (APPROACH / COMBAT / COLLECT / INTERACT /
-                # FISH / HUNT / FARM) — these need continuous per-tick control
-                # and never consult the LLM. MINE also gets continuous FSM
-                # control (per-tick aim+click) EXCEPT on the slower
+                # FISH / HUNT / FARM / EAT) — these need continuous per-tick
+                # control and never consult the LLM. EAT in particular drives
+                # a multi-tick select-slot/hold-right-click/check sequence
+                # (core/fsm.py's _do_eat) that must run every tick it's
+                # active or the hold/release pairing desyncs from what
+                # actually reached the hardware — it used to be excluded
+                # here alongside EXPLORE and fall through to the LLM/skill
+                # path instead, which is why EAT never actually ate anything
+                # (2026-07-20). MINE also gets continuous FSM control
+                # (per-tick aim+click) EXCEPT on the slower
                 # LLM_EVERY_N_TICKS_MINE cadence, when it falls through to the
-                # LLM as an occasional strategic check-in. In pure EXPLORE or
-                # EAT we fall through to the LLM every LLM_EVERY_N_TICKS so it
-                # can direct higher-level decisions.
-                elif not force_llm_reconsider and fsm_state not in (State.EXPLORE, State.EAT) and (
+                # LLM as an occasional strategic check-in. Only in pure
+                # EXPLORE do we fall through to the LLM every
+                # LLM_EVERY_N_TICKS so it can direct higher-level decisions.
+                elif not force_llm_reconsider and fsm_state != State.EXPLORE and (
                         fsm_state != State.MINE or tick % _llm_interval != 0):
                     action_dict = fsm_action
                     src_tag = f'FSM:{fsm_state.value}'
@@ -1712,7 +1719,13 @@ def run():
                 continue
 
             # ── Hunger ───────────────────────────────────────────
-            hunger_behavior.update(objects, world_mem=world_mem)
+            # Skip while the FSM's own EAT state (core/fsm.py) is actively
+            # eating — it drives the same hotbar/right-click hardware from
+            # the accurate hud_reader hunger_pct signal, and running both
+            # at once means this legacy bbox-width-triggered eat can punch
+            # in a hotbar-slot change mid-hold and stomp the FSM's attempt.
+            if fsm_state != State.EAT:
+                hunger_behavior.update(objects, world_mem=world_mem)
 
             # ── Crafting ─────────────────────────────────────────
             # 3x3: trigger when (a) pickaxe nearing end of life, OR
