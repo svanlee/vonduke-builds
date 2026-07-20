@@ -151,6 +151,10 @@ def run():
               f'yolo_model={config.YOLO_MODEL})')
 
     # ── Initialise all subsystems ──────────────────────────────
+    from hardware.hardware_manager import HardwareManager
+    hw = HardwareManager()
+    hw.start()
+
     yolo      = YOLODetector()
     world     = WorldModel()
     world_mem = WorldMemory()
@@ -868,6 +872,7 @@ def run():
                 'recent_actions': list(_overseer_recent_actions),
                 'inventory':      dict(list(inventory.items.items())[:8]),
                 'reward_avg':     reward.average(),
+                'hardware':       hw.summary(),
                 'memory_context': mem_context.build_context_for_llm(
                     fsm_state=fsm_state.value if fsm_state else 'UNKNOWN',
                     goal=goals.current_goal(),
