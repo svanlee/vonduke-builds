@@ -39,6 +39,9 @@ class HudReader:
     def __init__(self):
         self._max_health_px = 0
         self._max_hunger_px = 0
+        # Previous tick's raw pixel counts — see _confirm_new_max below.
+        self._prev_health_px = 0
+        self._prev_hunger_px = 0
         self.health_pct = 1.0
         self.hunger_pct = 1.0
 
@@ -50,6 +53,22 @@ class HudReader:
         mask = cv2.inRange(hsv, np.array(lower, dtype=np.uint8),
                                  np.array(upper, dtype=np.uint8))
         return int(cv2.countNonZero(mask))
+
+    @staticmethod
+    def _confirm_new_max(current_max: int, prev_px: int, new_px: int) -> int:
+        """Only raise the running-max ceiling if this tick's pixel count is
+        close to the PREVIOUS tick's count too. A single spurious spike
+        (e.g. Minecraft's full-screen red damage-flash overlay passing
+        through the health ROI for one frame) must not permanently poison
+        the ceiling — every later normal-health frame would then divide out
+        to a near-zero fraction forever, which is why the Overseer kept
+        reporting ~0% health / "agent is dead" on a fully healthy agent
+        (2026-07-20)."""
+        if new_px <= current_max:
+            return current_max
+        if abs(new_px - prev_px) <= max(5, prev_px * 0.15):
+            return new_px
+        return current_max
 
     def update(self, frame_bgr: np.ndarray) -> tuple:
         """Call once per tick with the current gameplay frame.
@@ -69,11 +88,15 @@ class HudReader:
         health_px = self._count_px(frame_bgr[y1:y2, hx1:hx2], HEALTH_HSV_LO, HEALTH_HSV_HI)
         hunger_px = self._count_px(frame_bgr[y1:y2, gx1:gx2], HUNGER_HSV_LO, HUNGER_HSV_HI)
 
-        self._max_health_px = max(self._max_health_px, health_px)
-        self._max_hunger_px = max(self._max_hunger_px, hunger_px)
+        self._max_health_px = self._confirm_new_max(
+            self._max_health_px, self._prev_health_px, health_px)
+        self._max_hunger_px = self._confirm_new_max(
+            self._max_hunger_px, self._prev_hunger_px, hunger_px)
+        self._prev_health_px = health_px
+        self._prev_hunger_px = hunger_px
 
         if self._max_health_px:
-            self.health_pct = health_px / self._max_health_px
+            self.health_pct = min(1.0, health_px / self._max_health_px)
         if self._max_hunger_px:
-            self.hunger_pct = hunger_px / self._max_hunger_px
+            self.hunger_pct = min(1.0, hunger_px / self._max_hunger_px)
         return self.health_pct, self.hunger_pct
