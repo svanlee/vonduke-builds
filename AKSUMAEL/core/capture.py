@@ -207,6 +207,12 @@ class YOLOThread(threading.Thread):
         self._frame   = None
         self._objects = []
         self._stop    = threading.Event()
+        # Plain bool, not lock-guarded — same convention as pipeline's
+        # _ctrl_connected/_human_mode flags. Set by set_track_mode() from
+        # the main decision loop when the FSM enters/leaves HUNT (see
+        # core/fsm.py + vision/target_lock.py); read here every inference
+        # cycle to pick predict() vs track(persist=True).
+        self._track_mode = False
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -231,7 +237,7 @@ class YOLOThread(threading.Thread):
                 time.sleep(0.01)
                 continue
 
-            objects = self._yolo.detect(frame)
+            objects = self._yolo.detect(frame, track=self._track_mode)
 
             with self._lock:
                 self._frame   = frame
@@ -378,6 +384,14 @@ class VideoCapturePipeline:
         from the main decision loop — plain attribute write, no lock needed
         since poll_display() only ever runs on that same main thread."""
         self._fsm_text = state_name or ''
+
+    def set_track_mode(self, enabled: bool):
+        """Enable/disable Ultralytics .track(persist=True) mode on the YOLO
+        inference thread — HUNT turns this on so ByteTrack assigns
+        persistent track_ids for vision/target_lock.py's TargetLock; every
+        other state leaves it off and gets plain predict(). Called from the
+        main decision loop right after each fsm.tick()."""
+        self.yolo_t._track_mode = bool(enabled)
 
     def set_controller_status(self, connected: bool, human_mode: bool):
         """Set the controller/mode indicator drawn top-right by

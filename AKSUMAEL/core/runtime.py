@@ -637,6 +637,7 @@ def run():
                 # frame was last drawn the instant Scott takes the controller,
                 # instead of showing the HUMAN-mode indicator live.
                 pipeline.set_fsm_state(fsm_state.value if fsm_state else '')
+                pipeline.set_track_mode(False)  # AI isn't driving HUNT while a human holds the controller
                 pipeline.set_controller_status(connected=human_assist.is_available,
                                                human_mode=True)
                 if not pipeline.poll_display():
@@ -863,6 +864,13 @@ def run():
 
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
                                               goal=goals.current_goal(), frame=frame)
+
+            # HUNT wants Ultralytics .track(persist=True) so ByteTrack hands
+            # out persistent track_ids for TargetLock (vision/target_lock.py)
+            # to latch onto — every other state keeps plain predict(). Set
+            # right after fsm.tick() so the next inference cycle (async, on
+            # YOLOThread) picks it up.
+            pipeline.set_track_mode(fsm_state == State.HUNT)
 
             # Cross-process FSM state (v1.4) — mirrored onto world_mem so
             # axon/hub.py, running as its own separate process, can read
