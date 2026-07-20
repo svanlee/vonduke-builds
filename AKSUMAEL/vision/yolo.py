@@ -8,15 +8,28 @@ import os
 import config
 
 # HUD bars are burned into a fixed screen position by the game itself, so a
-# detection with one of these labels is only plausible in the bottom band
-# of the frame — see memory/hud_reader.py's HUD_ROW_Y_FRAC (0.86-0.94) for
-# the same convention applied to raw-pixel health/hunger reading. Anything
-# labeled this way but sitting outside that band is the model mistaking a
-# background pattern for a HUD bar (seen 2026-07-19: a ghost "hotbar" box
-# firing at 0.75 conf on background terrain mid-screen — well above
-# YOLO_CONF_THRESHOLD, so it wasn't caught by the unknown-confidence path).
-_HUD_BAR_LABELS  = {'health_bar', 'hunger_bar', 'armor_bar', 'xp_bar', 'hotbar'}
-_HUD_BAR_Y_FRAC  = (0.75, 1.0)
+# detection with one of these labels is only plausible in its own known
+# sub-region of the frame — see memory/hud_reader.py's HUD_ROW_Y_FRAC
+# (0.86-0.94) / HEALTH_X_FRAC / HUNGER_X_FRAC for the same convention
+# applied to raw-pixel health/hunger reading, and tools/label_empty_surveys.py
+# for the documented layout (hotbar bottom-center, health bottom-left,
+# hunger bottom-right, xp bar just above hotbar, armor above health).
+# Anything labeled this way but sitting outside its region is either the
+# model mistaking a background pattern for a HUD bar (seen 2026-07-19: a
+# ghost "hotbar" box firing at 0.75 conf on background terrain mid-screen —
+# well above YOLO_CONF_THRESHOLD, so it wasn't caught by the
+# unknown-confidence path) or one HUD bar mislabeled as a neighboring one
+# (e.g. armor_bar tagged hotbar) — a single shared Y-band across all five
+# labels doesn't catch that second case since they all sit in the same
+# bottom quarter of the frame.
+_HUD_BAR_REGIONS = {
+    'hotbar':     {'x': (0.30, 0.70), 'y': (0.93, 1.00)},
+    'health_bar': {'x': (0.20, 0.49), 'y': (0.86, 0.94)},
+    'hunger_bar': {'x': (0.51, 0.80), 'y': (0.86, 0.94)},
+    'armor_bar':  {'x': (0.20, 0.49), 'y': (0.78, 0.86)},
+    'xp_bar':     {'x': (0.30, 0.70), 'y': (0.88, 0.93)},
+}
+_HUD_BAR_LABELS = set(_HUD_BAR_REGIONS)
 
 
 class YOLODetector:
@@ -117,10 +130,15 @@ class YOLODetector:
                 box_key = self._box_key(box)
                 user_label = self.label_db.get(box_key)
 
-                if (user_label or label) in _HUD_BAR_LABELS:
+                hud_label = user_label or label
+                if hud_label in _HUD_BAR_LABELS:
+                    frame_w = frame.shape[1]
+                    cx_frac = ((box[0] + box[2]) / 2) / frame_w
                     cy_frac = ((box[1] + box[3]) / 2) / frame_h
-                    if not (_HUD_BAR_Y_FRAC[0] <= cy_frac <= _HUD_BAR_Y_FRAC[1]):
-                        continue   # off-band — noise, not a real HUD bar
+                    region  = _HUD_BAR_REGIONS[hud_label]
+                    if not (region['x'][0] <= cx_frac <= region['x'][1]
+                            and region['y'][0] <= cy_frac <= region['y'][1]):
+                        continue   # outside this bar's known region — noise or mislabel
 
                 obj = {
                     'cls':        cls,
