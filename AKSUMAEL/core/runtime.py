@@ -1446,6 +1446,18 @@ def run():
                           f'{skill.name} — fails goal-skill hard gate')
                     skill, match = None, 0.0
 
+                # EAT/HUNT need exclusive per-tick FSM control (see the FSM
+                # comment below) — a generic-trigger skill (e.g. an
+                # "animal"-triggered skill firing off the same passive-mob
+                # detection HUNT is chasing) must not preempt that, or the
+                # eat hold/release sequence and the hunt approach/attack
+                # sequence desync mid-cycle (2026-07-20:
+                # REPLAY:animal_fa8 hijacking EAT ticks instead of the FSM).
+                if skill and fsm_state in (State.EAT, State.HUNT):
+                    print(f'[SKILL] fsm_state={fsm_state.value}: blocking replay of '
+                          f'{skill.name} — FSM owns this state')
+                    skill, match = None, 0.0
+
                 if skill and match >= skills.MIN_MATCH_SCORE:
                     same_skill_count = same_skill_count + 1 if skill.name == last_skill_name else 1
                     last_skill_name  = skill.name
