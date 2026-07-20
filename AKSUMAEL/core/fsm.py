@@ -213,6 +213,13 @@ EAT_HOLD_TICKS      = 6     # ~1.5s at LOOP_INTERVAL_SEC=0.25 — one eat animat
 EAT_HOTBAR_SLOTS    = 9     # try every slot before giving up
 EAT_HUNGER_EPSILON  = 0.02  # hunger_frac must rise more than this (OCR jitter) to count as "ate"
 
+# When EAT exhausts every hotbar slot with no food, it hands off to HUNT so
+# the bot can go kill something to eat. hunger_frac stays below the EAT
+# threshold the whole time HUNT is chasing the animal, so without this grace
+# window Priority 1 below (hunger) forces state right back to EAT on the very
+# next tick — HUNT never even runs _do_hunt() once (2026-07-20 deadlock).
+HUNT_GRACE_TICKS    = 30    # ticks HUNT is shielded from the hunger override
+
 # ── Sector-scan EXPLORE sweep ────────────────────────────────────────────
 # Instead of a blind left/right pan, divide the horizontal FOV into discrete
 # sectors and dwell in each one long enough for vision to actually register
@@ -585,6 +592,7 @@ class GameFSM:
         self._eat_phase           = 'select'  # 'select' | 'hold_start' | 'holding' | 'check'
         self._eat_hold_ticks_left = 0
         self._eat_pre_hunger      = None
+        self._hunt_grace_ticks_left = 0  # see HUNT_GRACE_TICKS above
 
         # FARM tracking
         self._farm_ticks     = 0
@@ -703,7 +711,12 @@ class GameFSM:
         # through so lower-priority checks (hostile mob, etc.) still run
         # every tick and _do_eat() below drives the actual eat attempts.
         if hunger_frac < 0.20 and self.state != State.EAT:
-            return self._goto(State.EAT, self._begin_eat())
+            if self.state == State.HUNT and self._hunt_grace_ticks_left > 0:
+                # EAT found no food and handed off to HUNT — let it actually
+                # chase the animal instead of bouncing straight back to EAT.
+                self._hunt_grace_ticks_left -= 1
+            else:
+                return self._goto(State.EAT, self._begin_eat())
 
         # ── Priority 2: hostile mob → flee ────────────────────────
         # Mob persistence tracking (see MOB_AMBIENT_TICKS above): a hostile
@@ -1592,6 +1605,7 @@ class GameFSM:
         if self._eat_phase == 'select':
             if self._eat_slot > EAT_HOTBAR_SLOTS:
                 print('[EAT] no food in hotbar, transitioning to HUNT')
+                self._hunt_grace_ticks_left = HUNT_GRACE_TICKS
                 return self._goto(State.HUNT, self._begin_hunt(animal_obj or {'label': 'animal'}))
             print(f'[EAT] attempting eat on slot {self._eat_slot}')
             ad['key']         = str(self._eat_slot)
