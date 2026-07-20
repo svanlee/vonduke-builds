@@ -31,3 +31,7 @@ paho-mqtt
 # Axon voice hub — local/offline speech-to-text (optional, only used if
 # running axon/hub.py; graceful no-op if missing)
 openai-whisper
+
+# Axon push-to-talk key listener (optional; falls back to `keyboard` lib on
+# SCROLL_LOCK, then to always_on mode, if neither is installed)
+pynput

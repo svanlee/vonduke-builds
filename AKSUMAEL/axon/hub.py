@@ -38,9 +38,35 @@ from core.llm_router import route_llm_call
 from core.cognitive import InnerMonologue
 from envs.attention import AttentionManager
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 LISTEN_CHUNK_SEC  = 4.0  # rolling recording window, always on
 MIN_COMMAND_WORDS = 3    # drop shorter transcripts as noise/false triggers
 SAMPLE_RATE       = 16000  # Whisper's native rate
+
+# --- Listening modes -------------------------------------------------------
+# "off" is the default when the mode file is missing/unreadable — safe
+# default for when no one is at the machine and no one has opted into
+# always-on mic capture or PTT.
+MODE_PTT        = "ptt"
+MODE_ALWAYS_ON  = "always_on"
+MODE_OFF        = "off"
+VALID_MODES     = (MODE_PTT, MODE_ALWAYS_ON, MODE_OFF)
+DEFAULT_MODE    = MODE_OFF
+
+MODE_FILE_PATH   = os.path.join(BASE_DIR, "data", "axon_mode.txt")
+MODE_POLL_SEC    = 2.0  # how often the run loop re-reads MODE_FILE_PATH
+
+
+def read_mode_file() -> str:
+    """Read the current listening mode from MODE_FILE_PATH, defaulting to
+    MODE_OFF (safe default) if the file is missing, empty, or unreadable."""
+    try:
+        with open(MODE_FILE_PATH) as f:
+            mode = f.read().strip().lower()
+    except OSError:
+        return DEFAULT_MODE
+    return mode if mode in VALID_MODES else DEFAULT_MODE
 
 # Voice Q&A (v1.4) — a transcript containing any of these reads as a
 # question rather than a command, and gets answered out loud via mesh-llm
@@ -86,6 +112,114 @@ def _match_env_switch(transcript: str) -> str | None:
 def _looks_like_question(text: str) -> bool:
     t = (text or '').lower()
     return any(kw in t for kw in QA_KEYWORDS)
+
+
+class PTTKeyWatcher:
+    """Watches for the push-to-talk key and fires on_press/on_release.
+
+    Prefers pynput (F9) since it listens globally without needing window
+    focus — important here since Minecraft holds focus. Falls back to the
+    `keyboard` lib on SCROLL_LOCK (a key Minecraft doesn't intercept) if
+    pynput isn't installed. If neither library is available, `available` is
+    False and the caller should stay in always_on instead.
+
+    Backend is detected once at construction; start()/stop() can be called
+    repeatedly as the mode toggles at runtime.
+    """
+
+    def __init__(self, on_press, on_release):
+        self._on_press_cb = on_press
+        self._on_release_cb = on_release
+        self._pynput_listener = None
+        self._active = False
+
+        try:
+            import pynput  # noqa: F401
+            self._backend = "pynput"
+        except ImportError:
+            try:
+                import keyboard  # noqa: F401
+                self._backend = "keyboard"
+            except ImportError:
+                self._backend = None
+
+    @property
+    def available(self) -> bool:
+        return self._backend is not None
+
+    @property
+    def description(self) -> str:
+        return {
+            "pynput": "pynput (F9)",
+            "keyboard": "keyboard lib (SCROLL_LOCK)",
+        }.get(self._backend, "unavailable")
+
+    def start(self):
+        if self._active or self._backend is None:
+            return
+        if self._backend == "pynput":
+            from pynput import keyboard as pynput_keyboard
+
+            def _on_press(key):
+                if key == pynput_keyboard.Key.f9:
+                    self._on_press_cb()
+
+            def _on_release(key):
+                if key == pynput_keyboard.Key.f9:
+                    self._on_release_cb()
+
+            self._pynput_listener = pynput_keyboard.Listener(
+                on_press=_on_press, on_release=_on_release)
+            self._pynput_listener.start()
+        else:  # "keyboard"
+            import keyboard as keyboard_lib
+            keyboard_lib.on_press_key("scroll lock", lambda _: self._on_press_cb())
+            keyboard_lib.on_release_key("scroll lock", lambda _: self._on_release_cb())
+        self._active = True
+
+    def stop(self):
+        if not self._active:
+            return
+        if self._backend == "pynput" and self._pynput_listener is not None:
+            self._pynput_listener.stop()
+            self._pynput_listener = None
+        elif self._backend == "keyboard":
+            import keyboard as keyboard_lib
+            keyboard_lib.unhook_all()
+        self._active = False
+
+
+class _StreamRecorder:
+    """Records mic audio of unknown-in-advance length via a sounddevice
+    InputStream, unlike always_on's fixed-length blocking sd.rec() — PTT
+    doesn't know how long the key will be held until it's released."""
+
+    def __init__(self):
+        self._stream = None
+        self._frames = []
+
+    def start(self, device_idx):
+        import sounddevice as sd
+        self._frames = []
+
+        def _callback(indata, frames, time_info, status):
+            self._frames.append(indata.copy())
+
+        self._stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+                                       dtype='float32', device=device_idx,
+                                       callback=_callback)
+        self._stream.start()
+
+    def stop(self):
+        if self._stream is None:
+            return None
+        self._stream.stop()
+        self._stream.close()
+        self._stream = None
+        if not self._frames:
+            return None
+        import numpy as np
+        return np.concatenate(self._frames, axis=0).flatten()
 
 
 def _enqueue_goal(goal: str, reason: str):
@@ -138,6 +272,11 @@ class AxonHub:
         self.attention_manager = AttentionManager(envs={})
         self.enabled = self._probe()
 
+        self.mode = None  # set by _apply_mode() on first run() poll
+        self._ptt_recording = False
+        self._ptt_recorder = _StreamRecorder()
+        self._ptt_watcher = PTTKeyWatcher(self._on_ptt_press, self._on_ptt_release)
+
     def _select_audio_devices(self):
         in_idx, in_dev, out_idx, out_dev = select_devices()
         self._in_device_idx  = in_idx
@@ -173,6 +312,49 @@ class AxonHub:
         print(f'[AXON] loading whisper model "{model_name}" ...')
         self._model = whisper.load_model(model_name)
         print('[AXON] whisper ready')
+
+    def _apply_mode(self, new_mode: str):
+        """Switch listening mode if new_mode differs from the current one,
+        logging on startup (self.mode starts as None) and every change."""
+        if new_mode == self.mode:
+            return
+        self.mode = new_mode
+        print(f'[AXON] mode: {new_mode}')
+
+        if new_mode == MODE_PTT:
+            if self._ptt_watcher.available:
+                self._ptt_watcher.start()
+                print(f'[AXON] PTT key listener active ({self._ptt_watcher.description})')
+            else:
+                print('[AXON] PTT requested but neither pynput nor the '
+                      'keyboard lib is installed — staying in always_on')
+                self.mode = MODE_ALWAYS_ON
+                print(f'[AXON] mode: {MODE_ALWAYS_ON}')
+        else:
+            self._ptt_watcher.stop()
+            if self._ptt_recording:
+                self._ptt_recording = False
+                self._ptt_recorder.stop()
+
+    def _on_ptt_press(self):
+        if self.mode != MODE_PTT or self._ptt_recording:
+            return
+        self._ptt_recording = True
+        print('[AXON] PTT: recording...')
+        self._ptt_recorder.start(self._in_device_idx)
+
+    def _on_ptt_release(self):
+        if not self._ptt_recording:
+            return
+        self._ptt_recording = False
+        audio = self._ptt_recorder.stop()
+        print('[AXON] PTT: released, processing...')
+        if audio is None or len(audio) < SAMPLE_RATE * 0.2:
+            return  # too short to be real speech
+        transcript = self._transcribe(audio).strip()
+        if not transcript or len(transcript.split()) < MIN_COMMAND_WORDS:
+            return
+        self._handle_command(transcript)
 
     def _record(self, seconds: float):
         import sounddevice as sd
@@ -275,17 +457,25 @@ class AxonHub:
             return
 
         self._load_model()
-        print('[AXON] listening (always-on, no wake word)')
+        self._apply_mode(read_mode_file())
 
         while True:
             try:
-                chunk = self._record(LISTEN_CHUNK_SEC)
-                transcript = self._transcribe(chunk).strip()
-                if not transcript or len(transcript.split()) < MIN_COMMAND_WORDS:
-                    continue
-                self._handle_command(transcript)
+                if self.mode == MODE_ALWAYS_ON:
+                    chunk = self._record(LISTEN_CHUNK_SEC)
+                    transcript = self._transcribe(chunk).strip()
+                    if transcript and len(transcript.split()) >= MIN_COMMAND_WORDS:
+                        self._handle_command(transcript)
+                else:
+                    # ptt is event-driven (PTTKeyWatcher callbacks) and off
+                    # takes no mic access at all — both just idle here,
+                    # re-checking the mode file every MODE_POLL_SEC.
+                    time.sleep(MODE_POLL_SEC)
+
+                self._apply_mode(read_mode_file())
             except KeyboardInterrupt:
                 print('[AXON] shutting down')
+                self._ptt_watcher.stop()
                 break
             except Exception as e:
                 print(f'[AXON] loop error: {e}')
