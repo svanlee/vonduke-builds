@@ -35,6 +35,7 @@ import time
 import config
 from core.aim import bbox_to_mouse_delta, is_on_target
 from vision.color_detector import sample_box_pixel_count
+from vision.target_lock import TargetLock
 
 
 # ── Target label sets ─────────────────────────────────────────────────────────
@@ -219,6 +220,21 @@ EAT_HUNGER_EPSILON  = 0.02  # hunger_frac must rise more than this (OCR jitter) 
 # window Priority 1 below (hunger) forces state right back to EAT on the very
 # next tick — HUNT never even runs _do_hunt() once (2026-07-20 deadlock).
 HUNT_GRACE_TICKS    = 30    # ticks HUNT is shielded from the hunger override
+
+# ── HUNT / TargetLock (2026-07-20) ──────────────────────────────────────
+# Kill-confirmation proxy for TargetLock's "animal confirmed dead" exit —
+# a raw-meat/leather/feather drop entering this tick's detections means the
+# mob just died, so HUNT can head to COLLECT immediately instead of waiting
+# out TargetLock's full miss-count dropout. NOTE: none of these labels are
+# in the current YOLO class list (data/yolo_dataset/classes.txt) yet, so
+# this check is a no-op until the model is retrained to detect item drops —
+# the miss-count dropout (TargetLock.is_locked) is what actually ends HUNT
+# today. Left in place as the intended hook rather than omitted, since
+# retraining to add these classes doesn't require any FSM change once done.
+HUNT_KILL_LABELS = frozenset({
+    'raw_beef', 'beef', 'raw_porkchop', 'porkchop', 'raw_chicken', 'chicken_raw',
+    'raw_mutton', 'mutton', 'leather', 'feather', 'wool',
+})
 
 # ── Sector-scan EXPLORE sweep ────────────────────────────────────────────
 # Instead of a blind left/right pan, divide the horizontal FOV into discrete
@@ -583,9 +599,12 @@ class GameFSM:
         self._fish_phase     = 'cast'     # 'cast' | 'wait' | 'reel'
         self._fish_ticks     = 0
 
-        # HUNT tracking
+        # HUNT tracking (see vision/target_lock.py — TargetLock replaces the
+        # old "predict once, gone next tick, bail" logic with a proper
+        # miss-tolerant lock)
         self._hunt_ticks     = 0
         self._hunt_target    = None
+        self.target_lock     = TargetLock()
 
         # EAT tracking (see EAT_HOLD_TICKS above)
         self._eat_slot            = 1
@@ -842,7 +861,7 @@ class GameFSM:
             return self._do_fish(bobber_obj, water_obj)
 
         elif s == State.HUNT:
-            return self._do_hunt(animal_obj, fw, fh)
+            return self._do_hunt(objects, animal_obj, fw, fh)
 
         elif s == State.FARM:
             return self._do_farm(crop_obj, fw, fh)
@@ -864,7 +883,7 @@ class GameFSM:
                 return self._goto(State.APPROACH, ad, world_mem)
             # Priority 5: animal (need food)
             if animal_obj:
-                return self._goto(State.HUNT, self._begin_hunt(animal_obj))
+                return self._goto(State.HUNT, self._begin_hunt(objects, animal_obj))
             # Priority 6: fish (near water)
             if water_obj:
                 return self._goto(State.FISH, self._begin_fish())
@@ -1606,7 +1625,8 @@ class GameFSM:
             if self._eat_slot > EAT_HOTBAR_SLOTS:
                 print('[EAT] no food in hotbar, transitioning to HUNT')
                 self._hunt_grace_ticks_left = HUNT_GRACE_TICKS
-                return self._goto(State.HUNT, self._begin_hunt(animal_obj or {'label': 'animal'}))
+                _detections = [animal_obj] if animal_obj else []
+                return self._goto(State.HUNT, self._begin_hunt(_detections, animal_obj or {'label': 'animal'}))
             print(f'[EAT] attempting eat on slot {self._eat_slot}')
             ad['key']         = str(self._eat_slot)
             ad['action']      = f'eat:select_slot:{self._eat_slot}'
@@ -1658,31 +1678,67 @@ class GameFSM:
 
     # ── HUNT state ────────────────────────────────────────────────────────────
 
-    def _begin_hunt(self, target: dict) -> dict:
-        """Sprint toward first visible passive mob."""
+    def _begin_hunt(self, detections: list, target: dict) -> dict:
+        """Latch TargetLock onto the best passive-mob detection and start
+        sprinting toward it.
+
+        `detections` is the current tick's full detection list — TargetLock
+        scores every cow/sheep/pig/chicken itself (largest bbox, conf as
+        tiebreak) rather than trusting the single pre-picked `target`, which
+        exists only for logging/label purposes here."""
         self._hunt_ticks  = 0
-        self._hunt_target = target.get('label', 'animal')
+        self._hunt_target = target.get('label', 'animal') if target else 'animal'
+        self.target_lock.acquire(detections, PASSIVE_MOBS)
         ad = _idle()
         ad['key']    = 'w'
         ad['action'] = f'hunt:approach:{self._hunt_target}'
         return ad
 
-    def _do_hunt(self, animal_obj, fw: int, fh: int):
+    def _do_hunt(self, objects: list, animal_obj, fw: int, fh: int):
         """
-        HUNT state: sprint toward animal, then left-click to kill.
-        After ~3 hit ticks with no animal visible, go to COLLECT.
+        HUNT state: keep TargetLock's lock updated every tick and sprint
+        toward / attack its aim point.
+
+        Replaces the old "predict once, animal gone next tick, bail"
+        behavior: a single missed detection no longer drops the target —
+        TargetLock tolerates LOCK_DROPOUT_TICKS consecutive misses and,
+        while locked, predicted_centroid (velocity extrapolation) keeps
+        aim tracking the mob even on ticks where it wasn't re-detected.
+        Only gives up once TargetLock.is_locked goes False, or a kill is
+        confirmed by a meat/leather/feather drop (see HUNT_KILL_LABELS).
         """
         self._hunt_ticks += 1
         ad = _idle()
 
-        if animal_obj is None:
-            # Animal gone (dead or fled) — collect drops
-            print(f'[FSM] HUNT: {self._hunt_target} gone after {self._hunt_ticks} ticks → COLLECT')
+        animal_candidates = [
+            o for o in objects
+            if o.get('label', '').lower() in PASSIVE_MOBS
+        ]
+        matched = self.target_lock.update(animal_candidates)
+
+        killed = any(o.get('label', '').lower() in HUNT_KILL_LABELS for o in objects)
+        if killed:
+            print(f'[HUNT] kill confirmed (drop detected) — '
+                  f'track_id={self.target_lock.track_id} → COLLECT')
             return self._goto(State.COLLECT, self._begin_collect())
 
-        box = animal_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
+        if not self.target_lock.is_locked:
+            print(f'[HUNT] {self._hunt_target} lost — '
+                  f'miss={self.target_lock.consecutive_miss_count} → COLLECT')
+            return self._goto(State.COLLECT, self._begin_collect())
+
+        box = matched.get('box') if matched else None
+        if box is None:
+            # is_locked (checked above) guarantees last_known_centroid is
+            # set, so predicted_centroid is never None here.
+            cx, cy = self.target_lock.predicted_centroid
+            lb = self.target_lock.last_known_bbox
+            half_w = (lb[2] - lb[0]) / 2.0
+            half_h = (lb[3] - lb[1]) / 2.0
+            box = [cx - half_w, cy - half_h, cx + half_w, cy + half_h]
+
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
-        label  = animal_obj.get('label', 'animal')
+        label  = matched.get('label') if matched else (self.target_lock.label or self._hunt_target)
         on_target = is_on_target(box, fw, fh)
 
         # Keep closing distance the whole time — melee needs to actually be
@@ -1693,7 +1749,7 @@ class GameFSM:
         if self._hunt_ticks < APPROACH_TICKS and not on_target:
             ad['action']      = f'hunt:sprint:{label}'
             ad['observation'] = f'Hunting {label} — approaching'
-            ad['confidence']  = animal_obj.get('conf', 0.6)
+            ad['confidence']  = matched.get('conf', 0.6) if matched else 0.4
         else:
             # Real in-game swing. 'click': [...] (used elsewhere in this
             # file) only moves the OS-absolute pointer and never registers
@@ -1706,7 +1762,12 @@ class GameFSM:
                 ad['mouse_button'] = 'left'
             ad['action']      = f'hunt:attack:{label}'
             ad['observation'] = f'Hunting {label} — attacking ({self._hunt_ticks})'
-            ad['confidence']  = animal_obj.get('conf', 0.7)
+            ad['confidence']  = matched.get('conf', 0.7) if matched else 0.4
+
+        cx_log, cy_log = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+        print(f'[HUNT] locked track_id={self.target_lock.track_id} | '
+              f'centroid=({cx_log:.0f},{cy_log:.0f}) | '
+              f'miss={self.target_lock.consecutive_miss_count}')
 
         return State.HUNT, ad
 
@@ -1774,6 +1835,8 @@ class GameFSM:
                 self._approach_locked_box       = None
                 self._approach_locked_conf      = 0.0
                 self._approach_log_absent_ticks = 0
+            if self.state == State.HUNT and new_state != State.HUNT:
+                self.target_lock.drop()   # keep TargetLock stateless between HUNT sessions
             # Any exit from EAT while mid-hold must release the physically
             # held right-click button (mouse_hold has no auto-release — see
             # uart/kb2040_packer.py) or it stays down through whatever state

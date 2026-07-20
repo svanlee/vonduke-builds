@@ -99,11 +99,18 @@ class YOLODetector:
         except Exception as e:
             print(f'[YOLO] label DB save error: {e}')
 
-    def detect(self, frame) -> list:
+    def detect(self, frame, track: bool = False) -> list:
         """
         Run YOLO detection. Returns list of object dicts.
         Objects below YOLO_CONF_THRESHOLD are marked 'unknown'
         and added to unknown_queue for user labeling.
+
+        track=True runs Ultralytics' .track(persist=True) instead of plain
+        inference, so ByteTrack assigns a persistent 'track_id' per object
+        (see vision/target_lock.py's TargetLock, which HUNT uses to hold a
+        lock on one mob across ticks instead of re-detecting from scratch).
+        Every other caller (EXPLORE/MINE/etc.) leaves this False and gets
+        the original untracked behavior.
         """
         if self.model is None or frame is None:
             return []
@@ -117,7 +124,11 @@ class YOLODetector:
             # applied after this call) does nothing for anything Ultralytics
             # already dropped — see 2026-07-15, trees clearly visible in a
             # captured frame but never appearing in detections at all.
-            results = self.model(frame, verbose=False, conf=config.YOLO_CONF_THRESHOLD)[0]
+            if track:
+                results = self.model.track(frame, persist=True, verbose=False,
+                                            conf=config.YOLO_CONF_THRESHOLD)[0]
+            else:
+                results = self.model(frame, verbose=False, conf=config.YOLO_CONF_THRESHOLD)[0]
             frame_h = frame.shape[0]
             out = []
             for b in results.boxes:
@@ -125,6 +136,7 @@ class YOLODetector:
                 box   = [round(float(x), 1) for x in b.xyxy[0].tolist()]
                 cls   = int(b.cls)
                 label = results.names[cls]
+                track_id = int(b.id) if getattr(b, 'id', None) is not None else None
 
                 # Check user label DB
                 box_key = self._box_key(box)
@@ -147,6 +159,7 @@ class YOLODetector:
                     'box':        box,        # [x1, y1, x2, y2]
                     'user_label': user_label is not None,
                     'unknown':    conf < config.YOLO_CONF_THRESHOLD,
+                    'track_id':   track_id,   # set only when track=True; else None
                 }
 
                 # Queue for user labeling if below threshold
