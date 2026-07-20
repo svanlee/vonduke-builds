@@ -49,6 +49,8 @@ def _build_prompt(snapshot: dict) -> str:
     return f"""{AKSUMAEL_IDENTITY}
 You are the Aksūmal Overseer — the strategic intelligence for an autonomous robot agent.
 
+{snapshot.get('hardware', '')}
+
 Current agent state:
 - Environment: {snapshot.get('env', 'minecraft')}
 - FSM state: {snapshot.get('fsm_state', 'UNKNOWN')}
