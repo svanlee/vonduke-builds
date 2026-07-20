@@ -200,6 +200,19 @@ MINE_MAX_TICKS   = 60    # give up and re-approach after this many MINE ticks (6
 COLLECT_TICKS    = 4     # walk forward this long after block breaks
 EXPLORE_WALK     = 12    # ticks walking before each sector-scan sweep
 
+# ── EAT (2026-07-20) ─────────────────────────────────────────────────────
+# Inventory tracking is unreliable (inv=[unknown] — see run notes), so EAT
+# can't look up which hotbar slot actually holds food. Instead it blind-
+# cycles every slot: tap the number key to select it, hold right-click long
+# enough for one Minecraft eat animation, then check whether hunger_frac
+# actually rose. Unchanged hunger means that slot wasn't food (or was
+# empty) — advance to the next slot. A rise means it worked — keep eating
+# from that same slot (another right-click hold) until hunger clears the
+# threshold.
+EAT_HOLD_TICKS      = 6     # ~1.5s at LOOP_INTERVAL_SEC=0.25 — one eat animation
+EAT_HOTBAR_SLOTS    = 9     # try every slot before giving up
+EAT_HUNGER_EPSILON  = 0.02  # hunger_frac must rise more than this (OCR jitter) to count as "ate"
+
 # ── Sector-scan EXPLORE sweep ────────────────────────────────────────────
 # Instead of a blind left/right pan, divide the horizontal FOV into discrete
 # sectors and dwell in each one long enough for vision to actually register
@@ -567,6 +580,12 @@ class GameFSM:
         self._hunt_ticks     = 0
         self._hunt_target    = None
 
+        # EAT tracking (see EAT_HOLD_TICKS above)
+        self._eat_slot            = 1
+        self._eat_phase           = 'select'  # 'select' | 'hold_start' | 'holding' | 'check'
+        self._eat_hold_ticks_left = 0
+        self._eat_pre_hunger      = None
+
         # FARM tracking
         self._farm_ticks     = 0
 
@@ -680,8 +699,11 @@ class GameFSM:
         }
 
         # ── Priority 1: hunger ────────────────────────────────────
-        if hunger_frac < 0.20:
-            return self._goto(State.EAT, _idle())
+        # Only force the transition on entry — once already in EAT, fall
+        # through so lower-priority checks (hostile mob, etc.) still run
+        # every tick and _do_eat() below drives the actual eat attempts.
+        if hunger_frac < 0.20 and self.state != State.EAT:
+            return self._goto(State.EAT, self._begin_eat())
 
         # ── Priority 2: hostile mob → flee ────────────────────────
         # Mob persistence tracking (see MOB_AMBIENT_TICKS above): a hostile
@@ -774,17 +796,7 @@ class GameFSM:
         s = self.state
 
         if s == State.EAT:
-            # If hunger recovered, go back to what we were doing
-            if hunger_frac >= 0.20:
-                return self._goto(State.EXPLORE, _idle())
-            # If we can see an animal right now, hunt it immediately
-            if animal_obj:
-                print(f'[FSM] EAT: animal visible ({animal_obj.get("label")}) → HUNT')
-                return self._goto(State.HUNT, self._begin_hunt(animal_obj))
-            # No animal visible — explore to find one
-            # (don't just idle — go find food)
-            print('[FSM] EAT: no food/animal visible → exploring for food')
-            return self._do_explore(world_mem, goal)
+            return self._do_eat(hunger_frac, animal_obj)
 
         elif s == State.COLLECT:
             return self._do_collect()
@@ -1543,6 +1555,93 @@ class GameFSM:
 
         return State.FISH, ad
 
+    # ── EAT state ────────────────────────────────────────────────────────────
+
+    def _begin_eat(self) -> dict:
+        """Enter EAT: start blind-cycling hotbar slots from slot 1."""
+        self._eat_slot            = 1
+        self._eat_phase           = 'select'
+        self._eat_hold_ticks_left = 0
+        self._eat_pre_hunger      = None
+        ad = _idle()
+        ad['action'] = 'eat:begin'
+        return ad
+
+    def _do_eat(self, hunger_frac: float, animal_obj):
+        """
+        EAT state machine — see EAT_HOLD_TICKS comment above for why this
+        blind-cycles instead of reading inventory:
+
+          select     -> tap the current slot's number key
+          hold_start -> press-and-hold right-click (mouse_hold 'down')
+          holding    -> keep holding for EAT_HOLD_TICKS ticks
+          check      -> release right-click, compare hunger before/after —
+                        rose -> that slot is food, keep eating it; unchanged
+                        -> advance to the next slot
+
+        After EAT_HOTBAR_SLOTS slots produce no hunger increase, there's no
+        food in the hotbar at all — go hunt an animal for meat instead of
+        idling forever.
+        """
+        if hunger_frac >= 0.20:
+            print(f'[EAT] hunger restored ({hunger_frac:.0%}) — resuming')
+            return self._goto(State.EXPLORE, _idle())
+
+        ad = _idle()
+
+        if self._eat_phase == 'select':
+            if self._eat_slot > EAT_HOTBAR_SLOTS:
+                print('[EAT] no food in hotbar, transitioning to HUNT')
+                return self._goto(State.HUNT, self._begin_hunt(animal_obj or {'label': 'animal'}))
+            print(f'[EAT] attempting eat on slot {self._eat_slot}')
+            ad['key']         = str(self._eat_slot)
+            ad['action']      = f'eat:select_slot:{self._eat_slot}'
+            ad['observation'] = f'Eating — selecting hotbar slot {self._eat_slot}'
+            ad['confidence']  = 0.5
+            self._eat_phase   = 'hold_start'
+            return State.EAT, ad
+
+        if self._eat_phase == 'hold_start':
+            self._eat_pre_hunger      = hunger_frac
+            self._eat_hold_ticks_left = EAT_HOLD_TICKS
+            ad['mouse_hold']        = 'down'
+            ad['mouse_button_name'] = 'right'
+            ad['action']            = f'eat:hold_start:slot{self._eat_slot}'
+            ad['observation']       = f'Eating — holding right-click on slot {self._eat_slot}'
+            ad['confidence']        = 0.5
+            self._eat_phase = 'holding'
+            return State.EAT, ad
+
+        if self._eat_phase == 'holding':
+            self._eat_hold_ticks_left -= 1
+            ad['action']      = f'eat:holding:slot{self._eat_slot}'
+            ad['observation'] = (f'Eating — holding right-click '
+                                 f'({EAT_HOLD_TICKS - self._eat_hold_ticks_left}/{EAT_HOLD_TICKS})')
+            ad['confidence']  = 0.5
+            if self._eat_hold_ticks_left <= 0:
+                self._eat_phase = 'check'
+            return State.EAT, ad
+
+        # phase == 'check'
+        ad['mouse_hold']        = 'up'
+        ad['mouse_button_name'] = 'right'
+        ad['action']            = f'eat:release:slot{self._eat_slot}'
+        ad['confidence']        = 0.5
+
+        ate = (self._eat_pre_hunger is not None
+               and hunger_frac > self._eat_pre_hunger + EAT_HUNGER_EPSILON)
+        if ate:
+            print(f'[EAT] slot {self._eat_slot} restored hunger '
+                  f'({self._eat_pre_hunger:.0%} → {hunger_frac:.0%}) — continuing')
+            ad['observation'] = f'Eating — slot {self._eat_slot} worked, hunger rising'
+            # Same slot again — go another round of hold/check.
+        else:
+            print(f'[EAT] slot {self._eat_slot} did not restore hunger — trying next slot')
+            ad['observation'] = f'Eating — slot {self._eat_slot} was not food, trying next'
+            self._eat_slot += 1
+        self._eat_phase = 'select'
+        return State.EAT, ad
+
     # ── HUNT state ────────────────────────────────────────────────────────────
 
     def _begin_hunt(self, target: dict) -> dict:
@@ -1570,18 +1669,27 @@ class GameFSM:
         box = animal_obj.get('box', [fw//4, fh//4, 3*fw//4, 3*fh//4])
         dx, dy = bbox_to_mouse_delta(box, fw, fh)
         label  = animal_obj.get('label', 'animal')
+        on_target = is_on_target(box, fw, fh)
 
-        if self._hunt_ticks < APPROACH_TICKS:
-            # Sprint toward the mob
-            ad['key']         = 'w'
-            ad['look']        = {'dx': dx, 'dy': dy}
+        # Keep closing distance the whole time — melee needs to actually be
+        # adjacent to the mob, and it may keep wandering while being chased.
+        ad['key']  = 'w'
+        ad['look'] = {'dx': dx, 'dy': dy}
+
+        if self._hunt_ticks < APPROACH_TICKS and not on_target:
             ad['action']      = f'hunt:sprint:{label}'
             ad['observation'] = f'Hunting {label} — approaching'
             ad['confidence']  = animal_obj.get('conf', 0.6)
         else:
-            # Attack (left-click) while aiming
-            ad['look']        = {'dx': dx, 'dy': dy}
-            ad['click']       = [50.0, 50.0]
+            # Real in-game swing. 'click': [...] (used elsewhere in this
+            # file) only moves the OS-absolute pointer and never registers
+            # as an attack while Minecraft has the mouse captured — see
+            # uart/kb2040_packer.py's action_dict_to_packets() comment.
+            # 'mouse_button' goes out over the relative device the game
+            # actually reads, so only swing once the crosshair is actually
+            # on the mob (otherwise we just whiff air every tick).
+            if on_target:
+                ad['mouse_button'] = 'left'
             ad['action']      = f'hunt:attack:{label}'
             ad['observation'] = f'Hunting {label} — attacking ({self._hunt_ticks})'
             ad['confidence']  = animal_obj.get('conf', 0.7)
@@ -1652,6 +1760,15 @@ class GameFSM:
                 self._approach_locked_box       = None
                 self._approach_locked_conf      = 0.0
                 self._approach_log_absent_ticks = 0
+            # Any exit from EAT while mid-hold must release the physically
+            # held right-click button (mouse_hold has no auto-release — see
+            # uart/kb2040_packer.py) or it stays down through whatever state
+            # comes next (e.g. a hostile-mob interrupt straight into FLEE).
+            if (self.state == State.EAT and new_state != State.EAT
+                    and self._eat_phase in ('hold_start', 'holding') and action is not None):
+                action['mouse_hold']        = 'up'
+                action['mouse_button_name'] = 'right'
+                self._eat_phase = 'select'
             # Mandatory pitch reset on entry into APPROACH/MINE — a one-time
             # downward nudge that counteracts whatever upward drift EXPLORE's
             # scanning/panning accumulated before this transition, so it
