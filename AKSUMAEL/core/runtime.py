@@ -823,14 +823,11 @@ def run():
                           f'— click in window to label')
 
             # ── FSM tick (runs every tick; drives core gameplay) ──────
-            # Compute hunger fraction from the detected hunger_bar bbox width.
-            _hbar = next((o for o in objects if o.get('label') == 'hunger_bar'), None)
-            if _hbar and _hbar.get('box') and len(_hbar['box']) == 4:
-                _hw = _hbar['box'][2] - _hbar['box'][0]
-                _hmax = hunger_behavior._max_width if hunger_behavior._max_width > 0 else max(_hw, 1)
-                _hunger_frac = _hw / _hmax
-            else:
-                _hunger_frac = 1.0   # assume full when not visible
+            # Hunger fraction comes from hud_reader's HUD pixel sample
+            # (world_mem.hunger_pct, 0.0-1.0), not the YOLO hunger_bar bbox —
+            # the bbox-width signal was unreliable and kept the FSM's EAT
+            # gate from ever firing (2026-07-20).
+            _hunger_frac = world_mem.hunger_pct
 
             # Goal-aware FSM gating: the FSM has no notion of the active
             # goal and always prefers ore over trees (see core/fsm.py
