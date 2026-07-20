@@ -109,10 +109,10 @@ class GoalStack:
     def auto_update(self, world_memory, inventory, tick: int = 0):
         """Heuristic goal updates based on world state."""
         # Hunger overrides everything
-        if hasattr(world_memory, 'hunger_level') and world_memory.hunger_level < 6:
+        if hasattr(world_memory, 'hunger_pct') and world_memory.hunger_pct < 0.30:
             if self.current != "eat":
                 self.push("eat")
-        elif self.current == "eat" and hasattr(world_memory, 'hunger_level') and world_memory.hunger_level > 14:
+        elif self.current == "eat" and hasattr(world_memory, 'hunger_pct') and world_memory.hunger_pct > 0.70:
             self.pop()
 
         # Diamond goal if we have a pickaxe and not too many diamonds
@@ -160,8 +160,7 @@ class GoalStack:
             self.push("rebuild_fort")
 
         # Need food — hunger below 60% and no food in inventory
-        hunger_frac = (world_memory.hunger_level / 20.0
-                       if hasattr(world_memory, 'hunger_level') else 1.0)
+        hunger_frac = getattr(world_memory, 'hunger_pct', 1.0)
         food_items = getattr(world_memory, 'food_items', [])
         has_food = bool(food_items) or any(
             inventory.items.get(f, 0) > 0
