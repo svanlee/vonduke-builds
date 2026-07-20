@@ -406,9 +406,11 @@ EPISODE_RETRIEVE_TOP_K    = 3
 
 # Code skills — LLM-generated Python functions as a more robust alternative
 # to recorded key-sequence skills. Executing LLM-generated code carries real
-# risk even on a single-user local rig, so this is OFF by default; flip to
-# True only after reviewing generated skills in data/skills/code/.
-ENABLE_CODE_SKILLS        = False
+# risk even on a single-user local rig; sandboxed via forbidden-pattern regex
+# (blocks import/exec/eval/os./sys./subprocess/socket/dunder-attrs), restricted
+# builtins, and a thread timeout — see core/code_skill_generator.py. Review
+# generated skills in data/skills/code/ periodically.
+ENABLE_CODE_SKILLS        = True
 CODE_SKILLS_DIR            = "data/skills/code"
 
 # ── Neural Policy (PPO backbone) ───────────────────────────────
