@@ -47,11 +47,11 @@ SAMPLE_RATE       = 16000  # Whisper's native rate
 # --- Listening modes -------------------------------------------------------
 # "off" is the default when the mode file is missing/unreadable — safe
 # default for when no one is at the machine and no one has opted into
-# always-on mic capture or PTT.
+# on (always-listening) mic capture or PTT.
 MODE_PTT        = "ptt"
-MODE_ALWAYS_ON  = "always_on"
+MODE_ON         = "on"
 MODE_OFF        = "off"
-VALID_MODES     = (MODE_PTT, MODE_ALWAYS_ON, MODE_OFF)
+VALID_MODES     = (MODE_PTT, MODE_ON, MODE_OFF)
 DEFAULT_MODE    = MODE_OFF
 
 MODE_FILE_PATH   = os.path.join(BASE_DIR, "data", "axon_mode.txt")
@@ -121,7 +121,7 @@ class PTTKeyWatcher:
     focus — important here since Minecraft holds focus. Falls back to the
     `keyboard` lib on SCROLL_LOCK (a key Minecraft doesn't intercept) if
     pynput isn't installed. If neither library is available, `available` is
-    False and the caller should stay in always_on instead.
+    False and the caller should stay in "on" instead.
 
     Backend is detected once at construction; start()/stop() can be called
     repeatedly as the mode toggles at runtime.
@@ -191,7 +191,7 @@ class PTTKeyWatcher:
 
 class _StreamRecorder:
     """Records mic audio of unknown-in-advance length via a sounddevice
-    InputStream, unlike always_on's fixed-length blocking sd.rec() — PTT
+    InputStream, unlike "on" mode's fixed-length blocking sd.rec() — PTT
     doesn't know how long the key will be held until it's released."""
 
     def __init__(self):
@@ -327,9 +327,9 @@ class AxonHub:
                 print(f'[AXON] PTT key listener active ({self._ptt_watcher.description})')
             else:
                 print('[AXON] PTT requested but neither pynput nor the '
-                      'keyboard lib is installed — staying in always_on')
-                self.mode = MODE_ALWAYS_ON
-                print(f'[AXON] mode: {MODE_ALWAYS_ON}')
+                      'keyboard lib is installed — staying in on')
+                self.mode = MODE_ON
+                print(f'[AXON] mode: {MODE_ON}')
         else:
             self._ptt_watcher.stop()
             if self._ptt_recording:
@@ -461,7 +461,7 @@ class AxonHub:
 
         while True:
             try:
-                if self.mode == MODE_ALWAYS_ON:
+                if self.mode == MODE_ON:
                     chunk = self._record(LISTEN_CHUNK_SEC)
                     transcript = self._transcribe(chunk).strip()
                     if transcript and len(transcript.split()) >= MIN_COMMAND_WORDS:

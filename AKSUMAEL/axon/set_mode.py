@@ -7,7 +7,7 @@
 # AxonHub.run() polls every MODE_POLL_SEC seconds and picks up live.
 #
 #   python axon/set_mode.py ptt
-#   python axon/set_mode.py always_on
+#   python axon/set_mode.py on
 #   python axon/set_mode.py off
 
 import os
@@ -15,7 +15,7 @@ import sys
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODE_FILE_PATH = os.path.join(BASE_DIR, "data", "axon_mode.txt")
-VALID_MODES = ("ptt", "always_on", "off")
+VALID_MODES = ("ptt", "on", "off")
 
 
 def main():
