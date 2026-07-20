@@ -45,14 +45,14 @@ MIN_COMMAND_WORDS = 3    # drop shorter transcripts as noise/false triggers
 SAMPLE_RATE       = 16000  # Whisper's native rate
 
 # --- Listening modes -------------------------------------------------------
-# "off" is the default when the mode file is missing/unreadable — safe
-# default for when no one is at the machine and no one has opted into
-# on (always-listening) mic capture or PTT.
+# "ptt" is the default when the mode file is missing/unreadable — push-to-talk
+# requires an explicit key press to capture audio, so it's safe even when no
+# one has opted into "on" (always-listening) mic capture.
 MODE_PTT        = "ptt"
 MODE_ON         = "on"
 MODE_OFF        = "off"
 VALID_MODES     = (MODE_PTT, MODE_ON, MODE_OFF)
-DEFAULT_MODE    = MODE_OFF
+DEFAULT_MODE    = MODE_PTT
 
 MODE_FILE_PATH   = os.path.join(BASE_DIR, "data", "axon_mode.txt")
 MODE_POLL_SEC    = 2.0  # how often the run loop re-reads MODE_FILE_PATH
@@ -60,7 +60,7 @@ MODE_POLL_SEC    = 2.0  # how often the run loop re-reads MODE_FILE_PATH
 
 def read_mode_file() -> str:
     """Read the current listening mode from MODE_FILE_PATH, defaulting to
-    MODE_OFF (safe default) if the file is missing, empty, or unreadable."""
+    MODE_PTT (safe default) if the file is missing, empty, or unreadable."""
     try:
         with open(MODE_FILE_PATH) as f:
             mode = f.read().strip().lower()
