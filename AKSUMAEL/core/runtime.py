@@ -97,6 +97,7 @@ from core.human_assist       import HumanAssist
 from audio.tts               import TTSEngine
 from audio.game_ear          import GameEar
 from skills.skill_system     import SkillSystem, SkillReplayer
+from skills.skill_evaluator  import SkillEvaluator
 from actions.aim_controller  import AimController
 from ui.labeling             import LabelingUI
 
@@ -196,6 +197,7 @@ def run():
     tts       = TTSEngine()
     ear       = GameEar()          # graceful if no audio device
     skills    = SkillSystem()
+    skill_evaluator = SkillEvaluator()
     planner     = Planner()
     episodes    = EpisodeMemory()
     curriculum  = CurriculumGenerator(planner)
@@ -299,6 +301,51 @@ def run():
     router.start()
     if ear.enabled:
         ear.start()
+
+    # Multi-environment attention (envs/attention.py) — additive, alongside
+    # the Minecraft-only tick loop below, not a replacement for it. The
+    # 'minecraft' entry wraps the pipeline/router THIS process already
+    # owns (not a fresh envs.minecraft_env.MinecraftEnv(), which would open
+    # a second, conflicting VideoCapturePipeline against the same
+    # exclusive-open capture card). 'vehicle'/'robocar' construct their
+    # real adapters, which degrade to stub mode on their own when the
+    # ZeroMQ/ROS2 endpoints they talk to aren't reachable from this
+    # machine — see envs/vehicle_env.py and envs/robocar_env.py. Built
+    # after pipeline.start() so the idle-tick thread (started below) never
+    # races pipeline's own construction.
+    from envs.attention import AttentionManager
+    from envs.base_env import BaseEnvironment
+
+    class _LiveMinecraftEnv(BaseEnvironment):
+        def get_frame(self):
+            return pipeline.latest_small_frame
+
+        def send_action(self, action: dict):
+            router.update_aksumael(action)
+            resolved = router.resolve()
+            executor.execute(resolved)
+            return resolved
+
+        def get_telemetry(self) -> dict:
+            return {}
+
+        def get_env_name(self) -> str:
+            return 'minecraft'
+
+    _attention_envs = {'minecraft': _LiveMinecraftEnv()}
+    try:
+        from envs.vehicle_env import VehicleEnv
+        _attention_envs['vehicle'] = VehicleEnv()
+    except Exception as e:
+        print(f'[ATTENTION] vehicle env unavailable: {e}')
+    try:
+        from envs.robocar_env import RobocarEnv
+        _attention_envs['robocar'] = RobocarEnv()
+    except Exception as e:
+        print(f'[ATTENTION] robocar env unavailable: {e}')
+
+    attention_manager = AttentionManager(_attention_envs, default='minecraft')
+    attention_manager.start()
 
     tts.say_line('startup')
 
@@ -665,6 +712,16 @@ def run():
             world_mem.update(objects, action=last_action)
             goals.auto_update(world_mem, inventory, tick)
 
+            # ── Attention focus — pick up voice-driven env switches ────
+            # Axon (axon/hub.py) runs as a separate process and can't call
+            # attention_manager.focus() on this instance directly — it
+            # writes the request to data/attention_focus.json instead; see
+            # envs/attention.py for the handoff.
+            try:
+                attention_manager.sync_external_focus()
+            except Exception as e:
+                print(f'[ATTENTION] focus sync error: {e}')
+
             # ── Mastermind hive — drain assigned goals, publish status ──
             try:
                 goals.check_injected_goals()
@@ -985,7 +1042,9 @@ def run():
                 # block below). Skills with no postconditions always pass.
                 if _verify_skill is not None:
                     try:
-                        skills.verify_replay(_verify_skill, _verify_inv_before, dict(inventory.items))
+                        _replay_success = skills.verify_replay(
+                            _verify_skill, _verify_inv_before, dict(inventory.items))
+                        skill_evaluator.record(_verify_skill.name, _replay_success)
                     except Exception as e:
                         print(f'[SKILL] verify error: {e}')
                     _verify_skill = None
@@ -1424,6 +1483,7 @@ def run():
                         if _code_ran:
                             skill.record_outcome(True)
                             skills.save(skill)
+                            skill_evaluator.record(skill.name, True)
                             print(f'[SKILL] {skill.name} executed via code skill')
 
                     if not _code_ran:
@@ -1722,7 +1782,23 @@ def run():
                     world_mem.record_survey()
 
             # ── Controller blend ───────────────────────────────
-            if not replayer.is_active():
+            # Only actually drive the real Minecraft controller/hardware
+            # while attention is focused on 'minecraft' (the default, and
+            # the only case that existed before AttentionManager). If a
+            # voice command has switched focus elsewhere (see
+            # attention_manager.sync_external_focus() above), this tick's
+            # FSM-computed action_dict is still built (nothing above this
+            # block changes), but it's forwarded to the newly focused
+            # env's own send_action() instead of the Minecraft executor —
+            # otherwise a stale Minecraft action would keep hitting real
+            # game hardware after the user's attention moved on.
+            if attention_manager.get_active_name() != 'minecraft':
+                _focused_env = attention_manager.get_active()
+                if _focused_env is not None:
+                    _focused_env.send_action(action_dict)
+                final = dict(action_dict)
+                final['source'] = src_tag
+            elif not replayer.is_active():
                 router.update_aksumael(action_dict)
                 final = router.resolve()
                 executor.execute(final)
@@ -1872,7 +1948,13 @@ def run():
                 mined = skills.observe(objects, final, r)
                 if mined:
                     tts.say_line('skill_learned')
-                    if config.ENABLE_CODE_SKILLS and mined.uses <= 1:
+                    # Generate a code skill only once the recorded-sequence
+                    # skill has actually proven itself unreliable (3
+                    # back-to-back failures), not just on first mining —
+                    # avoids burning an LLM call on skills that work fine
+                    # as plain key-sequence replays.
+                    if (config.ENABLE_CODE_SKILLS
+                            and skill_evaluator.get_consecutive_failures(mined.name) >= 3):
                         try:
                             _code = code_skill_generator.generate_code_skill(
                                 mined.name, [s.action for s in mined.steps],
@@ -1973,6 +2055,7 @@ def run():
         time.sleep(1.5)
         executor.close()
         router.stop()
+        attention_manager.stop()
         human_assist.stop()
         if ear.enabled:
             ear.stop()

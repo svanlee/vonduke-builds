@@ -85,10 +85,17 @@ def generate_code_skill(skill_name: str, steps: list, context: str = '') -> str 
 _FORBIDDEN_PATTERNS = re.compile(
     r'\b(import|open|exec|eval|__import__|os\.|sys\.|subprocess|socket|globals|locals|getattr|setattr)\b'
 )
+# Any dunder attribute access (__class__, __subclasses__, __globals__, __builtins__,
+# ...) is a well-known way to walk from a plain object back to dangerous classes
+# (e.g. subprocess.Popen) without ever using a blocked name like `os.` or `import`
+# directly — restricted builtins alone don't stop it, so reject dunders outright.
+_DUNDER_PATTERN = re.compile(r'__\w+__')
 
 
 def _is_safe_source(code: str) -> bool:
     """Reject anything that looks like it's trying to escape the sandbox."""
+    if _DUNDER_PATTERN.search(code):
+        return False
     return not _FORBIDDEN_PATTERNS.search(code)
 
 

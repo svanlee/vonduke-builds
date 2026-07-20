@@ -25,6 +25,7 @@
 
 import json
 import os
+import re
 import time
 
 import config
@@ -35,6 +36,7 @@ from axon.speaker import Speaker
 from audio.device_probe import select_devices, alsa_card
 from core.llm_router import route_llm_call
 from core.cognitive import InnerMonologue
+from envs.attention import AttentionManager
 
 LISTEN_CHUNK_SEC  = 4.0  # rolling recording window, always on
 MIN_COMMAND_WORDS = 3    # drop shorter transcripts as noise/false triggers
@@ -51,6 +53,34 @@ QA_KEYWORDS = ('what', 'why', 'how', 'are you', "what's", 'tell me', 'explain')
 # Give the mic a moment to fully release before speaking, so the tail of
 # the question isn't clipped by TTS starting mid-breath.
 QA_ANSWER_PAUSE_SEC = 1.5
+
+# Multi-environment attention (envs/attention.py) voice switch — "switch to
+# <env>" / "focus on <env>" moves core/runtime.py's AttentionManager onto a
+# different envs/*.py adapter. Several spoken aliases map to each of the
+# three env names AttentionManager/runtime.py actually use (see
+# core/runtime.py's _attention_envs and envs/*_env.py's get_env_name()).
+ENV_SWITCH_ALIASES = {
+    'minecraft':  ('minecraft',),
+    'vehicle':    ('vehicle', 'goat racer', 'goat racer one', 'the car', 'race car'),
+    'robocar':    ('robocar', 'robo car', 'ak-01', 'ak01', 'the rover'),
+}
+_ENV_SWITCH_PATTERN = re.compile(
+    r'\b(?:switch|change|move|focus)(?: your)?(?: attention)? (?:to|on)\s+(.+)',
+    re.IGNORECASE,
+)
+
+
+def _match_env_switch(transcript: str) -> str | None:
+    """Return the canonical env name AttentionManager expects if `transcript`
+    reads as a "switch to <env>" voice command, else None."""
+    m = _ENV_SWITCH_PATTERN.search(transcript or '')
+    if not m:
+        return None
+    target = m.group(1).strip('. ').lower()
+    for env_name, aliases in ENV_SWITCH_ALIASES.items():
+        if any(alias in target for alias in aliases):
+            return env_name
+    return None
 
 
 def _looks_like_question(text: str) -> bool:
@@ -99,6 +129,13 @@ class AxonHub:
                                 out_device_idx=self._out_device_idx)
         self._model = None
         self.memory_context = MemoryContext()
+        # No real adapters here — Axon runs as its own process (see this
+        # module's docstring) and never touches capture-card/ZeroMQ/ROS2
+        # hardware itself. This instance only exists so .focus() persists
+        # a switch request to envs/attention.py's FOCUS_STATE_PATH, which
+        # core/runtime.py's real AttentionManager (holding the live
+        # adapters) picks up via sync_external_focus() on its next tick.
+        self.attention_manager = AttentionManager(envs={})
         self.enabled = self._probe()
 
     def _select_audio_devices(self):
@@ -149,6 +186,19 @@ class AxonHub:
         return result.get('text', '').strip()
 
     def _handle_command(self, transcript: str):
+        # Env-switch ("switch to minecraft" / "focus on GOAT Racer" / ...)
+        # checked before anything else — it's neither a goal nor a status
+        # query, and free-text env names like "GOAT Racer" would otherwise
+        # risk getting force-fit into a goal by the local-LLM fallback below.
+        env_name = _match_env_switch(transcript)
+        if env_name is not None:
+            print(f'[AXON] command: "{transcript}"')
+            if self.attention_manager.focus(env_name):
+                self.speaker.say(f"Switching attention to {env_name}.")
+            else:
+                self.speaker.say(f"I don't know an environment called {env_name}.")
+            return
+
         # Deterministic (free) status/rule matches first — cheap regex,
         # unchanged behavior. Only a transcript that matches NEITHER falls
         # through to the question check below, before ever reaching
