@@ -33,5 +33,5 @@ paho-mqtt
 openai-whisper
 
 # Axon push-to-talk key listener (optional; falls back to `keyboard` lib on
-# SCROLL_LOCK, then to always_on mode, if neither is installed)
+# SCROLL_LOCK, then to "on" mode, if neither is installed)
 pynput
