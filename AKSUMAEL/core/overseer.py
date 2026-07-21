@@ -22,7 +22,13 @@ from core.llm_router import call_claude_direct, frame_to_b64
 from core.capture import push_monologue_line
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
-OVERSEER_TIMEOUT  = 8.0       # seconds — drop the call if it takes longer
+# Every Overseer call now attaches a frame (see _call_overseer), so it needs
+# the same generous timeout as the other vision call sites (env_detector.py,
+# label_queue.py) — config.LOCAL_LLM_TIMEOUT, tuned from a live measurement
+# showing this model's vision calls actually take 30-38s. The old 8.0s value
+# was fine for the text-only prompt this used to send but cuts off every
+# vision response before it arrives (see config.py's LOCAL_LLM_TIMEOUT comment).
+OVERSEER_TIMEOUT  = config.LOCAL_LLM_TIMEOUT
 
 # Hard wall-clock cap, independent of OVERSEER_INTERVAL — the tick-count
 # gate alone assumes a roughly steady tick rate, but tick duration in this
