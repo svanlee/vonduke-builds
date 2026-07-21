@@ -15,6 +15,17 @@ import config
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
 PRESERVED_GOALS_PATH = pathlib.Path('data/preserved_goals.json')
 
+# Goals eligible for re-injection by _restore_preserved_goals() on restart.
+# Anything saved to preserved_goals.json that isn't in this set gets
+# dropped instead of restored — e.g. craft_furthest_trading_item and
+# trade_items were leaking back onto the stack this way after a restart
+# even though nothing upstream still issues them (2026-07-20).
+VALID_RESTORED_GOALS = {
+    'find_and_chop_tree', 'mine_stone', 'mine_iron', 'mine_diamonds',
+    'craft_wood_pickaxe', 'craft_stone_pickaxe', 'craft_iron_pickaxe',
+    'explore', 'rebuild_fort', 'return_to_base', 'dig_up', 'escape_underground',
+}
+
 
 def _train_lock_owner_alive() -> bool:
     """False if the lock is stale (owning process no longer exists)."""
@@ -46,6 +57,14 @@ def _restore_preserved_goals():
         return
 
     restored = [g for g in list(state.get('stack', [])) + [state.get('current')] if g]
+    if not restored:
+        PRESERVED_GOALS_PATH.unlink(missing_ok=True)
+        return
+
+    invalid  = [g for g in restored if g not in VALID_RESTORED_GOALS]
+    restored = [g for g in restored if g in VALID_RESTORED_GOALS]
+    if invalid:
+        print(f'[STARTUP] dropped invalid preserved goal(s), not in whitelist: {invalid}')
     if not restored:
         PRESERVED_GOALS_PATH.unlink(missing_ok=True)
         return
@@ -1140,11 +1159,31 @@ def run():
                 # let the RL policy pick among them instead of the naive best.
                 candidates = skills.find_candidates(objects)
 
+                _cur_goal = goals.current_goal()
+
+                # ── Goal→skill override: dig_up / escape_underground ──────
+                # dig_up's trigger_objects=["stone"] normally relies on YOLO
+                # detecting stone to fire, but underground stone routinely
+                # comes back at conf=0.00 (dark, low-contrast, textureless
+                # blocks), so the skill never gets into `candidates` when
+                # it's needed most. Bypass the YOLO trigger match entirely
+                # and force-load it by name whenever the goal itself is to
+                # dig out — the skill's own max_y_level precondition (below)
+                # still gates whether it's actually allowed to fire.
+                if _cur_goal in ('dig_up', 'escape_underground'):
+                    _forced_skill = skills.skills.get('dig_up')
+                    if _forced_skill is not None:
+                        candidates = [(_forced_skill, 1.0)]
+                        print(f'[SKILL] goal={_cur_goal}: force-loading dig_up '
+                              f'skill (bypassing YOLO trigger match)')
+                    else:
+                        print(f'[SKILL] goal={_cur_goal}: dig_up skill not '
+                              f'found in skill library — cannot force-load')
+
                 # ── Goal-aware skill gating ───────────────────────
                 # When the active goal is crafting-related, suppress mining
                 # and pure-movement skills so AKSUMAEL doesn't keep digging
                 # instead of seeking a crafting table.
-                _cur_goal = goals.current_goal()
                 _crafting_goal = goals.is_craft_goal(_cur_goal) or _cur_goal == 'find_crafting_table'
                 if _crafting_goal and candidates:
                     _pre = len(candidates)
