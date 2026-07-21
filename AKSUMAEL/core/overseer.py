@@ -14,6 +14,7 @@ Directive schema:
 """
 
 import json
+import re
 import threading
 import time
 import config
@@ -83,6 +84,31 @@ Valid goal strings: find_and_chop_tree, mine_stone, mine_iron, mine_diamonds, cr
 Respond with ONLY the JSON directive, nothing else."""
 
 
+def _extract_directive(raw: str) -> dict | None:
+    """Parse a directive out of a raw mesh-llm response. Handles markdown
+    code fences (leading and/or trailing) and, failing a clean parse, falls
+    back to pulling the first {...} object out of the text — mesh-llm's
+    vision responses sometimes wrap the JSON in prose or truncate after it."""
+    text = raw.strip()
+    if text.startswith('```'):
+        text = text[3:]
+        if text.startswith('json'):
+            text = text[4:]
+        text = text.rsplit('```', 1)[0]
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _call_overseer(tick: int, snapshot: dict):
     global _last_directive, _busy
     try:
@@ -100,13 +126,10 @@ def _call_overseer(tick: int, snapshot: dict):
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')
             return
-        raw = raw.strip()
-        # Strip markdown code fences if present
-        if raw.startswith('```'):
-            raw = raw.split('```')[1]
-            if raw.startswith('json'):
-                raw = raw[4:]
-        directive = json.loads(raw.strip())
+        directive = _extract_directive(raw)
+        if directive is None:
+            print(f'[OVERSEER] tick {tick} unparseable response, skipping: {raw!r}')
+            return
         if 'action' not in directive:
             return
         with _lock:
