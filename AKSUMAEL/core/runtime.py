@@ -1331,7 +1331,7 @@ def run():
                     _pre2 = len(candidates)
                     candidates = [
                         (sk, m) for sk, m in candidates
-                        if sk.check_preconditions(_precond_inv, objects)
+                        if sk.check_preconditions(_precond_inv, objects, world_mem.y_level)
                     ]
                     if len(candidates) < _pre2:
                         print(f'[SKILL] preconditions filtered out '

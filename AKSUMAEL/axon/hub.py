@@ -57,6 +57,20 @@ DEFAULT_MODE    = MODE_PTT
 MODE_FILE_PATH   = os.path.join(BASE_DIR, "data", "axon_mode.txt")
 MODE_POLL_SEC    = 2.0  # how often the run loop re-reads MODE_FILE_PATH
 
+# Goals AKSUMAEL actually knows how to pursue. _parse_with_local_llm's
+# mesh-llm fallback (routed through axon/command_parser.py's parse()) has
+# free rein over transcript wording and can hallucinate a plausible-looking
+# but nonexistent goal (e.g. "protect_enchanting_table" from a misheard
+# transcript) — _enqueue_goal() is the single choke point both the
+# deterministic parser and the LLM fallback funnel through, so the whitelist
+# lives there rather than at each call site.
+VALID_GOALS = frozenset({
+    "find_and_chop_tree", "mine_stone", "mine_iron", "mine_diamonds",
+    "craft_wood_pickaxe", "craft_stone_pickaxe", "craft_iron_pickaxe",
+    "explore", "rebuild_fort", "return_to_base",
+    "dig_up", "escape_underground",
+})
+
 
 def read_mode_file() -> str:
     """Read the current listening mode from MODE_FILE_PATH, defaulting to
@@ -222,10 +236,14 @@ class _StreamRecorder:
         return np.concatenate(self._frames, axis=0).flatten()
 
 
-def _enqueue_goal(goal: str, reason: str):
+def _enqueue_goal(goal: str, reason: str) -> bool:
     """Append to data/injected_goals.json in the same {"queue": [...]}
     format mastermind/agent_client.py writes, so GoalStack.check_injected_goals()
-    drains voice commands exactly like hive-assigned goals."""
+    drains voice commands exactly like hive-assigned goals. Returns whether
+    the goal was actually queued (False if rejected as not in VALID_GOALS)."""
+    if goal not in VALID_GOALS:
+        print(f'[AXON] rejected unrecognized goal: {goal}')
+        return False
     os.makedirs(os.path.dirname(INJECTED_GOALS_PATH) or ".", exist_ok=True)
     queue = []
     if os.path.exists(INJECTED_GOALS_PATH):
@@ -242,6 +260,7 @@ def _enqueue_goal(goal: str, reason: str):
     with open(INJECTED_GOALS_PATH, "w") as f:
         json.dump({"queue": queue}, f)
     print(f'[AXON] queued goal "{goal}" ({reason})')
+    return True
 
 
 def _read_current_goal() -> str:
@@ -397,8 +416,10 @@ class AxonHub:
 
         if det is not None and det['type'] == 'goal':
             print(f'[AXON] command: "{transcript}"')
-            _enqueue_goal(det['goal'], f"axon:{det['source']} — \"{transcript}\"")
-            self.speaker.say(f"Got it. {det['goal'].replace('_', ' ')}.")
+            if _enqueue_goal(det['goal'], f"axon:{det['source']} — \"{transcript}\""):
+                self.speaker.say(f"Got it. {det['goal'].replace('_', ' ')}.")
+            else:
+                self.speaker.say("I don't know how to do that yet.")
             return
 
         if _looks_like_question(transcript):
@@ -410,8 +431,10 @@ class AxonHub:
         intent = parse(transcript)
         if intent['type'] == 'goal':
             print(f'[AXON] command: "{transcript}"')
-            _enqueue_goal(intent['goal'], f"axon:{intent['source']} — \"{transcript}\"")
-            self.speaker.say(f"Got it. {intent['goal'].replace('_', ' ')}.")
+            if _enqueue_goal(intent['goal'], f"axon:{intent['source']} — \"{transcript}\""):
+                self.speaker.say(f"Got it. {intent['goal'].replace('_', ' ')}.")
+            else:
+                self.speaker.say("I don't know how to do that yet.")
             return
 
         # Not recognized as a command — with no wake word, this is most
