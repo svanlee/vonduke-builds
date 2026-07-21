@@ -38,6 +38,17 @@ OVERSEER_TIMEOUT  = config.LOCAL_LLM_TIMEOUT
 # This is the actual backstop against saturating the local mesh-llm server.
 OVERSEER_MAX_PER_MINUTE = 6
 
+# Sent as a leading system message whenever a frame is attached — without
+# it, mesh-llm's loaded vision model (Qwen3.5-4B-Vision) defaults to GUI
+# element detection and returns bounding-box JSON like
+# [{"label": "['interactive']", "bbox": [...]}, ...] instead of the
+# planning directive this prompt actually asks for (2026-07-20).
+OVERSEER_SYSTEM_MSG = (
+    "You are a Minecraft game agent planner. When given a screenshot, "
+    "analyze the game state and return only the JSON planning directive "
+    "requested. Do not perform GUI element detection or return bounding boxes."
+)
+
 _last_directive   = {"action": "continue"}
 _last_called_tick = 0
 _lock             = threading.Lock()
@@ -121,7 +132,8 @@ def _call_overseer(tick: int, snapshot: dict):
             except Exception as e:
                 print(f'[OVERSEER] frame encode failed: {e}')
         raw = call_claude_direct(prompt, max_tokens=300, images=images,
-                                  timeout=OVERSEER_TIMEOUT)
+                                  timeout=OVERSEER_TIMEOUT,
+                                  system=OVERSEER_SYSTEM_MSG if images else None)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')

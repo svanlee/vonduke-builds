@@ -344,6 +344,7 @@ class SkillSystem:
                 clickless_mine_skill = (
                     bool(triggers & (MINE_TARGETS | TREE_TARGETS))
                     and not any(step.get('action', {}).get('click')
+                                or step.get('action', {}).get('mouse_hold')
                                 for step in data.get('steps', []))
                 )
                 if contaminated or clickless_mine_skill:

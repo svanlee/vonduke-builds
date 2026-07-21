@@ -63,12 +63,18 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
 
 
 def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
-               retries: int) -> str:
+               retries: int, system: str = None) -> str:
     """Query the on-box Mesh-LLM server (OpenAI-compatible /v1/chat/completions).
     Tries a multimodal request first when `images` is given; if the loaded
     model rejects image content (HTTP 400/422 — text-only model), retries
     once with a text-only prompt that relies on whatever detection/context
     text is already folded into `prompt`.
+
+    `system`, when given, is sent as a leading {"role": "system", ...}
+    message ahead of the user message — needed for vision calls, where the
+    loaded model (Qwen3.5-4B-Vision) otherwise defaults to GUI-element
+    bounding-box detection instead of answering the actual prompt (see
+    core/overseer.py's planning directive calls).
 
     Returns the raw text response on success, or None on any failure
     (connection refused, timeout, non-recoverable HTTP status).
@@ -90,6 +96,13 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
         text = data['choices'][0]['message']['content'].strip()
         return _strip_fences(text)
 
+    def _messages(content) -> list:
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": content})
+        return msgs
+
     for attempt in range(max(1, retries)):
         content = _multimodal_content() if images else prompt
         payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
@@ -100,7 +113,7 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                    # `content` reply (finish_reason=length, content="").
                    # Disable that so max_tokens is spent on the actual answer.
                    "chat_template_kwargs": {"enable_thinking": False},
-                   "messages": [{"role": "user", "content": content}]}
+                   "messages": _messages(content)}
         try:
             return _extract(_post_json(url, payload, headers, timeout))
         except urllib.error.HTTPError as e:
@@ -109,7 +122,7 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                 text_payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
                                 "max_tokens": max_tokens,
                                 "chat_template_kwargs": {"enable_thinking": False},
-                                "messages": [{"role": "user", "content": prompt}]}
+                                "messages": _messages(prompt)}
                 try:
                     return _extract(_post_json(url, text_payload, headers, timeout))
                 except Exception:
@@ -198,7 +211,7 @@ def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
 
 
 def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
-                        timeout: float = 15.0) -> str:
+                        timeout: float = 15.0, system: str = None) -> str:
     """
     Routes to local mesh-llm. Kept as a named entry point for callers
     (e.g. core/overseer.py strategic decisions) that previously wanted
@@ -206,9 +219,12 @@ def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
     AKSUMAEL no longer calls Claude directly, so this is now equivalent to
     a local-only call.
 
+    `system`, when given, is passed through to _try_local() as a leading
+    system message — see its docstring for why vision calls need this.
+
     Returns the raw text response, or None on failure — never raises.
     """
-    result = _try_local(prompt, max_tokens, images, timeout, retries=1)
+    result = _try_local(prompt, max_tokens, images, timeout, retries=1, system=system)
     if result is not None:
         _record('local')
     return result
