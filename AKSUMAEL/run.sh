@@ -17,6 +17,10 @@ LOG_FILE="/tmp/aksumael_live.log"
 MESH_LLM_URL="http://localhost:9337/v1/models"
 ANTHROPIC_KEY_FILE="$HOME/.config/anthropic/key"
 GOOGLE_KEY_FILE="$HOME/.config/google/key"
+# aksumael_wrapper.sh cd's into AKSUMAEL_DIR then runs the bare relative
+# "main.py" (not the full path), so pkill/pgrep must match on that relative
+# form — matching "$AKSUMAEL_DIR/main.py" never finds the real process.
+MAIN_PY_PATTERN="$AKSUMAEL_DIR/venv/bin/python3 -u main.py"
 
 log() { echo "[RUN] $*"; }
 
@@ -24,7 +28,7 @@ log() { echo "[RUN] $*"; }
 log "Killing any stale processes (piper, espeak, old main.py, old wrapper)..."
 pkill -f "piper"                    2>/dev/null
 pkill -f "espeak"                   2>/dev/null
-pkill -f "$AKSUMAEL_DIR/main.py"    2>/dev/null
+pkill -f "$MAIN_PY_PATTERN"    2>/dev/null
 pkill -f "aksumael_wrapper.sh"      2>/dev/null
 sleep 1
 log "Stale process cleanup done."
@@ -68,15 +72,15 @@ else
     log "  WARNING: $GOOGLE_KEY_FILE not found — GEMINI_API_KEY not set."
 fi
 
-if pgrep -f "$AKSUMAEL_DIR/main.py" >/dev/null 2>&1; then
-    log "AKSUMAEL main.py already running (PID $(pgrep -f "$AKSUMAEL_DIR/main.py" | tr '\n' ' ')) — skipping start."
+if pgrep -f "$MAIN_PY_PATTERN" >/dev/null 2>&1; then
+    log "AKSUMAEL main.py already running (PID $(pgrep -f "$MAIN_PY_PATTERN" | tr '\n' ' ')) — skipping start."
 else
     log "Starting AKSUMAEL via wrapper..."
     nohup bash "$AKSUMAEL_DIR/tools/aksumael_wrapper.sh" >> "$LOG_FILE" 2>&1 &
     disown
     sleep 5
-    if pgrep -f "$AKSUMAEL_DIR/main.py" >/dev/null 2>&1; then
-        log "AKSUMAEL main.py is running (PID $(pgrep -f "$AKSUMAEL_DIR/main.py" | tr '\n' ' '))."
+    if pgrep -f "$MAIN_PY_PATTERN" >/dev/null 2>&1; then
+        log "AKSUMAEL main.py is running (PID $(pgrep -f "$MAIN_PY_PATTERN" | tr '\n' ' '))."
     else
         log "WARNING: main.py not detected after 5s. Check $LOG_FILE for errors."
     fi
@@ -99,7 +103,7 @@ log "mesh-llm:  $(systemctl --user is-active mesh-llm 2>/dev/null)  (health chec
 mesh_llm_pid="$(systemctl --user show -p MainPID --value mesh-llm 2>/dev/null)"
 log "  MainPID: ${mesh_llm_pid:-unknown}"
 
-aksumael_pids="$(pgrep -f "$AKSUMAEL_DIR/main.py" | tr '\n' ' ')"
+aksumael_pids="$(pgrep -f "$MAIN_PY_PATTERN" | tr '\n' ' ')"
 log "AKSUMAEL:  $([[ -n "$aksumael_pids" ]] && echo running || echo NOT_RUNNING)"
 log "  PID(s): ${aksumael_pids:-none}"
 
