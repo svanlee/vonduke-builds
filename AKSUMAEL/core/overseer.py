@@ -18,7 +18,7 @@ import threading
 import time
 import config
 from core.identity import AKSUMAEL_IDENTITY
-from core.llm_router import call_claude_direct
+from core.llm_router import call_claude_direct, frame_to_b64
 from core.capture import push_monologue_line
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
@@ -81,7 +81,15 @@ def _call_overseer(tick: int, snapshot: dict):
     global _last_directive, _busy
     try:
         prompt = _build_prompt(snapshot)
-        raw = call_claude_direct(prompt, max_tokens=300, timeout=OVERSEER_TIMEOUT)
+        images = None
+        frame = snapshot.get('frame')
+        if frame is not None:
+            try:
+                images = [frame_to_b64(frame)]
+            except Exception as e:
+                print(f'[OVERSEER] frame encode failed: {e}')
+        raw = call_claude_direct(prompt, max_tokens=300, images=images,
+                                  timeout=OVERSEER_TIMEOUT)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')
