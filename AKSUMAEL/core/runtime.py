@@ -472,6 +472,21 @@ def run():
     # prevents slow camera walk (up or down) that individual per-skill resets
     # don't fully correct from compounding into a permanently skewed pitch.
     _PITCH_CLAMP_LIMIT = 200
+
+    # Direct dig_up/mine_up handling (2026-07-21) — bypasses the skill-replay
+    # system entirely for these two goals. data/skills/dig_up.json (place via
+    # mouse_hold right-click) and mine_up.json (mine via mouse_hold left-click)
+    # both fired dozens of times with zero Y gain; meanwhile core/fsm.py's
+    # MINE state reliably breaks blocks using a completely different
+    # mechanism: 'click':[50,50] + 'delay_ms' sent every tick (send_action()
+    # sleeps *between* the press and release HID packets, making each call a
+    # genuine ~450ms hold — see config.MINE_HOLD_MS — repeated call after call
+    # simulates a sustained hold, unlike a skill's single down/up pair).
+    # Reusing that exact proven mechanism here instead of debugging the
+    # skill-replay path further.
+    _DIGCLIMB_MINE_TICKS  = 3    # place attempts per jump cycle (right-click)
+    _digclimb_phase       = 'select'  # 'select' -> 'aim' -> 'jump' -> 'place' -> 'select'
+    _digclimb_mine_ticks  = 0
     _PITCH_CLAMP_NUDGE = config.LOOK_SENSITIVITY * 4
 
     # Init extended F3 fields on world_mem so context_summary() can use them
@@ -1106,6 +1121,7 @@ def run():
                     and not _menu_open
                     and not _f3_open
                     and fsm_state == State.EXPLORE
+                    and goals.current_goal() not in ('dig_up', 'mine_up')
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
                 # EXPLORE-only (see EnvironmentScanner docstring): the sweep
                 # yanks the camera off whatever's on-screen for several
@@ -1113,6 +1129,17 @@ def run():
                 # color-detector lock off the target — losing the detection
                 # for a tick sent APPROACH straight back to EXPLORE before
                 # it ever reached MINE (2026-07-18).
+                #
+                # `not replayer.is_active()` alone only blocks the scan while
+                # a skill replay thread is literally mid-sequence — it still
+                # runs freely in the gaps between dig_up's ~4-5s replay bursts
+                # (a repeated skill goal has many idle ticks between actual
+                # replays). goal==dig_up gets its own blanket exemption on
+                # top of that: dig_up's steps are relative look deltas from
+                # whatever the camera's current angle is, so a scan rotating
+                # the camera in one of those gaps changes the baseline the
+                # next replay starts from, for no benefit — there's nothing
+                # to scan for while pillaring straight up (2026-07-21).
                 #
                 # Moving forward ('w' held) and not stuck → narrower 270°
                 # sweep centered on the heading. Standing still, moving in
@@ -1164,6 +1191,61 @@ def run():
                 action_dict = _night_ad
                 src_tag = f'NIGHT:{night_survival._state}'
 
+            elif goals.current_goal() in ('dig_up', 'mine_up', 'escape_underground'):
+                # Pillar-up: select dirt → aim down → jump → right-click place → repeat.
+                # Snapshot analysis confirmed the bot is in an open vertical shaft with
+                # no block directly overhead — mine_up (left-click) was useless.
+                # Right-clicking while airborne looking straight down places a block on
+                # the floor below, landing on it gives +1 Y. slot 1 = dirt blocks.
+                _y_now = getattr(world_mem, 'y_level', 0) or 0
+                if _y_now >= 62:
+                    goals.pop_goal()
+                    _digclimb_phase = 'select'
+                    src_tag = 'DIGCLIMB:reached_surface'
+                elif _digclimb_phase == 'select':
+                    action_dict = {
+                        'key': '1', 'click': None, 'look': None, 'gamepad': None,
+                        'action': 'digclimb:select_dirt',
+                        'observation': 'Selecting dirt (slot 1) for pillar-up',
+                        'confidence': 0.7,
+                    }
+                    _digclimb_phase = 'aim'
+                    _digclimb_mine_ticks = 0
+                    src_tag = 'DIGCLIMB:select'
+                elif _digclimb_phase == 'aim':
+                    # Large positive dy saturates pitch to +90 (straight down).
+                    action_dict = {
+                        'key': None, 'click': None, 'look': {'dx': 0, 'dy': 1000},
+                        'gamepad': None, 'action': 'digclimb:aim_down',
+                        'observation': 'Aiming straight down for block placement',
+                        'confidence': 0.7,
+                    }
+                    _digclimb_phase = 'jump'
+                    src_tag = 'DIGCLIMB:aim'
+                elif _digclimb_phase == 'jump':
+                    action_dict = {
+                        'key': 'space', 'click': None, 'look': None, 'gamepad': None,
+                        'action': 'digclimb:jump',
+                        'observation': 'Jumping to create floor gap', 'confidence': 0.7,
+                    }
+                    _digclimb_phase = 'place'
+                    _digclimb_mine_ticks = 0
+                    src_tag = 'DIGCLIMB:jump'
+                else:  # 'place'
+                    # Right-click places dirt on top of floor block while airborne.
+                    # Repeat a few ticks to hit the timing window.
+                    action_dict = {
+                        'key': None, 'click': None,
+                        'look': {'dx': 0, 'dy': 500},  # keep aimed down
+                        'mouse_button': 'right', 'gamepad': None,
+                        'action': 'digclimb:place_block',
+                        'observation': 'Placing dirt block underfoot', 'confidence': 0.7,
+                    }
+                    _digclimb_mine_ticks += 1
+                    if _digclimb_mine_ticks >= _DIGCLIMB_MINE_TICKS:
+                        _digclimb_phase = 'select'
+                    src_tag = f'DIGCLIMB:place({_digclimb_mine_ticks})'
+
             else:
                 # Try a learned skill first — if multiple candidates match,
                 # let the RL policy pick among them instead of the naive best.
@@ -1180,14 +1262,15 @@ def run():
                 # and force-load it by name whenever the goal itself is to
                 # dig out — the skill's own max_y_level precondition (below)
                 # still gates whether it's actually allowed to fire.
-                if _cur_goal in ('dig_up', 'escape_underground'):
-                    _forced_skill = skills.skills.get('dig_up')
+                if _cur_goal in ('dig_up', 'escape_underground', 'mine_up'):
+                    _forced_name = 'mine_up' if _cur_goal == 'mine_up' else 'dig_up'
+                    _forced_skill = skills.skills.get(_forced_name)
                     if _forced_skill is not None:
                         candidates = [(_forced_skill, 1.0)]
-                        print(f'[SKILL] goal={_cur_goal}: force-loading dig_up '
+                        print(f'[SKILL] goal={_cur_goal}: force-loading {_forced_name} '
                               f'skill (bypassing YOLO trigger match)')
                     else:
-                        print(f'[SKILL] goal={_cur_goal}: dig_up skill not '
+                        print(f'[SKILL] goal={_cur_goal}: {_forced_name} skill not '
                               f'found in skill library — cannot force-load')
 
                 # ── Goal-aware skill gating ───────────────────────
@@ -1786,7 +1869,8 @@ def run():
                         src_tag = 'CARRY'
 
             # ── Death/respawn detection ─────────────────────────
-            if respawner.update(objects, last_observation=last_action.get('observation', '')):
+            if respawner.update(objects, last_observation=last_action.get('observation', ''),
+                                 suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up'))):
                 world_mem.record_death()
                 continue
 
@@ -1850,8 +1934,16 @@ def run():
             # Dark area (night or below TORCH_DARK_Y_LEVEL) — place a torch
             # every TORCH_COOLDOWN_SEC to keep mobs from spawning nearby.
             # Only in EXPLORE, never mid-skill-replay or while sheltering.
+            # Also skipped outright while dig_up is the active goal — it
+            # reselects its own hotbar slot (1) at the start of every replay
+            # so a slot swap here can't break it directly, but a torch-dark
+            # cave triggers this virtually every tick while pillaring, and
+            # there's no reason to keep spending torches on a shaft that's
+            # about to be abandoned once the climb reaches daylight
+            # (2026-07-21).
             if (fsm_state == State.EXPLORE and not replayer.is_active()
                     and not _menu_open and not night_survival.is_active()
+                    and goals.current_goal() not in ('dig_up', 'mine_up')
                     and torch_behavior.should_trigger(world_mem, avg_brightness)):
                 torch_behavior.place()
 
@@ -2212,9 +2304,16 @@ _GOAL_CATEGORY_KEYWORDS = {
 _SKILL_CATEGORY_KEYWORDS = {
     'tree': ('tree', 'log', 'wood', 'oak', 'spruce', 'birch', 'jungle',
              'acacia', 'sapling', 'chop', 'axe', 'lumber'),
+    # 'mine' and 'stone' added 2026-07-21: _GOAL_CATEGORY_KEYWORDS['ore']
+    # includes both (so a goal like "mine_up" or "dig_up" classifies as
+    # 'ore'), but this list didn't — a skill named 'mine_up' with empty
+    # trigger_objects (fires only via goal injection, see data/skills/
+    # mine_up.json) then had no keyword to match 'ore' on either side and
+    # got silently dropped by _skill_allowed_for_goal as "unrelated to this
+    # goal", even though it was the goal's own force-loaded skill.
     'ore':  ('ore', 'diamond', 'coal', 'iron', 'gold', 'redstone',
              'lapis', 'copper', 'emerald', 'debris', 'cobblestone',
-             'gravel'),
+             'gravel', 'mine', 'stone'),
 }
 
 
