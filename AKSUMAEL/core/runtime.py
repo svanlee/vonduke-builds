@@ -1446,9 +1446,11 @@ def run():
                     skill = None
                 elif skill and skill.name == last_skill_name and same_skill_count >= SAME_SKILL_LIMIT:
                     # Mining skills get a higher repeat limit — ore takes many clicks to break.
+                    # dig_up / escape_underground must fire 26+ times to surface from Y=36.
                     # Non-mining skills cool down after SAME_SKILL_LIMIT fires.
                     _is_mining = skill.name.startswith('mine_')
-                    _limit = 12 if _is_mining else SAME_SKILL_LIMIT
+                    _is_escape = skill.name in ('dig_up', 'escape_underground')
+                    _limit = 30 if _is_escape else (12 if _is_mining else SAME_SKILL_LIMIT)
                     if same_skill_count >= _limit:
                         print(f'[SKILL] cooldown: {skill.name} fired {same_skill_count}x in a row, '
                               f'suppressing for {SKILL_COOLDOWN_TICKS} ticks')
