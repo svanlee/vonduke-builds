@@ -47,13 +47,20 @@ class GameLauncher:
     Call `should_trigger(objects)` each tick. If True, call `run()`.
     """
 
+    # Consecutive not-in-game ticks required before trusting the read enough
+    # to run a full ESC+Tab+Enter launch sequence. A single missed-HUD frame
+    # (motion blur, brief occlusion, a YOLO false negative) must not be
+    # enough — mid-gameplay that sequence can back out of the game or mash
+    # inputs into whatever menu it opens (2026-07-21).
+    NOT_IN_GAME_TICKS_THRESHOLD = 10
+
     def __init__(self, executor, game: str = 'minecraft'):
         self.executor  = executor
         self.game      = game
         self.sequences = _load_sequences()
         self._last_run = -999   # tick of last launch attempt
         self._cooldown = 200    # ticks between attempts (don't spam)
-        self._launched = False  # True once we've successfully entered the game
+        self._not_in_game_ticks = 0
 
     def reload_sequences(self):
         """Hot-reload sequences from disk — useful during development."""
@@ -64,14 +71,30 @@ class GameLauncher:
         labels = {o.get('label', '') for o in objects}
         return bool(labels & IN_GAME_LABELS)
 
+    def is_in_menu(self, objects: list) -> bool:
+        """True if YOLO positively confirms a title/desktop/launcher/black/
+        loading screen. Absence of IN_GAME_LABELS alone isn't proof of this
+        — a dark scene or a bad YOLO frame can show neither set of labels
+        while still very much in-game, and firing the launch sequence there
+        mid-gameplay can back out of the game or mash inputs into whatever
+        menu it opens (2026-07-21)."""
+        labels = {o.get('label', '') for o in objects}
+        return bool(labels & NOT_IN_GAME_LABELS)
+
     def should_trigger(self, objects: list, tick: int) -> bool:
         """Return True if we should attempt a launch."""
-        if self._launched and self.is_in_game(objects):
+        if self.is_in_game(objects):
+            self._not_in_game_ticks = 0
             return False
+        if not self.is_in_menu(objects):
+            # Neither confirmed in-game nor confirmed menu — inconclusive
+            # frame. Don't count it (and don't reset either; a genuine
+            # menu will keep confirming on the ticks around it).
+            return False
+        self._not_in_game_ticks += 1
         if (tick - self._last_run) < self._cooldown:
             return False
-        # Not in game and we haven't tried recently — trigger
-        return not self.is_in_game(objects)
+        return self._not_in_game_ticks >= self.NOT_IN_GAME_TICKS_THRESHOLD
 
     def run(self, tick: int):
         """Execute the launch sequence for the configured game."""
@@ -120,4 +143,4 @@ class GameLauncher:
                 time.sleep(wait_ms / 1000.0)
 
         print(f'[LAUNCH] sequence complete — waiting for game to load...')
-        self._launched = True
+        self._not_in_game_ticks = 0

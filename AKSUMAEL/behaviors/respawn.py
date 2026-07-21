@@ -22,15 +22,18 @@ HUD_LABELS = frozenset({'hotbar', 'health_bar', 'hunger_bar', 'armor_bar', 'xp_b
 
 class RespawnBehavior:
     BLANK_TICKS_THRESHOLD = 5   # consecutive ticks with no HUD element before assuming death
+    ZERO_HEALTH_TICKS_THRESHOLD = 3  # consecutive health_pct==0 reads required to corroborate
     RESPAWN_COOLDOWN = 10.0     # seconds between respawn attempts
 
     def __init__(self, executor, goals=None):
         self._executor = executor
         self._goals     = goals   # optional GoalStack — forced to return_to_base on respawn
         self._blank_ticks = 0
+        self._zero_health_ticks = 0
         self._last_respawn = 0.0
 
-    def update(self, objects: list, last_observation: str = '', suppress_blank: bool = False) -> bool:
+    def update(self, objects: list, last_observation: str = '', suppress_blank: bool = False,
+               health_pct: float = None) -> bool:
         """
         Call every tick. Returns True if respawn was attempted.
         objects: YOLO detected objects this tick
@@ -42,6 +45,15 @@ class RespawnBehavior:
             is real screen-space overlay and is still on screen, which was
             false-triggering a respawn (and wiping the goal stack) every
             pillar-up cycle.
+        health_pct: hud_reader's current health reading (0.0-1.0), if
+            available. The blank-HUD signal alone is still just a YOLO
+            absence read, which can false-trigger for reasons other than
+            DIGCLIMB (motion blur, occlusion, a bad frame) — requiring it
+            to be corroborated by health_pct==0 for several consecutive
+            ticks (a single bad hud_reader sample isn't trusted either)
+            makes the blank-screen path far more conservative. The
+            claude_sees_death fallback is untouched — it's a separate,
+            already-reliable text signal (2026-07-21).
         """
         obs_lower = last_observation.lower()
         death_keywords = ('you died', 'respawn', 'game over', 'death screen', 'score')
@@ -53,14 +65,22 @@ class RespawnBehavior:
         else:
             self._blank_ticks = 0
 
-        blank_screen = self._blank_ticks >= self.BLANK_TICKS_THRESHOLD
+        if health_pct is not None and health_pct <= 0.0:
+            self._zero_health_ticks += 1
+        else:
+            self._zero_health_ticks = 0
 
-        if blank_screen or claude_sees_death:
+        blank_screen = self._blank_ticks >= self.BLANK_TICKS_THRESHOLD
+        health_confirms_death = self._zero_health_ticks >= self.ZERO_HEALTH_TICKS_THRESHOLD
+
+        if (blank_screen and health_confirms_death) or claude_sees_death:
             now = time.time()
             if now - self._last_respawn > self.RESPAWN_COOLDOWN:
                 self._last_respawn = now
                 self._blank_ticks = 0
-                print(f'[RESPAWN] death detected (blank={blank_screen}, claude={claude_sees_death}) — clicking respawn')
+                self._zero_health_ticks = 0
+                print(f'[RESPAWN] death detected (blank={blank_screen}, health_confirms={health_confirms_death}, '
+                      f'claude={claude_sees_death}) — clicking respawn')
                 self._executor.execute({
                     'key': None,
                     'click': [50.0, 50.0],   # Respawn button is center of death screen (~50% y); 60% was hitting "Title Screen"
