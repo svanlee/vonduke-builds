@@ -169,10 +169,11 @@ class Skill:
         return s
 
     # ── Voyager-style verification ─────────────────────────────
-    def check_preconditions(self, inventory: dict, objects: list) -> bool:
-        """True if `inventory` ({item: count}) and current `objects` (YOLO
-        detections) satisfy this skill's preconditions. Skills with no
-        preconditions always pass (keeps old skills working unchanged)."""
+    def check_preconditions(self, inventory: dict, objects: list, y_level: int = None) -> bool:
+        """True if `inventory` ({item: count}), current `objects` (YOLO
+        detections), and `y_level` (world_mem.y_level, or None if unknown)
+        satisfy this skill's preconditions. Skills with no preconditions
+        always pass (keeps old skills working unchanged)."""
         if not self.preconditions:
             return True
         has_item = self.preconditions.get('has_item') or []
@@ -183,6 +184,11 @@ class Skill:
             current_labels = {o.get('label', '') for o in objects}
             if not (set(yolo_visible) & current_labels):
                 return False
+        # max_y_level: e.g. dig_up only makes sense while still underground —
+        # once y_level reaches/passes it (surfaced), the skill is a no-op.
+        max_y_level = self.preconditions.get('max_y_level')
+        if max_y_level is not None and y_level is not None and y_level >= max_y_level:
+            return False
         return True
 
     def verify_postconditions(self, inv_before: dict, inv_after: dict) -> bool:
@@ -507,9 +513,9 @@ class SkillSystem:
         self.save(skill)
 
     # ── Verification (Voyager-style) ────────────────────────────
-    def check_preconditions(self, skill: Skill, inventory: dict, objects: list) -> bool:
+    def check_preconditions(self, skill: Skill, inventory: dict, objects: list, y_level: int = None) -> bool:
         """Convenience wrapper — see Skill.check_preconditions."""
-        return skill.check_preconditions(inventory, objects)
+        return skill.check_preconditions(inventory, objects, y_level)
 
     def verify_replay(self, skill: Skill, inv_before: dict, inv_after: dict):
         """Call once after a skill replay finishes. Updates success/failed

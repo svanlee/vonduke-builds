@@ -1,0 +1,223 @@
+{
+  "name": "dig_up",
+  "trigger_objects": [
+    "stone"
+  ],
+  "steps": [
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": {
+          "dx": 0,
+          "dy": -60
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": {
+          "dx": 0,
+          "dy": -60
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": {
+          "dx": 0,
+          "dy": -60
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 200
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "mouse_hold": "down",
+        "mouse_button_name": "left",
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 250
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 450
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 450
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 450
+    },
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 450
+    },
+    {
+      "action": {
+        "key": "space",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "mouse_hold": "up",
+        "mouse_button_name": "left",
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 150
+    }
+  ],
+  "avg_reward": 0.5,
+  "uses": 0,
+  "created": 1784597376.0,
+  "last_used": null,
+  "preconditions": {
+    "max_y_level": 62
+  },
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false
+}
