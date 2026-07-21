@@ -1870,7 +1870,8 @@ def run():
 
             # ── Death/respawn detection ─────────────────────────
             if respawner.update(objects, last_observation=last_action.get('observation', ''),
-                                 suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up'))):
+                                 suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up')),
+                                 health_pct=world_mem.health_pct):
                 world_mem.record_death()
                 continue
 
