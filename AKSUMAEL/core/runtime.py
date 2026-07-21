@@ -967,7 +967,17 @@ def run():
                 _overseer_seen_directive = _overseer_directive
                 _overseer_action = _overseer_directive.get('action', 'continue')
                 if _overseer_action == 'override_goal' and _overseer_directive.get('goal'):
-                    goals.push(_overseer_directive['goal'])
+                    _OVERSEER_VALID_GOALS = {
+                        'find_and_chop_tree', 'mine_stone', 'mine_iron',
+                        'mine_diamonds', 'craft_wood_pickaxe', 'craft_stone_pickaxe',
+                        'craft_iron_pickaxe', 'explore', 'rebuild_fort',
+                        'return_to_base', 'dig_up', 'escape_underground',
+                    }
+                    _og = _overseer_directive['goal']
+                    if _og in _OVERSEER_VALID_GOALS:
+                        goals.push(_og)
+                    else:
+                        print(f'[OVERSEER] rejected unrecognized goal from directive: {_og}')
                 elif _overseer_action == 'flee':
                     _overseer_flee_ticks_left = 8   # matches fsm.FLEE_TICKS
 
