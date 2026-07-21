@@ -34,6 +34,19 @@ _PLANK_VARIANTS = ("oak_planks", "spruce_planks", "birch_planks",
 _FORT_PLANK_THRESHOLD = 10
 _FORT_BASE_RADIUS     = 30
 
+# Authority gating for injected goals (mastermind/axon/overseer directives).
+# "authority" is an optional 1-5 field on a queue item, default 3 (normal):
+#   1-2  low  — only injected while the bot is idling (explore/idle)
+#   3    normal (default) — injected unconditionally, same as before
+#   4-5  high — injected even over a survival-critical goal in progress
+# AKSUMAEL has no literal "combat" goal (mob response lives in core/fsm.py's
+# COMBAT state, not the goal stack) — flee_danger is the goal-stack analog,
+# so it's grouped with the other survival-critical goals here.
+_LOW_AUTHORITY_MAX    = 2
+_HIGH_AUTHORITY_MIN   = 4
+_IDLE_GOALS           = frozenset({"explore", "idle"})
+_PROTECTED_GOALS      = frozenset({"survive_night", "eat", "flee_danger"})
+
 GOAL_PRIORITIES = {
     "survive_night": 10,
     "eat": 9,
@@ -405,13 +418,30 @@ class GoalStack:
             return
         for item in queue:
             goal = item.get("goal")
-            if goal:
-                params = item.get("params")
-                if params:
-                    self.goal_params[goal] = params
-                print(f"[GOALS] hive-injected goal: {goal} "
-                      f"({item.get('reason', 'mastermind')}) params={params or {}}")
-                self.push(goal)
+            if not goal:
+                continue
+            try:
+                authority = int(item.get("authority", 3))
+            except (TypeError, ValueError):
+                authority = 3
+            authority = min(5, max(1, authority))
+
+            if authority <= _LOW_AUTHORITY_MAX and self.current not in _IDLE_GOALS:
+                print(f"[GOALS] dropped low-authority ({authority}) injected goal "
+                      f"'{goal}' — bot busy with '{self.current}'")
+                continue
+            if (_LOW_AUTHORITY_MAX < authority < _HIGH_AUTHORITY_MIN
+                    and self.current in _PROTECTED_GOALS):
+                print(f"[GOALS] dropped normal-authority ({authority}) injected goal "
+                      f"'{goal}' — '{self.current}' is survival-critical")
+                continue
+
+            params = item.get("params")
+            if params:
+                self.goal_params[goal] = params
+            print(f"[GOALS] hive-injected goal: {goal} "
+                  f"({item.get('reason', 'mastermind')}) authority={authority} params={params or {}}")
+            self.push(goal)
         os.remove(INJECTED_GOALS_PATH)
 
 
