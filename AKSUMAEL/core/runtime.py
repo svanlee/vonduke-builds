@@ -921,6 +921,7 @@ def run():
             _overseer_recent_actions.append(_fsm_action_str or 'idle')
             del _overseer_recent_actions[:-5]
             overseer_tick(tick, {
+                'frame':          pipeline.latest_small_frame,
                 'env':            'minecraft',
                 'fsm_state':      fsm_state.value if fsm_state else 'UNKNOWN',
                 'state_ticks':    getattr(fsm, '_same_state_ticks', 0),
