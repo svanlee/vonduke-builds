@@ -98,6 +98,7 @@ from core.episode_memory     import EpisodeMemory
 from core.curriculum         import CurriculumGenerator
 from core.overseer           import maybe_call as overseer_tick, get_last_directive
 from core                    import code_skill_generator
+from core                    import self_editor
 from core                    import feature_extractor
 from core                    import policy_blender
 from memory.reward           import RewardSystem
@@ -320,6 +321,8 @@ def run():
 
     # Start background threads
     pipeline.start()   # CaptureThread + YOLOThread + DisplayThread
+    from core.frame_server import FrameServer
+    FrameServer(pipeline).start()   # MJPEG viewer → http://localhost:8765/
     router.start()
     if ear.enabled:
         ear.start()
@@ -490,6 +493,7 @@ def run():
     _DIGCLIMB_MINE_TICKS  = 3    # place attempts per jump cycle (right-click)
     _digclimb_phase       = 'select'  # 'select' -> 'aim' -> 'jump' -> 'place' -> 'select'
     _digclimb_mine_ticks  = 0
+    _digclimb_code_tried  = False    # True once code skill attempted this dig_up session
     _PITCH_CLAMP_NUDGE = config.LOOK_SENSITIVITY * 4
 
     # Init extended F3 fields on world_mem so context_summary() can use them
@@ -749,8 +753,14 @@ def run():
             # Independent of YOLO's health_bar/hunger_bar boxes — samples
             # fixed HUD-row pixel colors directly (see memory/hud_reader.py).
             world_mem.health_pct, world_mem.hunger_pct = hud_reader.update(frame)
-            if world_mem.hunger_pct < 0.30 and not goals.has_goal('eat'):
-                print(f'[HUD] hunger_pct={world_mem.hunger_pct:.0%} < 30% — pushing eat goal')
+            _hunger_val = world_mem.hunger_pct
+            _escape_active = goals.current_goal() in (
+                'dig_up', 'mine_up', 'escape_underground')
+            if (isinstance(_hunger_val, (int, float))
+                    and _hunger_val < 0.30
+                    and not goals.has_goal('eat')
+                    and not _escape_active):
+                print(f'[HUD] hunger_pct={_hunger_val:.0%} < 30% — pushing eat goal')
                 goals.push('eat')
 
             world_mem.update(objects, action=last_action)
@@ -1104,6 +1114,67 @@ def run():
                         _replay_success = skills.verify_replay(
                             _verify_skill, _verify_inv_before, dict(inventory.items))
                         skill_evaluator.record(_verify_skill.name, _replay_success)
+                        # If an existing skill has now failed 3x in a row, upgrade
+                        # it to a code skill — same trigger as newly-mined skills
+                        # but applied to force-loaded skills like dig_up that fail
+                        # repeatedly without ever going through skills.observe().
+                        if (config.ENABLE_CODE_SKILLS
+                                and not _replay_success
+                                and skill_evaluator.get_consecutive_failures(
+                                    _verify_skill.name) >= 3
+                                and not code_skill_generator.load_code_skill(
+                                    _verify_skill.name)):
+                            try:
+                                _code = code_skill_generator.generate_code_skill(
+                                    _verify_skill.name,
+                                    [s.action for s in _verify_skill.steps],
+                                    goal=goals.current_goal(),
+                                    objects=objects,
+                                    world_state={
+                                        'y_level': getattr(world_mem, 'y_level', None),
+                                        'position': getattr(world_mem, 'position', None),
+                                        'facing': getattr(world_mem, 'facing', None),
+                                    })
+                                if _code:
+                                    code_skill_generator.save_code_skill(
+                                        _verify_skill.name, _code)
+                                    print(f'[CODE_SKILL] upgraded {_verify_skill.name} '
+                                          f'after 3 consecutive failures — vision-aware')
+                            except Exception as _cse:
+                                print(f'[CODE_SKILL] generation error: {_cse}')
+                        # After 5 consecutive failures, also propose a self-edit
+                        # to the skill's source (code skill file if it exists,
+                        # else the JSON — AKSUMAEL reads + rewrites its own code).
+                        _fail_n = skill_evaluator.get_consecutive_failures(
+                            _verify_skill.name)
+                        if (config.ENABLE_CODE_SKILLS
+                                and not _replay_success
+                                and _fail_n >= 5):
+                            _cs_path = os.path.join(
+                                config.CODE_SKILLS_DIR, f'{_verify_skill.name}.py')
+                            _edit_target = (_cs_path if os.path.exists(
+                                os.path.join(os.path.dirname(
+                                    os.path.dirname(__file__)), _cs_path))
+                                else f'data/skills/{_verify_skill.name}.json')
+                            try:
+                                _patch = self_editor.propose_fix(
+                                    skill_name=_verify_skill.name,
+                                    failure_desc=(
+                                        f'skill failed {_fail_n}x in a row; '
+                                        f'goal={goals.current_goal()}'),
+                                    fail_count=_fail_n,
+                                    file_path=_edit_target,
+                                    goal=goals.current_goal(),
+                                    detections=objects,
+                                    world_state={
+                                        'y_level': getattr(world_mem, 'y_level', None),
+                                        'position': getattr(world_mem, 'position', None),
+                                        'facing': getattr(world_mem, 'facing', None),
+                                    })
+                                if _patch:
+                                    self_editor.apply_patch(_patch)
+                            except Exception as _se:
+                                print(f'[SELF_EDIT] error: {_se}')
                     except Exception as e:
                         print(f'[SKILL] verify error: {e}')
                     _verify_skill = None
@@ -1201,15 +1272,27 @@ def run():
                 src_tag = f'NIGHT:{night_survival._state}'
 
             elif goals.current_goal() in ('dig_up', 'mine_up', 'escape_underground'):
-                # Pillar-up: select dirt → aim down → jump → right-click place → repeat.
-                # Snapshot analysis confirmed the bot is in an open vertical shaft with
-                # no block directly overhead — mine_up (left-click) was useless.
-                # Right-clicking while airborne looking straight down places a block on
-                # the floor below, landing on it gives +1 Y. slot 1 = dirt blocks.
-                _y_now = getattr(world_mem, 'y_level', 0) or 0
+                # Try LLM-generated code skill first (mine-up with pickaxe).
+                # Falls through to pillar-up if no code skill exists.
+                _dc_ran = False
+                if config.ENABLE_CODE_SKILLS and not _digclimb_code_tried:
+                    _digclimb_code_tried = True  # only attempt once per dig_up session
+                    try:
+                        _dc_ran = code_skill_generator.run_code_skill(
+                            'dig_up', executor, world_mem, objects,
+                            goal='dig_up', timeout=200.0)
+                        if _dc_ran:
+                            src_tag = 'DIGCLIMB:code_skill'
+                            action_dict = {'key': None, 'click': None,
+                                           'look': None, 'source': 'digclimb_code'}
+                    except Exception as _dce:
+                        print(f'[DIGCLIMB] code skill error: {_dce}')
+                # Only run pillar-up if code skill didn't handle this tick
+                _y_now = (getattr(world_mem, 'y_level', 0) or 0) if not _dc_ran else 99
                 if _y_now >= 62:
-                    goals.pop_goal()
+                    goals.pop()
                     _digclimb_phase = 'select'
+                    _digclimb_code_tried = False   # reset so next dig_up gets a fresh attempt
                     src_tag = 'DIGCLIMB:reached_surface'
                 elif _digclimb_phase == 'select':
                     action_dict = {
@@ -1652,7 +1735,8 @@ def run():
                     if config.ENABLE_CODE_SKILLS:
                         try:
                             _code_ran = code_skill_generator.run_code_skill(
-                                skill.name, executor, world, objects)
+                                skill.name, executor, world, objects,
+                                goal=goals.current_goal())
                         except Exception as e:
                             print(f'[CODE_SKILL] error running {skill.name}: {e}')
                         if _code_ran:
@@ -2161,10 +2245,16 @@ def run():
                         try:
                             _code = code_skill_generator.generate_code_skill(
                                 mined.name, [s.action for s in mined.steps],
-                                context=f'triggers on {mined.trigger_objects}')
+                                goal=goals.current_goal(),
+                                objects=objects,
+                                world_state={
+                                    'y_level': getattr(world_mem, 'y_level', None),
+                                    'position': getattr(world_mem, 'position', None),
+                                    'facing': getattr(world_mem, 'facing', None),
+                                })
                             if _code:
                                 code_skill_generator.save_code_skill(mined.name, _code)
-                                print(f'[CODE_SKILL] generated for {mined.name}')
+                                print(f'[CODE_SKILL] generated for {mined.name} — vision-aware')
                         except Exception as e:
                             print(f'[CODE_SKILL] generation error: {e}')
 
