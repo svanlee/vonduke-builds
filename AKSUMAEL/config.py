@@ -251,7 +251,14 @@ I2C_DEADZONE   = 15
 BLEND_MODE = "aksumael_only"
 
 # ── Audio ─────────────────────────────────────────────────────
-ENABLE_TTS      = True     # AKSUMAEL speaks (pyttsx3, no mic needed)
+ENABLE_TTS      = False     # AKSUMAEL speaks (pyttsx3, no mic needed)
+
+# ── SmolVLA policy (driving sim / robocar) ──────────────────────────
+ENABLE_SMOLVLA           = False
+SMOLVLA_MODEL_PATH       = "lerobot/smolvla_base"  # update to local cache path
+SMOLVLA_DEVICE           = "cuda"
+SMOLVLA_MIN_FREE_VRAM_MB = 900
+SMOLVLA_GOALS            = {"find_and_chop_tree", "explore", "find_food"}
 ENABLE_GAME_EAR = True    # AKSUMAEL hears game audio (graceful if no device)
 
 # TTS: "pyttsx3" (offline) | "elevenlabs" (cloud)
