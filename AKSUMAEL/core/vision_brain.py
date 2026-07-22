@@ -45,10 +45,12 @@ Look at this screenshot and respond with a JSON object:
   "key": "keyboard key if applicable, else null",
   "click": [x_percent, y_percent] or null,
   "look": {{"dx": -15, "dy": 0}} or null,
+  "gamepad": {{"lx": 0, "ly": 0, "rx": 0, "ry": 0, "buttons": 0}} or null,
   "goal": "optional short natural-language goal, e.g. 'go deeper to find diamonds'",
   "confidence": 0.0-1.0
 }}
 "goal" is optional — only include it when you have a multi-step objective in mind.
+"gamepad" is optional — only include it when you want to send analog stick or button input to the gamepad. lx/ly = left stick (-127 to 127), rx/ry = right stick, buttons = bitmask (see XInput layout).
 Only output valid JSON, nothing else."""
 
 
