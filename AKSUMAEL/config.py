@@ -121,6 +121,7 @@ Respond with JSON only:
   "key": "w/a/s/d/space/ctrl/e/f/1/2/3/4/5/6/7/8/9/esc or null",
   "click": "left/right or null",
   "look": {"dx": 0, "dy": 0} or null,
+  "gamepad": {"lx": 0, "ly": 0, "rx": 0, "ry": 0, "buttons": 0, "lt": 0, "rt": 0},
   "goal": "short phrase — current objective (REQUIRED)",
   "confidence": 0.0-1.0,
   "discovery": "optional — one new fact you just learned (e.g. 'coal seam at cave entrance', 'zombies burned at dawn')"
