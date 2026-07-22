@@ -19,16 +19,14 @@ import threading
 import time
 import config
 from core.identity import AKSUMAEL_IDENTITY
-from core.llm_router import call_claude_direct, frame_to_b64
+from core.llm_router import call_claude_direct
 from core.capture import push_monologue_line
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
-# Every Overseer call now attaches a frame (see _call_overseer), so it needs
-# the same generous timeout as the other vision call sites (env_detector.py,
-# label_queue.py) — config.LOCAL_LLM_TIMEOUT, tuned from a live measurement
-# showing this model's vision calls actually take 30-38s. The old 8.0s value
-# was fine for the text-only prompt this used to send but cuts off every
-# vision response before it arrives (see config.py's LOCAL_LLM_TIMEOUT comment).
+# Text-only prompt (see _call_overseer — no frame is attached), so the
+# 8-45s vision-call latency doesn't apply here. Still uses the shared
+# config.LOCAL_LLM_TIMEOUT rather than a tighter value since this call runs
+# on its own background thread (maybe_call) and never blocks the tick loop.
 OVERSEER_TIMEOUT  = config.LOCAL_LLM_TIMEOUT
 
 # Hard wall-clock cap, independent of OVERSEER_INTERVAL — the tick-count
@@ -37,17 +35,6 @@ OVERSEER_TIMEOUT  = config.LOCAL_LLM_TIMEOUT
 # OVERSEER_INTERVAL ticks can pass in well under a minute of wall time.
 # This is the actual backstop against saturating the local mesh-llm server.
 OVERSEER_MAX_PER_MINUTE = 6
-
-# Sent as a leading system message whenever a frame is attached — without
-# it, mesh-llm's loaded vision model (Qwen3.5-4B-Vision) defaults to GUI
-# element detection and returns bounding-box JSON like
-# [{"label": "['interactive']", "bbox": [...]}, ...] instead of the
-# planning directive this prompt actually asks for (2026-07-20).
-OVERSEER_SYSTEM_MSG = (
-    "You are a Minecraft game agent planner. When given a screenshot, "
-    "analyze the game state and return only the JSON planning directive "
-    "requested. Do not perform GUI element detection or return bounding boxes."
-)
 
 _last_directive   = {"action": "continue"}
 _last_called_tick = 0
@@ -124,16 +111,20 @@ def _call_overseer(tick: int, snapshot: dict):
     global _last_directive, _busy
     try:
         prompt = _build_prompt(snapshot)
-        images = None
-        frame = snapshot.get('frame')
-        if frame is not None:
-            try:
-                images = [frame_to_b64(frame)]
-            except Exception as e:
-                print(f'[OVERSEER] frame encode failed: {e}')
-        raw = call_claude_direct(prompt, max_tokens=300, images=images,
-                                  timeout=OVERSEER_TIMEOUT,
-                                  system=OVERSEER_SYSTEM_MSG if images else None)
+        # Text-only, deliberately: mesh-llm's loaded vision model
+        # (Qwen3.5-4B-Vision) has a hard-baked GUI/accessibility-tree
+        # grounding behavior that fires on almost any image + JSON-request
+        # combo, regardless of system-prompt instructions telling it not
+        # to — confirmed live 2026-07-21, it returned
+        # [{"label": "['StaticText']", "bbox": [...]}] for this exact
+        # prompt with a frame attached (a prior attempt to suppress this
+        # with a system message only got it to swap '[interactive]' for
+        # '[StaticText]', see git history). The snapshot's `objects` field
+        # already carries YOLO's detections as text, which is enough
+        # visual grounding for a strategic go/no-go call — attaching the
+        # raw frame added no information the model could reliably parse.
+        raw = call_claude_direct(prompt, max_tokens=300,
+                                  timeout=OVERSEER_TIMEOUT)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')
