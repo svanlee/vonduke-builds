@@ -155,6 +155,14 @@ def detect_ores_by_color(frame_bgr: np.ndarray,
     if frame_bgr is None:
         return []
 
+    # Near-black frame guard — blank capture feed (Minecraft closed, HDMI
+    # no-signal, or capture card disconnected) triggers false-positive
+    # detections because static/noise patches match the color ranges at
+    # conf=0.75. A real gameplay frame always has enough lit pixels to
+    # clear this threshold; a no-signal frame reads well below it.
+    if frame_bgr.mean() < 8.0:
+        return []
+
     h, w = frame_bgr.shape[:2]
     # Exclude HUD strip at the bottom
     search_h = int(h * (1.0 - HUD_EXCLUSION_FRAC))
