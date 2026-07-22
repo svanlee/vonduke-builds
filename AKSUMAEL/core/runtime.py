@@ -91,6 +91,7 @@ from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision, get_call_counts, get_last_provider
 from core.world_model        import WorldModel
+from core.lerobot_recorder   import LeRobotRecorder
 from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
 from core.episode_memory     import EpisodeMemory
@@ -187,6 +188,8 @@ def run():
     cognitive   = CognitiveArchitecture()
     reward    = RewardSystem()
     executor  = ActionExecutor()
+
+    recorder = LeRobotRecorder() if config.ENABLE_LEROBOT_RECORDING else None
 
     # Self-built memory system (episodic/semantic/procedural) — see
     # memory/context.py. episodic_mem.record() is called below on every
@@ -2018,6 +2021,11 @@ def run():
                 'action':  final.get('key') or action_dict.get('action', 'wait'),
             })
 
+            # ── LeRobotDataset recording (opt-in, passive) ──────
+            if recorder is not None:
+                recorder.record_step(frame, world_mem, final,
+                                      inventory=inventory, goal=goals.current_goal())
+
             # ── Reward ────────────────────────────────────────
             reward.add_hud_reward(_hud_reward(objects, prev_objects))
             r = reward.compute({'objects': objects}, action_dict)
@@ -2219,6 +2227,8 @@ def run():
             neural_policy.save_checkpoint()
         tts.say_line('shutdown', priority=True)
         skills.save_all()
+        if recorder is not None:
+            recorder.close()
         rl.save()
         world.save()
         world_mem.save()
