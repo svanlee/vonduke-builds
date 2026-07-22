@@ -2,7 +2,7 @@
 # Install: pip install -r requirements.txt --break-system-packages
 
 # Vision
-opencv-python
+opencv-python>=4.8,<5   # v5 alpha breaks API; headless variant breaks GUI
 numpy<2.5     # numba (whisper dep) and roboflow both cap at <2.5
 ultralytics          # YOLO
 
