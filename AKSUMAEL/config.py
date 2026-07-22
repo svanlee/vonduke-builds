@@ -255,7 +255,7 @@ ENABLE_TTS      = False     # AKSUMAEL speaks (pyttsx3, no mic needed)
 
 # ── SmolVLA policy (driving sim / robocar) ──────────────────────────
 ENABLE_SMOLVLA           = False
-SMOLVLA_MODEL_PATH       = "lerobot/smolvla_base"  # update to local cache path
+SMOLVLA_MODEL_PATH       = "/home/ros/models/smolvla"  # local cache, confirmed 2026-07-22
 SMOLVLA_DEVICE           = "cuda"
 SMOLVLA_MIN_FREE_VRAM_MB = 900
 SMOLVLA_GOALS            = {"find_and_chop_tree", "explore", "find_food"}
