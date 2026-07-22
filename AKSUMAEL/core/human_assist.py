@@ -13,22 +13,31 @@
 #
 # Button map (Xbox pad, evdev ecodes — see input/controller_router.py
 # for the same BTN_* constants used elsewhere in this codebase):
-#   Left stick  -> WASD movement
-#   Right stick -> mouse look (yaw/pitch deltas)
-#   A           -> jump (space)
-#   B           -> unused
-#   X           -> attack/mine (left mouse, real press-and-hold so
-#                  block-break progress doesn't reset every tick)
-#   Y           -> use/place (right mouse, single tap)
-#   D-pad up/dn -> hotbar scroll (relative, wraps through slots 1-9)
+#   Left stick  -> native gamepad X/Y axes (Minecraft's own controller
+#                  support reads these directly — see rp2040/code.py's
+#                  handle_gamepad() / rp2040/boot.py's
+#                  GAMEPAD_REPORT_DESCRIPTOR)
+#   Right stick -> native gamepad Z/Rz axes (look)
+#   A/B/X/Y/LB/RB -> forwarded as native gamepad buttons 1-6 every tick
+#                  (held state, not taps — 2026-07-22: previously A/X/Y
+#                  were converted to space/mouse-hold/right-click, which
+#                  only worked because Minecraft was being driven as a
+#                  keyboard+mouse app; now that the KB2040 is a real USB
+#                  HID gamepad, Minecraft's controller bindings own this)
+#   D-pad up/dn -> hotbar scroll (relative, wraps through slots 1-9) —
+#                  still keyboard taps; the gamepad HID descriptor has no
+#                  hat-switch usage, so there's no native axis for this
 #   D-pad l/r   -> hotbar slot select (same wraparound, opposite step)
 #   LT          -> crouch/sneak (left shift, true hold — pressed once on
 #                  LT down, released once on LT up via 'key_hold'; see
 #                  uart/kb2040_packer.py. Retapping shift every poll tick
-#                  is what used to trip Windows Sticky Keys, 2026-07-19)
+#                  is what used to trip Windows Sticky Keys, 2026-07-19).
+#                  Still keyboard — the gamepad descriptor declares only
+#                  4 axes (X/Y/Z/Rz), no trigger axes, so LT/RT have no
+#                  native HID representation on this device.
 #   RT          -> sprint (left ctrl, true hold, same mechanism as LT)
-#   RB/LB       -> unused
-#   Start       -> toggle HUMAN / AI mode (never sends a keyboard key)
+#   Start       -> toggle HUMAN / AI mode (never sends a keyboard key or
+#                  reaches the gamepad report)
 import json
 import os
 import sqlite3
@@ -56,7 +65,6 @@ POLL_HZ            = 60    # was 20 — 2026-07-19 latency pass. evdev event
                             # that turns cached stick/button state into HID
                             # actions, so it's the real ceiling on responsiveness.
 POLL_INTERVAL_SEC  = 1.0 / POLL_HZ
-POLL_INTERVAL_MS   = int(POLL_INTERVAL_SEC * 1000)
 
 # Delay between the press and release packet of a discrete tap (jump,
 # hotbar, use/place) — see action_dict_to_packets/KB2040Serial.send_action,
@@ -78,7 +86,6 @@ HID_TAP_MS         = 15
 # analog drift/noise near center regardless of the controller's actual
 # raw axis range (2026-07-19).
 STICK_DEADZONE     = 31
-LOOK_SENSITIVITY   = 0.15   # mouse-look dx/dy per raw stick unit
 MOVE_DEADZONE      = 40     # coarser deadzone for movement so light drift
                              # on the right stick doesn't walk the player
                              # (already stricter than STICK_DEADZONE, so no
@@ -129,7 +136,6 @@ class HumanAssist:
         self._prev_buttons = 0
         self._prev_lt_held = False
         self._prev_rt_held = False
-        self._mining       = False
         self._hotbar_idx   = 0
 
         # Context supplied by core/runtime.py each main-loop tick so
@@ -230,10 +236,6 @@ class HumanAssist:
                     # Nobody's holding the controller anymore — don't leave
                     # the FSM paused indefinitely or a key/click stuck down.
                     self.human_mode = False
-                    if self._mining:
-                        self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                               'delay_ms': 0, 'source': 'human'})
-                        self._mining = False
                     self.executor.release_all()
                     # release_all() just cleared shift/ctrl on the HID side —
                     # forget any pending hold state so a still-held LT/RT on
@@ -352,7 +354,6 @@ class HumanAssist:
             self._queue_hotbar = False
 
         rising = buttons & ~self._prev_buttons   # newly-pressed this tick
-        falling = self._prev_buttons & ~buttons  # newly-released this tick
         self._prev_buttons = buttons
 
         # Start always toggles mode, in either mode, so a human stuck in
@@ -383,12 +384,9 @@ class HumanAssist:
                 self._prev_rt_held = rt > TRIGGER_THRESHOLD
             else:
                 print('[HumanAssist] Switched to AI mode')
-                # Don't leave a key/mouse button physically down from the
-                # instant control was handed back to the FSM.
-                if self._mining:
-                    self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                           'delay_ms': 0, 'source': 'human'})
-                    self._mining = False
+                # Don't leave a key/mouse button or gamepad button
+                # physically down from the instant control was handed
+                # back to the FSM.
                 self.executor.release_all()
                 self._prev_lt_held = False
                 self._prev_rt_held = False
@@ -399,58 +397,27 @@ class HumanAssist:
 
         action_parts = []
 
-        # Right stick -> mouse look
-        if abs(rx) > STICK_DEADZONE or abs(ry) > STICK_DEADZONE:
-            dx = int(rx * LOOK_SENSITIVITY)
-            dy = int(ry * LOOK_SENSITIVITY)
-            if dx or dy:
-                self.executor.execute({'look': {'dx': dx, 'dy': dy}, 'delay_ms': 0, 'source': 'human'})
-                action_parts.append(f'look({dx},{dy})')
-
-        # Left stick -> WASD movement. Not a real hardware hold (the
-        # KB2040 keyboard packet is press-then-release) — instead each
-        # dispatch tick sends one key press held for ~one poll interval
-        # via delay_ms, back-to-back, which reads as continuous movement
-        # in-game (same trick core/runtime.py uses for tree_fallback).
-        move_key = None
-        if ly < -MOVE_DEADZONE:
-            move_key = 'w'
-        elif ly > MOVE_DEADZONE:
-            move_key = 's'
-        elif lx < -MOVE_DEADZONE:
-            move_key = 'a'
-        elif lx > MOVE_DEADZONE:
-            move_key = 'd'
-        if move_key:
-            self.executor.execute({'key': move_key, 'delay_ms': POLL_INTERVAL_MS,
-                                   'source': 'human'})
-            action_parts.append(f'move_{move_key}')
-
-        # A -> jump
-        if rising & 0x0001:
-            self.executor.execute({'key': 'space', 'delay_ms': HID_TAP_MS, 'source': 'human'})
-            action_parts.append('jump')
-
-        # B -> unused
-
-        # X -> attack/mine, real press-and-hold via mouse_hold (matches
-        # core/runtime.py's mining code — a plain tap resets block-break
-        # progress every time it fires).
-        if rising & 0x0004:
-            self.executor.execute({'mouse_hold': 'down', 'mouse_button_name': 'left',
-                                   'delay_ms': 0, 'source': 'human'})
-            self._mining = True
-            action_parts.append('attack_start')
-        if falling & 0x0004:
-            self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
-                                   'delay_ms': 0, 'source': 'human'})
-            self._mining = False
-            action_parts.append('attack_stop')
-
-        # Y -> use/place (single tap right click)
-        if rising & 0x0008:
-            self.executor.execute({'mouse_button': 'right', 'delay_ms': HID_TAP_MS, 'source': 'human'})
-            action_parts.append('use_place')
+        # Sticks + buttons -> one native gamepad HID report per tick
+        # (see rp2040/code.py's handle_gamepad() / rp2040/boot.py's
+        # GAMEPAD_REPORT_DESCRIPTOR: 4 signed axes + 16 buttons). Sent as
+        # live held state, not discrete taps — Minecraft's own controller
+        # bindings (Options > Controls > Controller) decide what A/X/Y and
+        # the sticks do, the same way they would for a real Xbox pad.
+        # bit7 (Start, 0x0080) is masked out: it's AKSUMAEL's own
+        # HUMAN/AI toggle above and must never reach the game.
+        gp_lx = lx if abs(lx) > MOVE_DEADZONE else 0
+        gp_ly = ly if abs(ly) > MOVE_DEADZONE else 0
+        gp_rx = rx if abs(rx) > STICK_DEADZONE else 0
+        gp_ry = ry if abs(ry) > STICK_DEADZONE else 0
+        gp_buttons = buttons & ~0x0080
+        self.executor.execute({
+            'gamepad': {'lx': gp_lx, 'ly': gp_ly, 'rx': gp_rx, 'ry': gp_ry,
+                       'buttons': gp_buttons},
+            'delay_ms': 0, 'source': 'human',
+        })
+        if gp_lx or gp_ly or gp_rx or gp_ry or gp_buttons:
+            action_parts.append(
+                f'gp(lx={gp_lx},ly={gp_ly},rx={gp_rx},ry={gp_ry},btn={gp_buttons:04x})')
 
         # D-pad -> hotbar scroll (edge-queued in _handle_dpad)
         if hotbar_pending:

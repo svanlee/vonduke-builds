@@ -237,17 +237,25 @@ def action_dict_to_packets(action_dict: dict,
         if dx != 0 or dy != 0:
             packets.append(pack_mouse_relative(dx=dx, dy=dy, buttons=held_buttons))
 
-    # Gamepad (all platforms — KB2040 supports it natively)
+    # Gamepad (all platforms — KB2040 supports it natively). Unlike 'look'
+    # above, this has no truthiness gate: a gamepad report is full state
+    # (rp2040/code.py::handle_gamepad sets every axis + all 16 buttons from
+    # whatever's in the packet), so an all-neutral dict is a legitimate and
+    # necessary "release everything" report, not a no-op to skip. Gating on
+    # any(...) — as this used to — meant the packet was dropped the instant
+    # every axis/button returned to 0, which left the firmware's button
+    # bitmask and axes stuck at their last nonzero report (e.g. a button
+    # that was pressed with the stick centered would never see a release
+    # packet at all, since neither field was ever nonzero at the same time
+    # as the other transitioning to 0).
     if gamepad and isinstance(gamepad, dict):
-        if any(gamepad.get(k, 0) for k in
-               ('lx','ly','rx','ry','lt','rt','buttons','guide')):
-            packets.append(pack_gamepad(
-                lx=gamepad.get('lx',0), ly=gamepad.get('ly',0),
-                rx=gamepad.get('rx',0), ry=gamepad.get('ry',0),
-                buttons=gamepad.get('buttons',0),
-                lt=gamepad.get('lt',0), rt=gamepad.get('rt',0),
-                guide=gamepad.get('guide', False),
-            ))
+        packets.append(pack_gamepad(
+            lx=gamepad.get('lx',0), ly=gamepad.get('ly',0),
+            rx=gamepad.get('rx',0), ry=gamepad.get('ry',0),
+            buttons=gamepad.get('buttons',0),
+            lt=gamepad.get('lt',0), rt=gamepad.get('rt',0),
+            guide=gamepad.get('guide', False),
+        ))
 
     return packets
 

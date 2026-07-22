@@ -6,6 +6,40 @@
   "steps": [
     {
       "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 400
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 300
+    },
+    {
+      "action": {
         "key": null,
         "click": [
           50,
@@ -23,24 +57,7 @@
         },
         "source": "skill"
       },
-      "delay_after_ms": 500
-    },
-    {
-      "action": {
-        "key": "escape",
-        "click": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 200
+      "delay_after_ms": 300
     }
   ],
   "avg_reward": 0.7,

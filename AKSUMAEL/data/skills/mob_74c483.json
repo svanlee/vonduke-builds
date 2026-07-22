@@ -1,13 +1,68 @@
 {
-  "name": "flee_creeper",
+  "name": "mob_74c483",
   "trigger_objects": [
-    "creeper"
+    "mob"
   ],
   "steps": [
     {
       "action": {
-        "key": "1",
+        "key": null,
         "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 249
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": null,
+        "click": null,
+        "look": null,
         "gamepad": {
           "lx": 0,
           "ly": 0,
@@ -20,49 +75,15 @@
         "source": "skill"
       },
       "delay_after_ms": 150
-    },
-    {
-      "action": {
-        "key": "s",
-        "click": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
-    },
-    {
-      "action": {
-        "key": "s",
-        "click": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
     }
   ],
-  "avg_reward": 0.5,
-  "uses": 0,
-  "created": 1784460585.0,
-  "last_used": 1784741111.7676787,
+  "avg_reward": 0.447,
+  "uses": 7,
+  "created": 1784631591.6039343,
+  "last_used": 1784740795.7233896,
   "preconditions": {},
   "postconditions": {},
-  "success_count": 785,
+  "success_count": 116,
   "failed_count": 0,
   "blacklisted": false,
   "universal": false

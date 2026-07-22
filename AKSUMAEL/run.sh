@@ -30,8 +30,30 @@ pkill -f "piper"                    2>/dev/null
 pkill -f "espeak"                   2>/dev/null
 pkill -f "$MAIN_PY_PATTERN"    2>/dev/null
 pkill -f "aksumael_wrapper.sh"      2>/dev/null
-sleep 1
-log "Stale process cleanup done."
+
+# pkill only sends SIGTERM and returns immediately — it does not wait for
+# the target to actually exit. main.py can take several seconds to unwind
+# (camera capture thread, KB2040 UART close, etc.), so a flat `sleep 1`
+# here used to race step 3's "already running?" pgrep check below: it
+# could still see the dying-but-not-yet-dead old process, conclude a
+# restart wasn't needed, and skip relaunching entirely — leaving AKSUMAEL
+# killed but never brought back up (hit this for real, 2026-07-22). Poll
+# until both patterns are confirmed gone instead of guessing a fixed delay.
+log "Waiting for stale processes to fully exit..."
+KILL_WAIT_TIMEOUT_SEC=20
+waited=0
+while pgrep -f "$MAIN_PY_PATTERN" >/dev/null 2>&1 || pgrep -f "aksumael_wrapper.sh" >/dev/null 2>&1; do
+    if (( waited >= KILL_WAIT_TIMEOUT_SEC )); then
+        log "WARNING: stale process(es) still alive after ${KILL_WAIT_TIMEOUT_SEC}s — force killing (-9)."
+        pkill -9 -f "$MAIN_PY_PATTERN"      2>/dev/null
+        pkill -9 -f "aksumael_wrapper.sh"   2>/dev/null
+        sleep 1
+        break
+    fi
+    sleep 1
+    (( waited += 1 ))
+done
+log "Stale process cleanup done (waited ${waited}s)."
 
 # ── Step 2: start mesh-llm, health-gate on /v1/models ────
 log "Starting mesh-llm..."

@@ -1,0 +1,20 @@
+[Unit]
+Description=AKSUMAEL autonomous Minecraft agent
+After=network.target mesh-llm.service
+Wants=mesh-llm.service
+
+[Service]
+Type=simple
+User=ros
+WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
+ExecStart=/usr/bin/bash /home/ros/vonduke-builds/AKSUMAEL/tools/aksumael_wrapper.sh
+Restart=on-failure
+RestartSec=15s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StandardOutput=append:/tmp/aksumael_live.log
+StandardError=append:/tmp/aksumael_live.log
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=default.target

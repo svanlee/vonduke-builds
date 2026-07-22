@@ -18,3 +18,37 @@ yolo11*.pt
 yolo26*.pt
 
 .notes/
+
+# Piper TTS voice models — large binaries, re-fetched on demand with
+# `venv/bin/python3 -m piper.download_voices <name> --data-dir data/piper_voices`
+data/piper_voices/*.onnx
+data/aurora.db
+burst_*.jpg
+current_view.jpg
+aksumael-assets/
+data/lerobot/
+
+data/skill_evaluator.db
+data/memory.db
+data/models/*.pt
+data/models/*.pth
+
+*.tmp
+
+# Large data — never commit
+data/lerobot/
+data/yolo_dataset/
+data/models/*.pt
+data/models/*.pth
+data/skill_evaluator.db
+data/memory.db
+
+# Runtime captures
+debug_snapshot_latest.jpg
+digging_now.jpg
+frame_live.jpg
+latest.jpg
+live_frame_latest.jpg
+burst_*.jpg
+current_view.jpg
+*.tmp
