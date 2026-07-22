@@ -13,11 +13,8 @@
 #
 # Button map (Xbox pad, evdev ecodes — see input/controller_router.py
 # for the same BTN_* constants used elsewhere in this codebase):
-#   Left stick  -> mouse look (yaw/pitch deltas)
-#   Right stick -> WASD movement (left stick is the only "look" input
-#                  the spec calls for, but a play session needs a way
-#                  to actually walk — this is a deliberate addition,
-#                  easy to rip out if unwanted)
+#   Left stick  -> WASD movement
+#   Right stick -> mouse look (yaw/pitch deltas)
 #   A           -> jump (space)
 #   B           -> unused
 #   X           -> attack/mine (left mouse, real press-and-hold so
@@ -402,27 +399,27 @@ class HumanAssist:
 
         action_parts = []
 
-        # Left stick -> mouse look
-        if abs(lx) > STICK_DEADZONE or abs(ly) > STICK_DEADZONE:
-            dx = int(lx * LOOK_SENSITIVITY)
-            dy = int(ly * LOOK_SENSITIVITY)
+        # Right stick -> mouse look
+        if abs(rx) > STICK_DEADZONE or abs(ry) > STICK_DEADZONE:
+            dx = int(rx * LOOK_SENSITIVITY)
+            dy = int(ry * LOOK_SENSITIVITY)
             if dx or dy:
                 self.executor.execute({'look': {'dx': dx, 'dy': dy}, 'delay_ms': 0, 'source': 'human'})
                 action_parts.append(f'look({dx},{dy})')
 
-        # Right stick -> WASD movement. Not a real hardware hold (the
+        # Left stick -> WASD movement. Not a real hardware hold (the
         # KB2040 keyboard packet is press-then-release) — instead each
         # dispatch tick sends one key press held for ~one poll interval
         # via delay_ms, back-to-back, which reads as continuous movement
         # in-game (same trick core/runtime.py uses for tree_fallback).
         move_key = None
-        if ry < -MOVE_DEADZONE:
+        if ly < -MOVE_DEADZONE:
             move_key = 'w'
-        elif ry > MOVE_DEADZONE:
+        elif ly > MOVE_DEADZONE:
             move_key = 's'
-        elif rx < -MOVE_DEADZONE:
+        elif lx < -MOVE_DEADZONE:
             move_key = 'a'
-        elif rx > MOVE_DEADZONE:
+        elif lx > MOVE_DEADZONE:
             move_key = 'd'
         if move_key:
             self.executor.execute({'key': move_key, 'delay_ms': POLL_INTERVAL_MS,
