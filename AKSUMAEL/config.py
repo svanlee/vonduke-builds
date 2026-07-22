@@ -421,6 +421,15 @@ NEURAL_POLICY_ENABLED = False
 NEURAL_POLICY_PATH    = "data/models/neural_policy.pt"
 RL_TRAIN_EVERY_N_TICKS = 1000
 
+# ── LeRobotDataset episode recording ────────────────────────────
+# Passive (observation, action) capture for offline behavioral cloning
+# (ACT, Diffusion Policy) / RL fine-tuning — see core/lerobot_recorder.py.
+# Purely additive: writes to LEROBOT_DATA_DIR alongside the existing tick
+# loop and never influences what AKSUMAEL actually does in-game.
+ENABLE_LEROBOT_RECORDING  = True
+LEROBOT_DATA_DIR          = "data/lerobot"
+LEROBOT_MAX_EPISODE_TICKS = 500
+
 # ── Mastermind Hive Coordinator ────────────────────────────────
 # Opt-in: set MASTERMIND_ENABLED=True and point MASTERMIND_HOST at the
 # machine running mastermind/coordinator.py (see tools/start_mastermind.sh)
