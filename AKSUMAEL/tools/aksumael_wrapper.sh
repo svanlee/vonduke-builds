@@ -81,11 +81,15 @@ start_aksumael() {
     echo "[WRAPPER] Starting AKSUMAEL..."
     cd "$AKSUMAEL_DIR"
     export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
+    # Use the existing DISPLAY if set; otherwise try :0 (X.Org login screen).
+    # This lets cv2.imshow / LabelingUI open a real window on the Victus screen.
+    export DISPLAY="${DISPLAY:-:0}"
     # cv2's bundled Qt only ships the xcb platform plugin (no libqoffscreen.so
     # in this venv) — forcing offscreen here crashes main.py on startup with
     # "no Qt platform plugin could be initialized" whenever a real DISPLAY is
-    # available. Only fall back to offscreen when there's no DISPLAY to use.
-    if [[ -z "$DISPLAY" && "$QT_QPA_PLATFORM" != "offscreen" ]]; then
+    # available. Only fall back to offscreen when DISPLAY turns out to be unusable.
+    if ! xdpyinfo -display "$DISPLAY" &>/dev/null; then
+        echo "[WRAPPER] WARNING: DISPLAY=$DISPLAY not reachable — falling back to offscreen"
         export QT_QPA_PLATFORM=offscreen
     fi
     "$VENV_PYTHON" -u main.py >> "$LOG_FILE" 2>&1 &
