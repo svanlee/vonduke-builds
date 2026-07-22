@@ -660,6 +660,20 @@ def run():
             # YOLOThread runs YOLO at GPU speed; we read its latest results.
             objects = pipeline.latest_objects
 
+            # ── HUD / menu state ────────────────────────────────
+            # Used to gate anything that would corrupt an open menu screen
+            # (F3 debug overlay toggle, scan/pathfinder sweeps, skill execution,
+            # color detection). Computed here (before color detection runs)
+            # so the color-detector guard below can see it.
+            # NOTE: 'crafting_table', 'chest_row', 'furnace' are WORLD BLOCKS —
+            # YOLO detects them constantly during normal mining/exploring, not
+            # just when their UI is open. Only 'inventory' (an actual open-menu
+            # class) belongs here; the others caused _menu_open false-positives
+            # that idled the bot and triggered spurious Escape presses.
+            _hud_labels  = {o.get('label') for o in objects}
+            _menu_open   = bool(_hud_labels & {'inventory'})
+            _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
+
             # ── Human-assist mode gate (core/human_assist.py) ──────
             # Feed fresh context every tick regardless of mode so imitation
             # rows are never stale, then — if a human has taken the wheel via
@@ -688,13 +702,17 @@ def run():
             # Catches diamond/emerald/gold ore that YOLO misses by scanning
             # for their distinctive HSV color signatures. Color detections
             # are only injected when YOLO has no match for that ore type.
-            _color_dets = detect_ores_by_color(frame)
-            if _color_dets:
-                _new = [d for d in _color_dets if d['label'] not in {o.get('label') for o in objects}]
-                if _new:
-                    for d in _new:
-                        print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
-                objects = merge_with_yolo(objects, _color_dets)
+            # Skipped entirely while a menu/chest/inventory GUI is open — the
+            # color detector has no notion of GUI state and otherwise keeps
+            # firing the same mob/ore blobs against the static UI background.
+            if not _menu_open:
+                _color_dets = detect_ores_by_color(frame)
+                if _color_dets:
+                    _new = [d for d in _color_dets if d['label'] not in {o.get('label') for o in objects}]
+                    if _new:
+                        for d in _new:
+                            print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
+                    objects = merge_with_yolo(objects, _color_dets)
 
             # ── Adaptive self-labeling queue (opt-in — see config.LABEL_QUEUE_ENABLED) ──
             if label_queue_obj is not None:
@@ -703,18 +721,6 @@ def run():
                     label_queue_obj.label_pending(env_profile_obj.env_id)
                     if label_queue_obj.should_retrain(env_profile_obj.env_id):
                         label_queue_obj.trigger_retrain(env_profile_obj.env_id)
-
-            # ── HUD / menu state ────────────────────────────────
-            # Used to gate anything that would corrupt an open menu screen
-            # (F3 debug overlay toggle, scan/pathfinder sweeps, skill execution).
-            # NOTE: 'crafting_table', 'chest_row', 'furnace' are WORLD BLOCKS —
-            # YOLO detects them constantly during normal mining/exploring, not
-            # just when their UI is open. Only 'inventory' (an actual open-menu
-            # class) belongs here; the others caused _menu_open false-positives
-            # that idled the bot and triggered spurious Escape presses.
-            _hud_labels  = {o.get('label') for o in objects}
-            _menu_open   = bool(_hud_labels & {'inventory'})
-            _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
 
             # ── Escape stuck menu ────────────────────────────────
             # If a menu has been open for too long with no escape, close it.
@@ -1275,6 +1281,20 @@ def run():
                     else:
                         print(f'[SKILL] goal={_cur_goal}: {_forced_name} skill not '
                               f'found in skill library — cannot force-load')
+
+                # ── Goal→skill override: open_chest ────────────────
+                # Lets an operator/planner push goal 'open_chest' and have it
+                # fire even if chest_row's YOLO trigger match is momentarily
+                # weak, the same pattern as the dig_up override above.
+                elif _cur_goal == 'open_chest':
+                    _forced_skill = skills.skills.get('open_chest')
+                    if _forced_skill is not None:
+                        candidates = [(_forced_skill, 1.0)]
+                        print('[SKILL] goal=open_chest: force-loading open_chest '
+                              'skill (bypassing YOLO trigger match)')
+                    else:
+                        print('[SKILL] goal=open_chest: open_chest skill not '
+                              'found in skill library — cannot force-load')
 
                 # ── Goal-aware skill gating ───────────────────────
                 # When the active goal is crafting-related, suppress mining
