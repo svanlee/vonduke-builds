@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 import tempfile
 import time
 import hashlib
@@ -44,6 +45,20 @@ HUD_ALWAYS_VISIBLE = {'health_bar', 'armor_bar', 'hunger_bar', 'xp_bar', 'hotbar
 # actually breaking logs, and they loop forever competing with chop_tree.
 # 'leaves' is blocked for the same reason (it's always visible near any tree).
 _BLOCKED_SKILL_TRIGGERS = frozenset({'emerald_ore', 'tree', 'leaves'})
+
+# _mine_recent() names auto-mined skills '{trigger}_{6-hex-char-hash}' (e.g.
+# 'birch_log_416b0a'). Hand-authored skills (dig_up, chop_tree,
+# mine_coal_ore, ...) never end in that pattern — used to keep
+# evolve_skills()'s "redundant duplicate" merge from ever deleting a
+# hand-authored skill just because a shorter auto-mined one shares its
+# trigger (see _MINED_NAME_RE usage in evolve_skills below — audited
+# 2026-07-21 after dig_up was found to have no protection against this;
+# no 'stone'-triggered mined skill exists yet, but nothing stopped one
+# from appearing and silently deleting dig_up on the next evolve pass).
+_MINED_NAME_RE = re.compile(r'_[0-9a-f]{6}$')
+
+def _is_mined_skill(name: str) -> bool:
+    return bool(_MINED_NAME_RE.search(name))
 
 def _canonical(label: str) -> str:
     """Map any label to its canonical group name, or itself."""
@@ -562,9 +577,17 @@ class SkillSystem:
         for key, group in groups.items():
             if len(group) < 2:
                 continue
-            group.sort(key=lambda s: len(s.steps))
-            keep = group[0]
-            for dup in group[1:]:
+            # Only ever merge-delete among auto-mined skills — a
+            # hand-authored skill (dig_up, chop_tree, mine_coal_ore, ...)
+            # must never be auto-deleted just because it shares a trigger
+            # with a shorter mined duplicate; it's left untouched even if
+            # it's the longest (or only) member of its group.
+            mined_dupes = [sk for sk in group if _is_mined_skill(sk.name)]
+            if len(mined_dupes) < 2:
+                continue
+            mined_dupes.sort(key=lambda s: len(s.steps))
+            keep = mined_dupes[0]
+            for dup in mined_dupes[1:]:
                 merged.append({'kept': keep.name, 'removed': dup.name})
                 self.delete(dup.name)
 
@@ -609,7 +632,16 @@ class SkillSystem:
     def prune_bad(self, min_reward: float = 0.0) -> int:
         to_remove = [n for n, s in self.skills.items()
                      if (s.avg_reward < min_reward and s.uses >= 3)
-                     or set(s.trigger_objects) <= HUD_ALWAYS_VISIBLE
+                     # bool(...) guard: an EMPTY trigger_objects list is a
+                     # vacuous subset of HUD_ALWAYS_VISIBLE (the empty set is
+                     # a subset of everything), so without it this condition
+                     # deleted every goal-injection-only skill (trigger_objects
+                     # deliberately []  so it never natural-fires — see
+                     # data/skills/mine_up.json) on the very first prune_bad()
+                     # pass after it was force-loaded and used once — the
+                     # intent here is "only triggers on HUD elements", which
+                     # requires a non-empty trigger set (2026-07-21).
+                     or (bool(s.trigger_objects) and set(s.trigger_objects) <= HUD_ALWAYS_VISIBLE)
                      or not s.has_real_action()]
         for n in to_remove:
             self.delete(n)

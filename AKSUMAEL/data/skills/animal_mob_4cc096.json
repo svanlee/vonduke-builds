@@ -1,12 +1,31 @@
 {
-  "name": "mob_cf2971",
+  "name": "animal_mob_4cc096",
   "trigger_objects": [
-    "mob"
+    "mob",
+    "animal"
   ],
   "steps": [
     {
       "action": {
-        "key": "s",
+        "key": null,
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 244
+    },
+    {
+      "action": {
+        "key": null,
         "click": null,
         "look": null,
         "gamepad": {
@@ -24,7 +43,7 @@
     },
     {
       "action": {
-        "key": "s",
+        "key": "2",
         "click": null,
         "look": null,
         "gamepad": {
@@ -42,25 +61,7 @@
     },
     {
       "action": {
-        "key": "space",
-        "click": null,
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 500
-    },
-    {
-      "action": {
-        "key": "space",
+        "key": null,
         "click": null,
         "look": null,
         "gamepad": {
@@ -77,13 +78,13 @@
       "delay_after_ms": 150
     }
   ],
-  "avg_reward": 0.65,
-  "uses": 1,
-  "created": 1784419181.09613,
-  "last_used": 1784465517.3899283,
+  "avg_reward": 0.475,
+  "uses": 3,
+  "created": 1784631470.6627378,
+  "last_used": 1784741130.3862953,
   "preconditions": {},
   "postconditions": {},
-  "success_count": 2,
+  "success_count": 364,
   "failed_count": 0,
   "blacklisted": false,
   "universal": false

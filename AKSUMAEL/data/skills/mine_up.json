@@ -1,12 +1,10 @@
 {
-  "name": "dig_up",
-  "trigger_objects": [
-    "stone"
-  ],
+  "name": "mine_up",
+  "trigger_objects": [],
   "steps": [
     {
       "action": {
-        "key": "1",
+        "key": "2",
         "mouse_button": null,
         "look": null,
         "gamepad": {
@@ -28,49 +26,7 @@
         "mouse_button": null,
         "look": {
           "dx": 0,
-          "dy": 60
-        },
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 80
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_button": null,
-        "look": {
-          "dx": 0,
-          "dy": 60
-        },
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 80
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_button": null,
-        "look": {
-          "dx": 0,
-          "dy": 60
+          "dy": -150
         },
         "gamepad": {
           "lx": 0,
@@ -87,9 +43,12 @@
     },
     {
       "action": {
-        "key": "space",
+        "key": null,
         "mouse_button": null,
-        "look": null,
+        "look": {
+          "dx": 0,
+          "dy": -150
+        },
         "gamepad": {
           "lx": 0,
           "ly": 0,
@@ -101,13 +60,55 @@
         },
         "source": "skill"
       },
-      "delay_after_ms": 300
+      "delay_after_ms": 100
+    },
+    {
+      "action": {
+        "key": null,
+        "mouse_button": null,
+        "look": {
+          "dx": 0,
+          "dy": -150
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 100
+    },
+    {
+      "action": {
+        "key": null,
+        "mouse_button": null,
+        "look": {
+          "dx": 0,
+          "dy": -150
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 100
     },
     {
       "action": {
         "key": null,
         "mouse_hold": "down",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -120,13 +121,13 @@
         },
         "source": "skill"
       },
-      "delay_after_ms": 80
+      "delay_after_ms": 15000
     },
     {
       "action": {
         "key": null,
         "mouse_hold": "up",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -162,8 +163,29 @@
     {
       "action": {
         "key": null,
+        "mouse_button": null,
+        "look": {
+          "dx": 0,
+          "dy": -150
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 100
+    },
+    {
+      "action": {
+        "key": null,
         "mouse_hold": "down",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -176,13 +198,13 @@
         },
         "source": "skill"
       },
-      "delay_after_ms": 80
+      "delay_after_ms": 15000
     },
     {
       "action": {
         "key": null,
         "mouse_hold": "up",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -218,8 +240,29 @@
     {
       "action": {
         "key": null,
+        "mouse_button": null,
+        "look": {
+          "dx": 0,
+          "dy": -150
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 100
+    },
+    {
+      "action": {
+        "key": null,
         "mouse_hold": "down",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -232,13 +275,13 @@
         },
         "source": "skill"
       },
-      "delay_after_ms": 80
+      "delay_after_ms": 15000
     },
     {
       "action": {
         "key": null,
         "mouse_hold": "up",
-        "mouse_button_name": "right",
+        "mouse_button_name": "left",
         "look": null,
         "gamepad": {
           "lx": 0,
@@ -270,167 +313,17 @@
         "source": "skill"
       },
       "delay_after_ms": 300
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "down",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 80
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "up",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 270
-    },
-    {
-      "action": {
-        "key": "space",
-        "mouse_button": null,
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "down",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 80
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "up",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 270
-    },
-    {
-      "action": {
-        "key": "space",
-        "mouse_button": null,
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "down",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 80
-    },
-    {
-      "action": {
-        "key": null,
-        "mouse_hold": "up",
-        "mouse_button_name": "right",
-        "look": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 270
     }
   ],
   "avg_reward": 0.5,
   "uses": 0,
   "created": 1784597376.0,
-  "last_used": 1784627522.1531003,
+  "last_used": 1784629872.9784465,
   "preconditions": {
     "max_y_level": 62
   },
   "postconditions": {},
-  "success_count": 88,
+  "success_count": 32,
   "failed_count": 99,
   "blacklisted": true,
   "universal": false

@@ -96,7 +96,12 @@ class WorldMemory:
                 self.hunger_level  = d.get('hunger_level', 20)
                 self.game_tick     = d.get('game_tick', 0)
                 self.pickaxe_uses  = d.get('pickaxe_uses', 0)
-                self.y_level       = d.get('y_level', 64)
+                _loaded_y = d.get('y_level', 64)
+                # Same bounds check as update_f3() below — a session that
+                # crashed/restarted while y_level was corrupted (e.g. by a
+                # bad F3 OCR read) would otherwise reload the garbage value
+                # straight back in (2026-07-21).
+                self.y_level = _loaded_y if -128 <= _loaded_y <= 512 else 64
                 self.biome         = d.get('biome', 'unknown')
                 self.wood_count    = d.get('wood_count', 0)
                 self.food_items    = d.get('food_items', [])
@@ -211,9 +216,16 @@ class WorldMemory:
         """Call with the dict returned by vision.f3_reader.read_f3()."""
         if not f3_data or not f3_data.get('f3_active'):
             return
-        if f3_data.get('y_level') is not None:
+        _new_y = f3_data.get('y_level')
+        # Belt-and-suspenders: f3_reader.py already bounds-checks Y before
+        # setting f3_active, but a corrupted/out-of-range Y silently poisons
+        # y_level forever otherwise (nothing downstream re-validates it) —
+        # it can satisfy a skill's max_y_level precondition as "already
+        # surfaced" and fool anything watching Y for "reached the surface"
+        # (2026-07-21: an OCR misread put y_level at 27824942).
+        if _new_y is not None and -128 <= _new_y <= 512:
             prev_y = self.y_level
-            self.y_level = f3_data['y_level']
+            self.y_level = _new_y
             self.depth_estimate = self.y_level
             if prev_y - self.y_level > FALL_Y_DROP_THRESHOLD:
                 self.fall_detected = True

@@ -1,13 +1,69 @@
 {
-  "name": "flee_creeper",
+  "name": "animal_mob_86ba67",
   "trigger_objects": [
-    "creeper"
+    "mob",
+    "animal"
   ],
   "steps": [
     {
       "action": {
-        "key": "1",
+        "key": null,
         "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "shift+s",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "shift+s",
+        "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "shift+s",
+        "click": null,
+        "look": null,
         "gamepad": {
           "lx": 0,
           "ly": 0,
@@ -20,49 +76,15 @@
         "source": "skill"
       },
       "delay_after_ms": 150
-    },
-    {
-      "action": {
-        "key": "s",
-        "click": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
-    },
-    {
-      "action": {
-        "key": "s",
-        "click": null,
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 300
     }
   ],
-  "avg_reward": 0.5,
-  "uses": 0,
-  "created": 1784460585.0,
-  "last_used": 1784741111.7676787,
+  "avg_reward": 0.513,
+  "uses": 1,
+  "created": 1784733594.8195415,
+  "last_used": 1784735900.270865,
   "preconditions": {},
   "postconditions": {},
-  "success_count": 785,
+  "success_count": 4,
   "failed_count": 0,
   "blacklisted": false,
   "universal": false

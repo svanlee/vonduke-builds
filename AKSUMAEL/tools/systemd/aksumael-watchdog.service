@@ -1,0 +1,17 @@
+[Unit]
+Description=AKSUMAEL Y-level and goal health watchdog
+After=aksumael.service
+BindsTo=aksumael.service
+
+[Service]
+Type=simple
+User=ros
+WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
+ExecStart=/home/ros/vonduke-builds/AKSUMAEL/venv/bin/python3 tools/y_watchdog.py
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/tmp/aksumael_watch.log
+StandardError=append:/tmp/aksumael_watch.log
+
+[Install]
+WantedBy=default.target

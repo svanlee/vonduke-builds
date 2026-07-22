@@ -4,13 +4,23 @@
 # ║  hardcoded when AKSUMAEL moves to a different box.    ║
 # ╚══════════════════════════════════════════════════════╝
 #
-# The T7 ("Aksumael") box has no mic/speaker attached; the HP Victus does.
-# Rather than hardcode either machine's device index, this probes
-# sounddevice.query_devices() and picks by name keyword priority, so the
-# same config works unmodified after a hardware move (e.g. to the Z490
-# desktop build). config.AUDIO_INPUT_DEVICE / AUDIO_OUTPUT_DEVICE remain
-# as an explicit override (int index) for when auto-detection guesses
-# wrong.
+# robocar-hub *is* the HP Victus laptop (the "T7" name refers to the
+# external Samsung T7 SSD it boots/stores AKSUMAEL from, not a separate
+# host) — so its built-in mic/speaker are always attached locally. Rather
+# than hardcode a device index, this probes sounddevice.query_devices()
+# and picks by name keyword priority, so the same config keeps working
+# after a hardware move (e.g. to the Z490 desktop build).
+# config.AUDIO_INPUT_DEVICE / AUDIO_OUTPUT_DEVICE remain as an explicit
+# override (int index) for when auto-detection guesses wrong.
+#
+# NOTE: PortAudio/ALSA device names never include "Victus" — they're
+# codec/chip names, so that keyword never matches here and this falls
+# through to "default" (the PipeWire pseudo-device). That's deliberate:
+# raw ALSA hw devices (e.g. "acp63", the built-in mic's DSP) only accept
+# their native sample rate, but hub.py records at Whisper's fixed 16kHz —
+# only PipeWire's "default" resamples on the fly. Correctness therefore
+# depends on PipeWire's *default source* actually being the built-in mic
+# (`wpctl status` / `wpctl set-default <id>`), not on this keyword list.
 
 import re
 

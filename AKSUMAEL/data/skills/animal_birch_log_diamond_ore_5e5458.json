@@ -1,13 +1,84 @@
 {
-  "name": "mine_coal_ore",
+  "name": "animal_birch_log_diamond_ore_5e5458",
   "trigger_objects": [
-    "coal_ore"
+    "redstone_ore",
+    "lapis_ore",
+    "birch_log",
+    "diamond_ore",
+    "animal"
   ],
   "steps": [
     {
       "action": {
         "key": "2",
+        "click": [
+          50.0,
+          50.0
+        ],
+        "look": {
+          "dx": 12,
+          "dy": 28
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "2",
+        "click": [
+          50.0,
+          50.0
+        ],
+        "look": {
+          "dx": 12,
+          "dy": 24
+        },
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
         "click": null,
+        "look": null,
+        "gamepad": {
+          "lx": 0,
+          "ly": 0,
+          "rx": 0,
+          "ry": 0,
+          "lt": 0,
+          "rt": 0,
+          "buttons": 0
+        },
+        "source": "skill"
+      },
+      "delay_after_ms": 500
+    },
+    {
+      "action": {
+        "key": "w",
+        "click": null,
+        "look": null,
         "gamepad": {
           "lx": 0,
           "ly": 0,
@@ -20,115 +91,15 @@
         "source": "skill"
       },
       "delay_after_ms": 150
-    },
-    {
-      "action": {
-        "key": null,
-        "click": [
-          50,
-          50
-        ],
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 400
-    },
-    {
-      "action": {
-        "key": null,
-        "click": [
-          50,
-          50
-        ],
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 400
-    },
-    {
-      "action": {
-        "key": null,
-        "click": [
-          50,
-          50
-        ],
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 400
-    },
-    {
-      "action": {
-        "key": null,
-        "click": [
-          50,
-          50
-        ],
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 400
-    },
-    {
-      "action": {
-        "key": null,
-        "click": [
-          50,
-          50
-        ],
-        "gamepad": {
-          "lx": 0,
-          "ly": 0,
-          "rx": 0,
-          "ry": 0,
-          "lt": 0,
-          "rt": 0,
-          "buttons": 0
-        },
-        "source": "skill"
-      },
-      "delay_after_ms": 400
     }
   ],
-  "avg_reward": 0.6,
-  "uses": 0,
-  "created": 1783790004.0,
-  "last_used": 1784724209.1966357,
+  "avg_reward": 0.535,
+  "uses": 1,
+  "created": 1784542308.5555139,
+  "last_used": 1784736010.8099504,
   "preconditions": {},
   "postconditions": {},
-  "success_count": 31,
+  "success_count": 28,
   "failed_count": 0,
   "blacklisted": false,
   "universal": false

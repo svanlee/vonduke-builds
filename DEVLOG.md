@@ -7,6 +7,43 @@ Format: what I built, why it matters, where it lives.
 
 <!-- New entries go at the TOP -->
 
+### Sat Jul 19 2026
+**[ARCH] — Full cognitive overhaul: local-only LLM, self-built memory, self-writing skills, multi-env attention, voice Q&A, hardware abstraction layer**
+
+What: Largest single-session architecture session since Jul 12. Eight parallel code tasks across the day covering the following:
+
+**(1) All external LLM API calls removed from AKSUMAEL** — every `anthropic` and `google.generativeai` call in AKSUMAEL's Python codebase replaced with local mesh-llm at `http://localhost:9337/v1/chat/completions`. `config.py` now has `INFERENCE_BACKEND = "local"`. The Claude and Gemini API keys are still loaded by `aksumael_wrapper.sh` and `run.sh` for Scott's Cowork/Dispatch sessions but AKSUMAEL itself never calls external APIs. AKSUMAEL runs fully offline.
+
+**(2) Auto-restart / watchdog removal** — `aksumael_wrapper.sh` crash-restart loop removed. `axon.service` and `mastermind_service.service` both set to `Restart=no`. AKSUMAEL exits cleanly when main.py dies, no more silent relaunch loops.
+
+**(3) run.sh** — new one-shot startup script: kills stale piper/espeak/main.py/wrapper → starts mesh-llm → health-gates on `/v1/models` (90s timeout) → loads API keys → starts AKSUMAEL via wrapper → starts axon → prints status summary. Usage: `bash ~/vonduke-builds/AKSUMAEL/run.sh`.
+
+**(4) stop.sh** — new one-shot shutdown script: stops axon → kills main.py and wrapper → kills piper/espeak/tts.py → stops mesh-llm → verifies everything is down. Usage: `bash ~/vonduke-builds/AKSUMAEL/stop.sh`.
+
+**(5) Self-built memory system** (`memory/` module) — three-layer SQLite-backed memory replacing the write-only `aurora.db` pattern: `episodic.py` records every FSM state transition (what happened, when, outcome), `semantic.py` stores learned facts about the world (pre-seeded with Minecraft knowledge, AKSUMAEL can add new facts), `procedural.py` tracks skill success/failure rates. `context.py` assembles all three into a single context string prepended to every LLM call so AKSUMAEL's decisions are informed by its own history.
+
+**(6) Self-writing skills engine** (`skills/skill_generator.py`, `skills/skill_evaluator.py`) — when a skill fails 3+ times, AKSUMAEL asks mesh-llm to write a replacement skill JSON, validates it, saves it to `skills/generated/`, and hot-loads it into the live registry without restart. `skill_evaluator.py` tracks per-skill success rates and flags chronic underperformers.
+
+**(7) Multi-environment attention framework** (`envs/` module) — `AttentionManager` divides AKSUMAEL's attention across environments: active env gets fast ticks, idle envs get slow background ticks. `MinecraftEnv` is env[0] (primary), `GoatRacerEnv` is env[1] (secondary, idle until activated). Voice command "switch to GOAT Racer" routes through axon to `attention.focus("goat_racer")`.
+
+**(8) Live monologue typewriter strip** — thread-safe `push_monologue_line()` API in `core/capture.py`; character-by-character typewriter animation for newest line, static for older lines; rolling 8-line buffer rendered in black strip below video in the HUD window.
+
+**(9) Voice Q&A** — axon hub now distinguishes questions from commands: questions (what/why/how/are you/tell me) get answered by mesh-llm using memory context, response spoken via piper brit TTS and pushed to the monologue strip. Commands still inject goals as before. 1.5s pause after STT before responding.
+
+**(10) AKSUMAEL_SYNOPSIS.md updated** — `.notes/AKSUMAEL_SYNOPSIS.md` now includes full `run.sh` code, updated architecture tree with all new modules, memory system docs, and the graduated watch-cycle operating rhythm.
+
+Why it matters: this is the session where AKSUMAEL stopped being Claude-dependent for cognition. It now runs fully on its own local hardware, builds its own memory, writes its own skills when existing ones fail, and can speak back to Scott with context about what it's doing. The graduated watch-cycle (1→2→4→6→8→10→20→40→60→X×2 min) gives AKSUMAEL time to accumulate its own memory and demonstrate autonomous operation before we extend the intervals.
+
+Operating rhythm from here: AKSUMAEL builds its own memory, Claude injects guidance (goals, corrections, nudges) — not the other way around.
+
+File(s): `AKSUMAEL/run.sh` (new), `AKSUMAEL/stop.sh` (new), `AKSUMAEL/memory/` (new module), `AKSUMAEL/skills/skill_generator.py` (new), `AKSUMAEL/skills/skill_evaluator.py` (new), `AKSUMAEL/envs/` (new module), `AKSUMAEL/core/capture.py` (monologue strip), `AKSUMAEL/axon/hub.py` (voice Q&A), `AKSUMAEL/config.py`, `AKSUMAEL/tools/aksumael_wrapper.sh`, `AKSUMAEL/tools/systemd/axon.service`, `AKSUMAEL/mastermind/mastermind_service.service`, `.notes/AKSUMAEL_SYNOPSIS.md`.
+
+---
+
+---
+
+<!-- New entries go at the TOP -->
+
 ### Fri Jul 17 2026
 **[FIX] — AKSUMAEL vision-decision starvation fix + cognitive.py dead-code removal**
 

@@ -51,6 +51,18 @@ BLOCK_RE  = re.compile(r"Block:\s*([-\d]+)\s+([-\d]+)\s+([-\d]+)", re.IGNORECASE
 # Triplet fallback: any "num / num / num" — XYZ line is the only one with this
 # format, so this catches it even when the "XYZ:" prefix is garbled by OCR.
 TRIPLET_RE = re.compile(r"([-]?\d+[\d.]*)\s*/\s*([-]?\d+[\d.]*)\s*/\s*([-]?\d+[\d.]*)")
+
+# Sane bounds for a parsed Y (build height, generous either side of vanilla's
+# -64..320) — the loose TRIPLET_RE fallback above matches ANY "num/num/num" in
+# the whole OCR'd F3 text, not just the XYZ line, and on a cluttered frame it
+# can lock onto an unrelated stat (memory allocation rates, e.g. "1216/4996",
+# have exactly this shape) instead of position. A y_level like 27824942
+# corrupts world_mem.y_level permanently (nothing else validates it before
+# storing), which then satisfies any "max_y_level" skill precondition as
+# "already surfaced" and can fool a Y-based watchdog into thinking the agent
+# reached the surface (2026-07-21). Reject implausible values outright rather
+# than accept-then-hope-the-next-read-fixes-it.
+_PLAUSIBLE_Y_RANGE = (-128, 512)
 # Biome: minecraft:plains  or  Biome: plains
 # OCR often mangles 'Biome:' — tolerate i→l/1, :→;/.
 BIOME_RE  = re.compile(r"[Bb][il1oO0]me\s*[:\;\.]\s*([\w:]+)", re.IGNORECASE)
@@ -130,12 +142,12 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
     # XYZ — primary detection signal
     m = XYZ_RE.search(text)
     if m:
-        result["f3_active"] = True
         try:
-            result["x"] = float(m.group(1))
-            result["y"] = float(m.group(2))
-            result["z"] = float(m.group(3))
-            result["y_level"] = int(result["y"])
+            _x, _y, _z = float(m.group(1)), float(m.group(2)), float(m.group(3))
+            if _PLAUSIBLE_Y_RANGE[0] <= _y <= _PLAUSIBLE_Y_RANGE[1]:
+                result["f3_active"] = True
+                result["x"], result["y"], result["z"] = _x, _y, _z
+                result["y_level"] = int(_y)
         except ValueError:
             pass
 
@@ -145,29 +157,32 @@ def read_f3(frame_bgr: np.ndarray) -> dict:
         if m:
             try:
                 bx, by, bz = int(m.group(1)), int(m.group(2)), int(m.group(3))
-                result["f3_active"] = True
-                if result["y_level"] is None:
-                    result["y_level"] = by
-                if result["y"] is None:
-                    result["y"] = float(by)
-                if result["x"] is None:
-                    result["x"] = float(bx)
-                if result["z"] is None:
-                    result["z"] = float(bz)
+                if _PLAUSIBLE_Y_RANGE[0] <= by <= _PLAUSIBLE_Y_RANGE[1]:
+                    result["f3_active"] = True
+                    if result["y_level"] is None:
+                        result["y_level"] = by
+                    if result["y"] is None:
+                        result["y"] = float(by)
+                    if result["x"] is None:
+                        result["x"] = float(bx)
+                    if result["z"] is None:
+                        result["z"] = float(bz)
             except ValueError:
                 pass
 
     # Triplet fallback: if still no XYZ, look for any "num / num / num" pattern
-    # The XYZ line is the only F3 line with this structure.
+    # The XYZ line is the only F3 line with this structure — but this pattern
+    # is loose enough to also match unrelated OCR'd stats, so the Y bounds
+    # check above is what actually protects against locking onto garbage here.
     if result["x"] is None:
         m = TRIPLET_RE.search(text)
         if m:
             try:
-                result["f3_active"] = True
-                result["x"] = float(m.group(1))
-                result["y"] = float(m.group(2))
-                result["z"] = float(m.group(3))
-                result["y_level"] = int(result["y"])
+                _x, _y, _z = float(m.group(1)), float(m.group(2)), float(m.group(3))
+                if _PLAUSIBLE_Y_RANGE[0] <= _y <= _PLAUSIBLE_Y_RANGE[1]:
+                    result["f3_active"] = True
+                    result["x"], result["y"], result["z"] = _x, _y, _z
+                    result["y_level"] = int(_y)
             except ValueError:
                 pass
 
