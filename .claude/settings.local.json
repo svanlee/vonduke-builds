@@ -56,7 +56,9 @@
       "Bash(sudo tee /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable)",
       "Bash(sudo -n true)",
       "Bash(sudo -n -l)",
-      "Bash(stat -c \"%U %G %a\" /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable /sys/bus/usb/drivers/usb/unbind 2>&1)"
+      "Bash(stat -c \"%U %G %a\" /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable /sys/bus/usb/drivers/usb/unbind 2>&1)",
+      "Bash(mkdir -p /workspace/mtc-live-display/assets/promotions)",
+      "Bash(cp /root/.claude/uploads/d898d3ec-6ca5-556f-aca1-999271f06cb7/c1d20a12-IMG_0311.jpeg /workspace/mtc-live-display/assets/promotions/free-appraisals.jpg)"
     ]
   }
 }
