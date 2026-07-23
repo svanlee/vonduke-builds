@@ -87,6 +87,7 @@ def _restore_preserved_goals():
 from core.capture            import VideoCapturePipeline
 from core.aim                import bbox_to_mouse_delta, is_on_target
 from vision.color_detector   import detect_ores_by_color, merge_with_yolo
+from vision.tree_auto_labeler import maybe_save_tree_frame
 from vision.yolo             import YOLODetector
 from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision, get_call_counts, get_last_provider
@@ -717,6 +718,9 @@ def run():
                         for d in _new:
                             print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
                     objects = merge_with_yolo(objects, _color_dets)
+                    # Save tree frames that color caught but YOLO missed as
+                    # training data — no-op when no tree labels present.
+                    maybe_save_tree_frame(frame, _color_dets, objects)
 
             # ── Adaptive self-labeling queue (opt-in — see config.LABEL_QUEUE_ENABLED) ──
             if label_queue_obj is not None:
