@@ -29,12 +29,19 @@ import usb_hid
 from adafruit_hid.keyboard         import Keyboard
 from adafruit_hid.keycode           import Keycode
 from adafruit_hid.mouse             import Mouse
-from adafruit_hid.gamepad           import Gamepad
 
 # ── HID devices ───────────────────────────────────────────────
 kbd      = Keyboard(usb_hid.devices)
 mouse    = Mouse(usb_hid.devices)          # relative — camera look, TYPE_MOUSE_R
-gamepad  = Gamepad(usb_hid.devices)
+
+# Gamepad — custom 7-byte report (17 buttons + 4 axes, report ID 4).
+# adafruit_hid.Gamepad only supports 6-byte/4-axis, so we bypass it and
+# call send_report() directly. See rp2040/boot.py GAMEPAD_REPORT_DESCRIPTOR.
+gamepad_dev = None
+for _dev in usb_hid.devices:
+    if _dev.usage_page == 0x01 and _dev.usage == 0x05:
+        gamepad_dev = _dev
+        break
 
 # Absolute pointer (see rp2040/boot.py) — no adafruit_hid wrapper for this
 # report shape, so find it directly by usage_page/usage. Usage 0x01
@@ -54,7 +61,7 @@ uart = busio.UART(board.D0, board.D1, baudrate=115200, timeout=0)
 
 # ── Packet parser state ───────────────────────────────────────
 PKT_TYPE  = {0x01, 0x02, 0x03, 0x04, 0x05, 0xFF}
-LEN_MAP   = {0x01: 8, 0x02: 4, 0x03: 5, 0x04: 8, 0x05: 0, 0xFF: 0}
+LEN_MAP   = {0x01: 8, 0x02: 4, 0x03: 5, 0x04: 7, 0x05: 0, 0xFF: 0}
 
 buf       = bytearray()
 HEADER    = b'\xAA\xBB'
@@ -171,30 +178,39 @@ def handle_mouse_abs(data):
     _send_abs_report(buttons, x, y)
 
 
+def gamepad_send(buttons, x, y, z, rx_val):
+    """Send a 7-byte HID report: 3 button bytes (17 bits + 7 pad) + 4 axis bytes.
+    Button layout: B0=A B1=B B2=X B3=Y B4=LB B5=RB B6=LT B7=RT
+                   B8=Back B9=Start B10=LS B11=RS B12=DUp B13=DDown
+                   B14=DLeft B15=DRight B16=Guide
+    Axis layout:   byte3=X(leftX) byte4=Y(leftY) byte5=Z(rightX) byte6=Rx(rightY)
+    Report ID 4 — validated on gamepad-tester.net as standard Xbox mapping."""
+    if gamepad_dev is None:
+        return
+    report = bytearray(7)
+    report[0] = buttons & 0xFF           # B0-B7
+    report[1] = (buttons >> 8) & 0xFF    # B8-B15
+    report[2] = (buttons >> 16) & 0x01   # B16 (Guide), rest padding
+    report[3] = x & 0xFF                 # left stick X  (signed two's complement)
+    report[4] = y & 0xFF                 # left stick Y
+    report[5] = z & 0xFF                 # right stick X
+    report[6] = rx_val & 0xFF            # right stick Y
+    try:
+        gamepad_dev.send_report(report)
+    except Exception:
+        pass
+
+
 def handle_gamepad(data):
+    # 7-byte UART payload:
+    #   data[0..3]: lx, ly, rx, ry (offset-128 signed)
+    #   data[4..6]: btn_b0, btn_b1, btn_b2 (3-byte button field, 17 bits)
     lx      = signed(data[0])
     ly      = signed(data[1])
     rx      = signed(data[2])
     ry      = signed(data[3])
-    btn_lo  = data[4]
-    btn_hi  = data[5]
-    lt      = data[6]
-    rt      = data[7]
-    buttons = (btn_hi << 8) | btn_lo
-    try:
-        gamepad.move_joysticks(x=lx, y=ly, z=rx, r_z=ry)
-        # Map all 16 buttons (GAMEPAD_REPORT_DESCRIPTOR in boot.py declares
-        # Button 1..16, `buttons` already packs both btn_lo and btn_hi) —
-        # this used to stop at 8, so bits 8-15 (btn_hi), including the
-        # guide button packed into bit 15 by kb2040_packer.pack_gamepad(),
-        # were never pressed or released.
-        for i in range(16):
-            if buttons & (1 << i):
-                gamepad.press_buttons(i + 1)
-            else:
-                gamepad.release_buttons(i + 1)
-    except Exception:
-        pass
+    buttons = data[4] | (data[5] << 8) | (data[6] << 16)
+    gamepad_send(buttons, lx, ly, rx, ry)
 
 
 def release_all():
@@ -203,8 +219,7 @@ def release_all():
         mouse.release(Mouse.LEFT_BUTTON)
         mouse.release(Mouse.RIGHT_BUTTON)
         mouse.release(Mouse.MIDDLE_BUTTON)
-        gamepad.release_all_buttons()
-        gamepad.move_joysticks(0, 0, 0, 0)
+        gamepad_send(0, 0, 0, 0, 0)
     except Exception:
         pass
 

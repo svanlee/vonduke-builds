@@ -305,13 +305,20 @@ class HumanAssist:
                     self._handle_dpad(event.value)
             elif event.type == ecodes.EV_KEY:
                 btn_map = {
-                    ecodes.BTN_A:     0x0001,
-                    ecodes.BTN_B:     0x0002,
-                    ecodes.BTN_X:     0x0004,
-                    ecodes.BTN_Y:     0x0008,
-                    ecodes.BTN_TL:    0x0010,
-                    ecodes.BTN_TR:    0x0020,
-                    ecodes.BTN_START: 0x0080,
+                    # Standard Xbox button layout (W3C gamepad B0-B16):
+                    ecodes.BTN_A:      0x0001,   # B0
+                    ecodes.BTN_B:      0x0002,   # B1
+                    ecodes.BTN_X:      0x0004,   # B2
+                    ecodes.BTN_Y:      0x0008,   # B3
+                    ecodes.BTN_TL:     0x0010,   # B4 = LB
+                    ecodes.BTN_TR:     0x0020,   # B5 = RB
+                    # B6=LT, B7=RT handled as key_hold (lshift/lctrl) below
+                    ecodes.BTN_SELECT: 0x0100,   # B8 = Back/View
+                    ecodes.BTN_START:  0x0200,   # B9 = Start/Menu
+                    ecodes.BTN_THUMBL: 0x0400,   # B10 = LS
+                    ecodes.BTN_THUMBR: 0x0800,   # B11 = RS
+                    # B12-B15=D-pad handled via _handle_dpad/hotbar
+                    # B16=Guide handled via Start toggle above
                 }
                 mask = btn_map.get(event.code, 0)
                 if mask:
