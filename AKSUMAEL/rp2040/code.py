@@ -11,7 +11,7 @@
 #   0x01  Keyboard  [modifier, 0x00, k1, k2, k3, k4, k5, k6]
 #   0x02  Mouse rel [buttons, dx+128, dy+128, wheel+128]  -> relative MOUSE device
 #   0x03  Mouse abs [buttons, x_hi, x_lo, y_hi, y_lo]      -> absolute pointer device
-#   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128, btn_lo, btn_hi, lt, rt]
+#   0x04  Gamepad   [lx+128, ly+128, rx+128, ry+128, btn_b0, btn_b1, btn_b2]  (7 bytes)
 #   0x05  Reset     []  -> microcontroller.reset(), forces USB HID
 #                        re-enumeration on the target PC (2026-07-17: added
 #                        after the relative-mouse HID channel went dead
@@ -280,7 +280,7 @@ while True:
             handle_mouse_rel(data)
         elif pkt_type == 0x03 and len(data) == 5:
             handle_mouse_abs(data)
-        elif pkt_type == 0x04 and len(data) == 8:
+        elif pkt_type == 0x04 and len(data) == 7:
             handle_gamepad(data)
         elif pkt_type == 0x05:
             release_all()
