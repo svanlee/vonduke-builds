@@ -125,18 +125,29 @@ def pack_gamepad(lx: int = 0, ly: int = 0,
                  buttons: int = 0,
                  lt: int = 0, rt: int = 0,
                  guide: bool = False) -> bytes:
-    # No dedicated wire byte for guide — TYPE_GAMEPAD is a fixed 8 bytes
-    # (rp2040/code.py checks len(data) == 8 and silently drops anything
-    # else), so guide rides in bit 15 of the existing 16-bit buttons field
-    # (Button 16 in boot.py's GAMEPAD_REPORT_DESCRIPTOR) instead of a 9th
-    # byte that the firmware would never dispatch.
+    # 7-byte UART payload matching the validated Xbox-standard HID descriptor
+    # (rp2040/boot.py, 17 buttons + 4 axes, report ID 4).
+    #
+    # Button bit layout (0-indexed, matching W3C standard gamepad):
+    #   B0=A  B1=B  B2=X  B3=Y  B4=LB  B5=RB  B6=LT  B7=RT
+    #   B8=Back  B9=Start  B10=LS  B11=RS
+    #   B12=DUp  B13=DDown  B14=DLeft  B15=DRight  B16=Guide
+    #
+    # LT/RT are digital buttons (B6/B7) — fold any non-zero lt/rt into
+    # the button field rather than sending separate trigger bytes.
+    # Guide lives at bit 16 (third button byte, bit 0).
+    if lt:
+        buttons |= (1 << 6)
+    if rt:
+        buttons |= (1 << 7)
     if guide:
-        buttons |= 0x8000
+        buttons |= (1 << 16)
     return _frame(TYPE_GAMEPAD, [
         s8_to_u8(lx), s8_to_u8(ly),
         s8_to_u8(rx), s8_to_u8(ry),
-        buttons & 0xFF, (buttons >> 8) & 0xFF,
-        u8(lt), u8(rt),
+        buttons & 0xFF,
+        (buttons >> 8) & 0xFF,
+        (buttons >> 16) & 0xFF,
     ])
 
 
