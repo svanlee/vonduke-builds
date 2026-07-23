@@ -842,8 +842,8 @@ class GameFSM:
                     objects, self._mine_target['label'], min_conf=MINE_HOLD_CONF)
                 if locked_obj is not None:
                     self._mine_target['box'] = locked_obj.get('box', self._mine_target['box'])
-                return self._do_mine(locked_obj, fw, fh, world_mem, frame)
-            return self._do_mine(mine_obj, fw, fh, world_mem, frame)
+                return self._do_mine(locked_obj, fw, fh, world_mem, frame, inventory)
+            return self._do_mine(mine_obj, fw, fh, world_mem, frame, inventory)
 
         elif s == State.APPROACH:
             target = mine_obj or animal_obj
@@ -1308,7 +1308,7 @@ class GameFSM:
             return 0
         return dy
 
-    def _do_mine(self, mine_obj, fw: int, fh: int, world_mem=None, frame=None):
+    def _do_mine(self, mine_obj, fw: int, fh: int, world_mem=None, frame=None, inventory=None):
         """
         Two-phase mining:
           AIM  — send look delta each tick until crosshair is on the ore bbox.
