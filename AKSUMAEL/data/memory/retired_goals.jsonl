@@ -136,3 +136,4 @@
 {"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 3752, "position": [13.0, 17, 26.0], "tick": 3761, "ts": 1784738495.2717335}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [4.8, 16, 38.8], "tick": 4263, "ts": 1784740572.9858594}
 {"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [11.0, 18, 2.0], "tick": 4482, "ts": 1784740840.6266453}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784768938.4988213}
