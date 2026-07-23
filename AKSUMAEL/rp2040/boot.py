@@ -15,6 +15,15 @@ GAMEPAD_REPORT_DESCRIPTOR = bytes((
     0x09, 0x05,        # Usage (Gamepad)
     0xA1, 0x01,        # Collection (Application)
     # ── Axes first (4 bytes) ─────────────────────────────────
+    # Standard Xbox-compatible layout:
+    #   X  (0x30) = left stick X
+    #   Y  (0x31) = left stick Y
+    #   Rx (0x33) = right stick X  ← was Z (0x32), wrong for Xbox layout
+    #   Ry (0x34) = right stick Y  ← was Rz (0x35), wrong for Xbox layout
+    # Z (0x32) and Rz (0x35) are the trigger axes in the Xbox HID
+    # spec — using them for the right stick caused Windows to route
+    # those bytes to trigger inputs instead of the right stick.
+    # Fixed 2026-07-23.
     0x05, 0x01,        #   Usage Page (Generic Desktop)
     0x15, 0x81,        #   Logical Minimum (-127)
     0x25, 0x7F,        #   Logical Maximum (127)
@@ -22,8 +31,8 @@ GAMEPAD_REPORT_DESCRIPTOR = bytes((
     0x95, 0x04,        #   Report Count (4)
     0x09, 0x30,        #   Usage (X)   → left stick X
     0x09, 0x31,        #   Usage (Y)   → left stick Y
-    0x09, 0x32,        #   Usage (Z)   → right stick X
-    0x09, 0x35,        #   Usage (Rz)  → right stick Y
+    0x09, 0x33,        #   Usage (Rx)  → right stick X
+    0x09, 0x34,        #   Usage (Ry)  → right stick Y
     0x81, 0x02,        #   Input (Data,Var,Abs)
     # ── Buttons second (2 bytes = 16 bits) ───────────────────
     0x05, 0x09,        #   Usage Page (Button)
