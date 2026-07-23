@@ -335,8 +335,17 @@ class WorldMemory:
                    key=lambda t: (t['x'] - x) ** 2 + (t['z'] - z) ** 2)
 
     def set_hunger_fraction(self, frac: float):
-        """frac: current hunger_bar bbox width / expected full-bar width."""
+        """frac: current hunger_bar bbox width / expected full-bar width.
+
+        Also syncs hunger_pct so the FSM's hunger threshold (which reads
+        world_mem.hunger_pct from hud_reader) sees the YOLO-bbox-derived
+        value too. The two sources now use the same field: YOLO wins when
+        it detects hunger_bar; hud_reader fills in when YOLO misses."""
         self.hunger_level = max(0, min(20, round(frac * 20)))
+        # Only override hud_reader if YOLO gives a plausible value — don't
+        # stomp a 90% hud reading with a zero from a missed detection.
+        if frac > 0.05:
+            self.hunger_pct = min(1.0, max(0.0, frac))
 
     def record_pickaxe_use(self):
         self.pickaxe_uses += 1
