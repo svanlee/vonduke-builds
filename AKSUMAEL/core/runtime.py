@@ -380,7 +380,7 @@ def run():
     SAME_SKILL_LIMIT = 3
     skill_cooldown_name       = None   # skill name currently suppressed
     skill_cooldown_until_tick = 0      # tick at which suppression lifts
-    SKILL_COOLDOWN_TICKS      = 30     # how long a spammed skill stays suppressed
+    SKILL_COOLDOWN_TICKS      = 60     # how long a spammed skill stays suppressed (raised 30→60 2026-07-22: 30 ticks=15s was too short, bot re-looped failed skills within one mining attempt)
     # Skill-replay escape: a skill that keeps matching but scores near-zero
     # confidence (avg_reward ~0) isn't accomplishing anything — track
     # consecutive low-confidence fires of the SAME skill so we can give up
@@ -916,7 +916,8 @@ def run():
                     world_mem.fort_location = list(_fort_coords)
 
             fsm_state, fsm_action = fsm.tick(_fsm_objects, world_mem, _hunger_frac,
-                                              goal=goals.current_goal(), frame=frame)
+                                              goal=goals.current_goal(), frame=frame,
+                                              inventory=inventory)
 
             # HUNT wants Ultralytics .track(persist=True) so ByteTrack hands
             # out persistent track_ids for TargetLock (vision/target_lock.py)

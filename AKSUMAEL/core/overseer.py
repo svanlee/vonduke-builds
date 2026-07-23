@@ -88,6 +88,13 @@ def _extract_directive(raw: str) -> dict | None:
     back to pulling the first {...} object out of the text — mesh-llm's
     vision responses sometimes wrap the JSON in prose or truncate after it."""
     text = raw.strip()
+    # Qwen3.5-Vision hard-baked GUI inspection behavior: even on text-only
+    # calls it sometimes returns an accessibility-tree dump instead of JSON.
+    # Detect and discard these immediately rather than letting them fall
+    # through to the regex fallback and matching a spurious "{...}" inside
+    # the tree repr.
+    if 'StaticText' in text or '[interactive]' in text.lower():
+        return None
     if text.startswith('```'):
         text = text[3:]
         if text.startswith('json'):
@@ -123,8 +130,14 @@ def _call_overseer(tick: int, snapshot: dict):
         # already carries YOLO's detections as text, which is enough
         # visual grounding for a strategic go/no-go call — attaching the
         # raw frame added no information the model could reliably parse.
+        _system = (
+            "You are a strategic advisor for a Minecraft AI agent. "
+            "Respond ONLY with a single JSON object as specified in the prompt. "
+            "Do NOT perform GUI inspection, accessibility tree analysis, or screen reading. "
+            "Do NOT return lists, arrays, or StaticText structures."
+        )
         raw = call_claude_direct(prompt, max_tokens=300,
-                                  timeout=OVERSEER_TIMEOUT)
+                                  timeout=OVERSEER_TIMEOUT, system=_system)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')

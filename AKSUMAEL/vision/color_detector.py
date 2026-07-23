@@ -104,35 +104,30 @@ ORE_COLOR_RANGES = [
     # H range.
     ('birch_log',        0,  179,    0,   51,  179,  230,  100),
 
-    # ── Mob/threat color signatures — added for FLEE/COMBAT gating ──
-    # These are threat SIGNALS only (fed into the same detection list YOLO
-    # results go into); core/fsm.py's HOSTILE_MOBS/FLEE logic decides what to
-    # do with them. Broad/low-saturation ranges (skeleton, spider) will false-
-    # positive on ordinary bright/dark terrain more than the ore ranges above
-    # do — min_px is raised accordingly to require a reasonably large,
-    # coherent blob before firing, but expect more noise here than from the
-    # tightly-calibrated ore/tree ranges.
+    # ── Hostile mob color signatures — DISABLED 2026-07-22 ──────────────────
+    # Zombie, skeleton, creeper, spider entries removed: HSV ranges for these
+    # overlap heavily with ordinary terrain (zombie green ≈ grass, skeleton
+    # off-white ≈ clouds/stone, spider near-black ≈ cave shadows) and were
+    # firing every tick in live logs, keeping the bot in COMBAT mode
+    # continuously. YOLO is the correct detection path for hostile mobs —
+    # re-enable these ONLY if YOLO loses hostile-mob weights and only after
+    # per-frame calibration on real gameplay footage.
     #
-    # Zombie: green-grey rotting skin
-    ('zombie',           50,   80,   40,  100,   40,  120,  120),
-    # Skeleton: off-white bone — very low saturation, so hue is unreliable;
-    # high min_px to avoid firing on clouds/snow/white wool.
-    ('skeleton',          0,   30,    0,   40,  160,  230,  220),
-    # Creeper: bright pure green (distinct from oak leaves' duller green —
-    # see 'leaves' above — and from emerald ore's higher V floor)
-    ('creeper',          60,   80,  120,  200,   80,  160,  120),
-    # Spider: near-black body — extremely broad match against any dark
-    # pixel cluster (shadow, night sky, cave wall); high min_px to require a
-    # sizeable coherent blob, but still expect false positives in dark caves.
-    ('spider',            0,   30,    0,   50,    5,   40,  250),
+    # ('zombie',           50,   80,   40,  100,   40,  120,  120),
+    # ('skeleton',          0,   30,    0,   40,  160,  230,  220),
+    # ('creeper',          60,   80,  120,  200,   80,  160,  120),
+    # ('spider',            0,   30,    0,   50,    5,   40,  250),
 
     # ── Passive mobs — added for hunting when hungry (FSM EAT state) ──
     # Same labels as PASSIVE_MOBS in core/fsm.py so these match the
     # existing animal-targeting logic identically to a real YOLO detection.
-    ('cow',              10,   30,   30,  120,   10,   80,  100),
-    ('pig',               0,   15,  100,  200,  120,  200,  150),
-    ('sheep',             0,  179,    0,   30,  180,  255,  200),
-    ('chicken',           0,  179,    0,   30,  150,  255,  150),
+    # min_px raised significantly (2026-07-22) to reduce terrain false
+    # positives — cow brown ≈ dirt/wood, sheep/chicken white ≈ birch/stone.
+    # YOLO handles these when mobs are actually in frame; color is fallback.
+    ('cow',              10,   30,   30,  120,   10,   80,  300),
+    ('pig',               0,   15,  100,  200,  120,  200,  400),
+    ('sheep',             0,  179,    0,   30,  180,  255,  500),
+    ('chicken',           0,  179,    0,   30,  150,  255,  400),
 ]
 
 # Exclude bottom 25 % of frame (HUD area) from color detection
