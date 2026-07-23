@@ -650,7 +650,7 @@ class GameFSM:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def tick(self, objects: list, world_mem=None, hunger_frac: float = 1.0,
-             goal: str = None, frame=None, reward: float = 0.0):
+             goal: str = None, frame=None, reward: float = 0.0, inventory=None):
         """
         Evaluate one FSM tick.
 
@@ -1345,6 +1345,16 @@ class GameFSM:
             broken_label = self._mine_target['label'] if self._mine_target else None
             if broken_label in TREE_TARGETS and world_mem is not None:
                 world_mem.record_wood_chopped()
+                # Sync inventory tracker — FSM handles tree mining directly
+                # (not via the skill-replay path in runtime.py), so
+                # inventory.on_skill_fired() was never called here, leaving
+                # inventory.oak_log=0 while wood_count climbed. Fix: infer
+                # birch from label, default to oak for all other log variants.
+                if inventory is not None:
+                    _chop_skill = ('chop_birch_tree'
+                                   if broken_label in ('birch_log', 'birch')
+                                   else 'chop_tree')
+                    inventory.on_skill_fired(_chop_skill)
             self._mine_ticks        = 0
             self._mine_timeout_count = 0
             self._mine_timeout_label = None
@@ -1498,9 +1508,18 @@ class GameFSM:
         ad['observation'] = f'Interacting with {target.get("label","block")}'
         ad['confidence']  = target.get('conf', 0.6)
 
-        # Stay in INTERACT for a couple of ticks, then return to EXPLORE
+        # Stay in INTERACT for a couple of ticks, then press Escape to close
+        # any opened GUI (chest/inventory) before returning to EXPLORE.
+        # Without the Escape the chest GUI can stay open, trapping the bot:
+        # color/YOLO detects chest items as mobs and the bot enters a COMBAT
+        # loop attacking the GUI centroid forever (reported 2026-07-21).
         if self._state_ticks >= 3:
-            return self._goto(State.EXPLORE, _idle())
+            close_ad = _idle()
+            close_ad['key']         = 'escape'
+            close_ad['action']      = 'interact:close_gui'
+            close_ad['observation'] = 'Closing GUI after interact'
+            close_ad['confidence']  = 1.0
+            return self._goto(State.EXPLORE, close_ad)
         return State.INTERACT, ad
 
     def _combat_action(self, mob: dict) -> dict:
