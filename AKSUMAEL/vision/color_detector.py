@@ -155,7 +155,7 @@ def detect_ores_by_color(frame_bgr: np.ndarray,
     # detections because static/noise patches match the color ranges at
     # conf=0.75. A real gameplay frame always has enough lit pixels to
     # clear this threshold; a no-signal frame reads well below it.
-    if frame_bgr.mean() < 8.0:
+    if frame_bgr.mean() < 20.0:  # raised 8.0→20.0 2026-07-22: capture card noise on no-signal frames was ~10-15, slipping past and matching near-black HSV ranges (spider, dark log variants)
         return []
 
     h, w = frame_bgr.shape[:2]
