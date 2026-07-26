@@ -24,8 +24,8 @@
       "Bash(who)",
       "Bash(w)",
       "Read(//tmp/**)",
-      "Bash(grep -n -E \"ANTHROPIC_API_KEY|GEMINI_API_KEY|^export PATH|^PATH=|case \\\\\\\\\\\\$- in\" ~/.bashrc | sed -E 's/\\(ANTHROPIC_API_KEY|GEMINI_API_KEY|PATH\\)=.*/\\\\1=<redacted>/')",
-      "Bash(grep -n -E \"ANTHROPIC_API_KEY|GEMINI_API_KEY|^export PATH|case \\\\\\\\\\\\$- in\" ~/.bashrc)",
+      "Bash(grep -n -E \"ANTHROPIC_API_KEY|GEMINI_API_KEY|^export PATH|^PATH=|case \\\\\\\\$- in\" ~/.bashrc | sed -E 's/\\(ANTHROPIC_API_KEY|GEMINI_API_KEY|PATH\\)=.*/\\\\1=<redacted>/')",
+      "Bash(grep -n -E \"ANTHROPIC_API_KEY|GEMINI_API_KEY|^export PATH|case \\\\\\\\$- in\" ~/.bashrc)",
       "Bash(bash -lc \"cd ~/vonduke-builds/AKSUMAEL && venv/bin/python3 -u main.py > /tmp/aksumael_live.log 2>&1 &\")",
       "Bash(pkill -f \"python3.*main.py\")",
       "Bash(echo \"exit: $?\")",
@@ -56,7 +56,11 @@
       "Bash(sudo tee /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable)",
       "Bash(sudo -n true)",
       "Bash(sudo -n -l)",
-      "Bash(stat -c \"%U %G %a\" /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable /sys/bus/usb/drivers/usb/unbind 2>&1)"
+      "Bash(stat -c \"%U %G %a\" /sys/bus/usb/devices/usb1/1-0:1.0/usb1-port1/disable /sys/bus/usb/drivers/usb/unbind 2>&1)",
+      "Bash(git -C /workspace/stacktrack branch -a)",
+      "Bash(git -C /workspace/stacktrack remote show origin)",
+      "Bash(git -C /workspace/preciousmetal_coin_calc branch -a)",
+      "Bash(git -C /workspace/preciousmetal_coin_calc remote show origin)"
     ]
   }
 }
