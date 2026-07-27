@@ -7,6 +7,24 @@ Format: what I built, why it matters, where it lives.
 
 <!-- New entries go at the TOP -->
 
+### Sun Jul 27 2026 (cont'd)
+**[FIX/REFACTOR] — Retarget claude-usage-view firmware to the actual Axon rig board (LAFVIN ESP32-S3 + ST7789), not the CYD**
+
+What: Corrected the hardware assumption from the earlier entry today. The Axon rig for this display is the **LAFVIN ESP32-S3 AIoT Starter Kit** with its onboard **2.0" ST7789 240×320** TFT — not upstream's Sunton CYD 4.0" (ESP32-WROOM + ST7796 480×320) I'd first vendored against. The bridge work from the earlier entry stands unchanged (a host still has to read the OAuth token and serve usage JSON); this pass retargets the ESP32 firmware to the real board:
+
+- **Board profile** (`config.h`): ESP32-S3, ST7789, 240×320 → landscape 320×240. Dropped the CYD's XPT2046 touch-CS handling (this panel has no touch) and guarded the init in the `.ino` behind `#ifdef TOUCH_CS_PIN`.
+- **Layout reflow** (`display.cpp`): the upstream two-card layout is tuned for a 320px-tall screen with 75px (font 8) percent digits — it draws off the bottom of a 240px panel. Reworked the constants to fit: 26px header + two 88px cards + a 24px status strip, big percents in font 6 (48px, digits-only, which is all they need), and the splash title moved to full-ASCII font 4 (font 6 has no letters — an upstream latent bug on any board).
+- **Toolchain** (`build.sh`/`flash.sh`): ESP32-S3 FQBN with native USB CDC, ST7789 driver flags at 240×320, port autodetect switched to `/dev/ttyACM*` (the S3 has no CH340), and fixed the sketch path — I'd vendored the sketch under `firmware/` but the scripts still pointed at the old repo-root location, so they would not have found it.
+- **Docs**: `HARDWARE.md` rewritten for the LAFVIN board; README/CREDITS updated to describe both-ends retargeting.
+
+The one thing I could not pin down: the LAFVIN board's exact ST7789 GPIO pins. They're board-specific and weren't authoritatively published (their readthedocs 403'd; the ship-with-kit `User_Setup.h` is the source of truth). So the `TFT_PINS` in build.sh/flash.sh are the common integrated-S3 mapping, loudly flagged as a starting point to confirm — a blank screen after flashing almost certainly means they differ. Same for the ST7789 color-inversion toggle.
+
+Why it matters: firmware built for the wrong driver/resolution/MCU doesn't "mostly work" — wrong driver = no image, wrong port = no flash, off-screen layout = unreadable. Better to retarget correctly now, blind pins and all, than ship a build that silently targets hardware that isn't on the desk. On-hardware bring-up (confirm pins, flash, tune layout) is the remaining hands-on step.
+
+File(s): `claude-usage-view/firmware/ClaudeUsageMonitor/config.h`, `display.cpp`, `ClaudeUsageMonitor.ino`, `wifi_setup.cpp`, `config_local.h.example`; `claude-usage-view/build.sh`, `flash.sh`, `docs/HARDWARE.md`, `README.md`, `CREDITS.md`; `README.md` (project table).
+
+---
+
 ### Sun Jul 27 2026
 **[FEAT] — claude-usage-view set up on the Axon rig: ESP32 usage display + Linux/systemd bridge port**
 

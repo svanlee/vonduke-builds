@@ -1,11 +1,11 @@
 // ============================================================
 // Claude Usage Monitor
-// Board: ESP32-4827S040 (Sunton CYD 4.0")
-// Display: 4.0" TFT ST7796S 480x320 (landscape)
+// Board: LAFVIN ESP32-S3 AIoT Starter Kit ("Axon rig")
+// Display: 2.0" TFT ST7789 240x320 (used landscape, 320x240)
 //
 // Shows the Claude subscription usage (5h session window and
 // weekly limits) fetched from a small bridge server running on
-// the Mac (bridge/claude_usage_bridge.py), refreshing every 60s.
+// the Axon rig host (bridge/claude_usage_bridge.py), every 60s.
 // ============================================================
 
 #include "config.h"
@@ -57,10 +57,13 @@ void setup() {
   DBGLN("Claude Usage Monitor " FIRMWARE_VERSION);
   DBGLN("=============================");
 
-  // Touch (XPT2046) shares the display SPI bus on the 4.0" board — keep its
-  // CS deasserted so it never drives MISO. Touch itself is unused here.
+#ifdef TOUCH_CS_PIN
+  // On boards where touch shares the display SPI bus (e.g. the CYD's XPT2046),
+  // keep its CS deasserted so it never drives MISO. The LAFVIN ST7789 module
+  // has no touch controller, so TOUCH_CS_PIN is undefined and this is skipped.
   pinMode(TOUCH_CS_PIN, OUTPUT);
   digitalWrite(TOUCH_CS_PIN, HIGH);
+#endif
 
   pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
 

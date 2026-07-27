@@ -1,68 +1,66 @@
-# Board reference — Sunton CYD 4.0" (ESP32-4827S040)
+# Board reference — LAFVIN ESP32-S3 AIoT Starter Kit ("Axon rig")
 
-The board silkscreen reads **"4.0" LCD Display · ESP32-32E · 320x480 · Resistance
-Touch"**. It is the 4.0" member of the Sunton "Cheap Yellow Display" (CYD)
-family, sold as **ESP32-4827S040**. There is no official manual published for
-this variant (the [CYD community repo](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
-covers the 2.8" sibling, which shares most of the pinout), so this document is
-the working reference used by this project. (Board photos live upstream at
-[`rafelton/claude-usage-view-esp32/docs/photos`](https://github.com/rafelton/claude-usage-view-esp32/tree/main/docs/photos).)
+The Axon rig for this project is the **LAFVIN ESP32-S3 AIoT Starter Kit**: an
+ESP32-S3 module on the kit's "AI Chatbot IoT Shield," with a **2.0" SPI TFT
+(ST7789, 240×320)**, audio codec + speaker, and a set of plug-in modules (RGB
+LED, WS2812 8-LED strip, DHT11, SG90 servo, DC fan, 2-ch relay, rain/soil
+sensors). This project uses only the ESP32-S3 + the ST7789 screen; the other
+modules are unused by the usage monitor.
+
+Upstream (`rafelton/claude-usage-view-esp32`) targets a Sunton CYD 4.0"
+(ESP32-WROOM + ST7796 480×320). The firmware here is retargeted to the LAFVIN
+board: different MCU (S3, native USB), different driver (ST7789), and a smaller
+240×320 panel, so the on-screen layout was reflowed for landscape 320×240.
 
 ## Specs
 
 | Item | Value |
 |---|---|
-| MCU | ESP32-32E (ESP32-D0WD-V3), dual core 240 MHz, **no PSRAM** |
-| Flash | 4 MB |
-| Display | 4.0" TFT, **ST7796S**, 320x480, SPI @ 40 MHz, portrait-native |
-| Touch | **XPT2046** resistive — shares the display SPI bus on this variant |
-| USB | USB-C, **CH340** serial bridge (driver needed on macOS) |
-| Storage | microSD slot (SPI) |
-| Audio | Speaker JST connector driven by an **SC8002B** amp |
-| Connectors | UART (5V/GND/TXD/RXD), BAT, SPEAKER, I2C, SPI, IO35/IO39 JSTs |
+| MCU | ESP32-S3 (dual-core 240 MHz), native USB-OTG |
+| Display | 2.0" TFT, **ST7789**, 240×320, SPI, portrait-native |
+| Touch | none on this panel (unlike the CYD's XPT2046) |
+| USB | USB-C, **native USB CDC** (no CH340 serial bridge) |
 | Buttons | RESET, BOOT (GPIO 0) |
 
-## Pinout used by this project
+## Pinout — CONFIRM before flashing
 
-| Function | GPIO |
+The display SPI pins are **board-specific** and this repo does not have an
+authoritative LAFVIN pinout. TFT_eSPI is configured via build flags in
+[`build.sh`](../build.sh) / [`flash.sh`](../flash.sh); the values there are the
+common integrated-S3 + ST7789 mapping and are a **starting point**, not a
+verified fact for this exact kit:
+
+| Function | GPIO (starting point — confirm) |
 |---|---|
-| TFT MOSI / MISO / SCLK | 13 / 12 / 14 |
-| TFT CS / DC / RST | 15 / 2 / — (tied to EN) |
-| TFT backlight | **27** (2.8" CYD uses 21 — common gotcha) |
-| Touch CS / IRQ | 33 / 36 (shared SPI bus with the TFT) |
-| Speaker | 26 |
+| TFT MOSI / SCLK | 45 / 40 |
+| TFT CS / DC / RST | 42 / 41 / 39 |
+| TFT backlight (BL) | 14 |
+| TFT MISO | unused (ST7789 is write-only) |
 | BOOT button | 0 |
 
-## Quirks (learned the hard way)
+Get the real numbers from the **User_Setup.h that ships with the kit** (or the
+kit's online docs / pinout diagram) and edit the `TFT_PINS` line in both
+`build.sh` and `flash.sh` plus `TFT_BL_PIN` in
+[`firmware/ClaudeUsageMonitor/config.h`](../firmware/ClaudeUsageMonitor/config.h)
+to match.
 
-- **Touch shares the display SPI bus.** Even if you don't use touch, drive
-  GPIO 33 (touch CS) HIGH at boot so the XPT2046 never fights the TFT on MISO.
-- **The audio amp boots muted.** The SC8002B stays silent until it is "kicked"
-  with PWM activity on a set of GPIOs early at boot. This project doesn't use
-  audio, so the amp is simply left muted (which also means no idle hiss).
-- **Backlight is GPIO 27**, unlike the 2.8" board (GPIO 21). A dark-but-alive
-  screen usually means the wrong BL pin.
-- **Portrait-native panel.** 320x480 with `setRotation(1)` for 480x320
-  landscape (TFT_eSPI build flags stay `TFT_WIDTH=320 / TFT_HEIGHT=480`).
-- **Flashing**: merged `.bin` at address `0x0000`; the CH340 needs its driver
-  on macOS (`/dev/cu.usbserial-*`).
-- **No PSRAM** — full-screen sprites (480x320x2 bytes = 300 KB) don't fit;
-  draw directly with `setTextPadding()`/partial fills to avoid flicker.
+## Quirks
 
-## TFT_eSPI configuration
-
-Configured entirely via build flags (no `User_Setup.h`) — see
-[`build.sh`](../build.sh):
-
-```
--DUSER_SETUP_LOADED -DST7796_DRIVER -DTFT_WIDTH=320 -DTFT_HEIGHT=480
--DTFT_MOSI=13 -DTFT_MISO=12 -DTFT_SCLK=14 -DTFT_CS=15 -DTFT_DC=2 -DTFT_RST=-1
--DTFT_BL=27 -DTFT_BACKLIGHT_ON=HIGH -DTOUCH_CS=33
--DSPI_FREQUENCY=40000000
-```
+- **Native USB**, not CH340. Flash over the USB-C port; the board appears as
+  `/dev/ttyACM*` (Linux) / `/dev/cu.usbmodem*` (macOS). If the upload won't
+  sync, hold BOOT + tap RST to force download mode.
+- **ST7789 color inversion.** Many 2.0" IPS ST7789 panels display
+  photo-negative unless inversion is enabled. If colors look wrong, add
+  `-DTFT_INVERSION_ON` (or `_OFF`) to the `TFT_DRIVER` flags in build.sh.
+- **Portrait-native panel.** 240×320 with `setRotation(1)` for landscape
+  320×240 (TFT_eSPI flags stay `TFT_WIDTH=240 / TFT_HEIGHT=320`).
+- **No PSRAM used.** The build sets `PSRAM=disabled`; the layout draws with
+  partial fills (no full-screen sprite), so no PSRAM is needed even though the
+  module may have some.
+- **Flashing**: merged `.bin` at address `0x0000`.
 
 ## Related resources
 
-- [ESP32 Cheap Yellow Display community repo](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) — 2.8" variant, same family
-- [Sunton board definitions for PlatformIO](https://github.com/rzeldent/platformio-espressif32-sunton) — other CYD variants
-- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) — display driver library
+- [LAFVIN AIoT Starter Kit docs](https://lafvin-aiot-starter-kit.readthedocs.io/) — official kit documentation / pinout
+- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) — display driver library, ST7789 support
+- Upstream project: [`rafelton/claude-usage-view-esp32`](https://github.com/rafelton/claude-usage-view-esp32)

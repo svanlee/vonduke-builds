@@ -5,28 +5,34 @@
 
 // ============================================================
 // Claude Usage Monitor — Configuration
-// Board: Sunton CYD 4.0" (ESP32-4827S040)
-// Display: ST7796S 320x480 SPI (used in landscape, 480x320)
+// Board: LAFVIN ESP32-S3 AIoT Starter Kit  ("Axon rig")
+// Display: 2.0" TFT ST7789 240x320 SPI (used in landscape, 320x240)
+//
+// NOTE ON PINS: TFT_eSPI takes its pins from build flags, not from
+// this file — see the TFT_PINS block in build.sh / flash.sh. Those
+// values must match your kit's own User_Setup.h; the LAFVIN AIoT
+// board's exact GPIOs are in the kit docs. Confirm before flashing.
 // ============================================================
 
-#define FIRMWARE_VERSION  "v1.0.0"
+#define FIRMWARE_VERSION  "v1.1.0-lafvin"
 
-#define BOARD_NAME        "CYD 4.0\""
-// Panel is portrait-native 320x480; rotation 1 = landscape 480x320.
+#define BOARD_NAME        "LAFVIN S3 AIoT"
+// ST7789 panel is portrait-native 240x320; rotation 1 = landscape 320x240.
 #define DISPLAY_ROTATION  1
-#define SCREEN_W          480
-#define SCREEN_H          320
-#define TFT_BL_PIN        27
+#define SCREEN_W          320
+#define SCREEN_H          240
+// Backlight GPIO. CONFIRM from the LAFVIN kit User_Setup.h (also passed as
+// -DTFT_BL in build.sh so TFT_eSPI drives it). -1 if the panel has no BL pin.
+#define TFT_BL_PIN        14
 
-// Touch (XPT2046) is unused, but on the 4.0" it shares the display SPI bus.
-// Its CS must be held HIGH so the chip never drives MISO during TFT traffic.
-#define TOUCH_CS_PIN      33
+// This ST7789 module has no touch controller (unlike the CYD's XPT2046),
+// so there is no touch-CS pin to hold. TOUCH_CS_PIN is intentionally undefined.
 
 // --- Boot button (reset config) ---
 #define BOOT_BUTTON_PIN    0
 #define BOOT_LONG_PRESS_MS 3000  // Hold 3s to reset WiFi config
 
-// --- Colors (RGB565; ST7796 CYDs are RGB order) ---
+// --- Colors (RGB565; ST7789 is RGB order — add -DTFT_INVERSION_ON if inverted) ---
 #define RGB565(r,g,b) ((((r)&0xF8)<<8) | (((g)&0xFC)<<3) | ((b)>>3))
 
 #define COLOR_BG           RGB565(0x0d,0x11,0x17)  // #0d1117
