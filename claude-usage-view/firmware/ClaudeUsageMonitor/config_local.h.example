@@ -1,0 +1,11 @@
+// ============================================================
+// Local overrides — copy to config_local.h (gitignored).
+// When defined, skips the WiFiManager captive portal and points
+// the display straight at the Axon rig bridge. Handy for a
+// headless flash where you don't want to walk the portal.
+// ============================================================
+
+// Axon rig WiFi + bridge. Fill in the rig's LAN IP (hostname -I on the rig).
+// #define DEV_FORCE_WIFI_SSID   "YourNetwork"
+// #define DEV_FORCE_WIFI_PASS   "your-password"
+// #define DEV_FORCE_BRIDGE_URL  "http://192.168.1.50:8787/usage"

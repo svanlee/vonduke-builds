@@ -1,0 +1,19 @@
+[Unit]
+Description=Claude Usage Bridge for the ESP32 desk display (Axon rig)
+# Reads the local Claude Code OAuth token and serves digested usage
+# JSON on :8787 for the CYD display to poll. Runs as a --user unit so
+# it inherits the ros login's ~/.claude/.credentials.json.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ros/vonduke-builds/claude-usage-view/bridge
+ExecStart=/usr/bin/python3 /home/ros/vonduke-builds/claude-usage-view/bridge/claude_usage_bridge.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/tmp/claude-usage-bridge.log
+StandardError=append:/tmp/claude-usage-bridge.log
+
+[Install]
+WantedBy=default.target

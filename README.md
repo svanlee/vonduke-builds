@@ -16,6 +16,7 @@ One real artifact committed per day: code, configs, wiring docs, test logs, demo
 | [`hive/`](hive/) | ESP32-S3 Supermini mini tank swarm — FreeRTOS dual-task firmware, micro-ROS, solar LiPo charging. Ground swarm first, aerial node later. | BOM confirmed, build queued |
 | [`featherplc/`](featherplc/) | ESP32 industrial machine simulator prototype — nine simulated machines, WebSocket HMI, fault state machine, E-Stop logic, PPM calc. | Prototype |
 | [`dweeb/`](dweeb/) | Modular ESP32-S3 brain board concept for maker/robotics education. USB-C GPIO learning pad that snaps into robot chassis. | Concept |
+| [`claude-usage-view/`](claude-usage-view/) | ESP32 "Cheap Yellow Display" desk monitor for live Claude 5h/weekly usage. Linux/systemd bridge reads the Axon rig's Claude Code OAuth token; the CYD polls it over WiFi. Ported from a macOS project. | Bridge live, flash pending |
 
 Coin/collectible appraisal tools (Stacktrack, SlabScout) live in their own separate repos, not here.
 

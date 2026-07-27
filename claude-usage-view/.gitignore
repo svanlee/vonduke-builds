@@ -1,0 +1,14 @@
+# Arduino build artifacts
+build/
+dist/
+*.bin
+
+# Local, secret-bearing firmware override (WiFi creds / bridge URL)
+firmware/ClaudeUsageMonitor/config_local.h
+
+# Bridge log
+*.log
+
+# Python cache
+__pycache__/
+*.pyc

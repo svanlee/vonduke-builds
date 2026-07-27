@@ -7,6 +7,26 @@ Format: what I built, why it matters, where it lives.
 
 <!-- New entries go at the TOP -->
 
+### Sun Jul 27 2026
+**[FEAT] — claude-usage-view set up on the Axon rig: ESP32 usage display + Linux/systemd bridge port**
+
+What: Stood up [rafelton/claude-usage-view-esp32](https://github.com/rafelton/claude-usage-view-esp32) on the Axon rig as a new `claude-usage-view/` project. It's a Sunton CYD 4.0" (ESP32-4827S040, ST7796 480x320) desk display that shows the same Claude 5h-session and weekly-limit percentages as Claude Code's `/usage`, refreshing every 60s — green/yellow/red at 70/90%.
+
+The catch: upstream is macOS-only on the host side. The display doesn't talk to Anthropic directly — a small local "bridge" reads the Claude Code OAuth token, calls `GET api/oauth/usage`, and serves digested JSON on `:8787` for the ESP32 to poll. Upstream's bridge reads that token from the macOS Keychain and installs as a launchd plist. The Axon rig is Linux (the HP Victus that runs AKSUMAEL). So the real work was porting the host side:
+
+- **Bridge → Linux** (`bridge/claude_usage_bridge.py`): reads the token from `~/.claude/.credentials.json` (same `claudeAiOauth.accessToken` schema Claude Code writes on Linux), with a `secret-tool`/libsecret fallback for keyring installs and a `CLAUDE_CREDENTIALS_FILE` override. The fetch/simplify/serve logic is otherwise identical to upstream. Kept the macOS original alongside as `claude_usage_bridge.macos.py` for reference.
+- **launchd plist → systemd** (`bridge/claude-usage-bridge.service` + `install.sh`): a `--user` unit matching the rig's existing `axon.service` convention, so it runs as `ros`, inherits the login's credentials file, and lingers across reboots. `install.sh` preflights whether Claude Code is even logged in and prints the rig IP + bridge URL to enter on the display.
+- **flash.sh**: upstream only autodetected macOS `/dev/cu.*` ports; added Linux `/dev/ttyUSB*` / `/dev/ttyACM*` detection and a dialout-group hint.
+- **Firmware config**: default bridge URL / WiFiManager portal copy now say "axon-rig-ip" instead of "your-mac-ip"; `config_local.h.example` documents the headless Axon-rig override path. The Arduino sketch is otherwise vendored unchanged.
+
+Smoke-tested the bridge on Linux end-to-end (mocked credentials file + mocked usage response): `read_token()` reads the file, `simplify()` produces the right payload, and the HTTP server returns 200 on `/usage` and 404 elsewhere. Physical bring-up still pending — the rig-side `install.sh` and the `./flash.sh` of the actual CYD are hands-on-hardware steps.
+
+Why it matters: turns the abstract `/usage` number into a glanceable desk object next to the rig, and — the reusable part — gives this build a clean Linux/systemd bridge for the Anthropic usage endpoint that any of the other Linux boxes here can run. Credit to Rafael for the firmware and the original bridge (MIT); see `claude-usage-view/CREDITS.md`.
+
+File(s): `claude-usage-view/` (new project) — `bridge/claude_usage_bridge.py` (new Linux port), `bridge/claude-usage-bridge.service` (new), `bridge/install.sh` (new), `bridge/claude_usage_bridge.macos.py` (vendored ref), `firmware/ClaudeUsageMonitor/` (vendored sketch, config edits), `build.sh`, `flash.sh` (Linux ports), `docs/HARDWARE.md`, `README.md`, `CREDITS.md`, `.gitignore`; `README.md` (project table).
+
+---
+
 ### Sat Jul 19 2026
 **[ARCH] — Full cognitive overhaul: local-only LLM, self-built memory, self-writing skills, multi-env attention, voice Q&A, hardware abstraction layer**
 
