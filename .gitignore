@@ -9,4 +9,5 @@ aksumael-assets/
 # Website mirror output (belongs in its own dedicated repo, not here)
 morgantradingcompany-mirror/
 morgantradingcompany-site-archive.zip
+morgantradingcompany-site-archive.zip.part*
 scratch-wget.log
