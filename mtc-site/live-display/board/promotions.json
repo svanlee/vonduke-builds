@@ -1,0 +1,38 @@
+{
+  "_comment": "Each promo can have an optional date window (startDate/endDate, format YYYY-MM-DD, inclusive). Promos with no dates are always active. Only active promos are woven into the slideshow rotation.",
+  "promotions": [
+    {
+      "id": "free-appraisals",
+      "headline": "Free Appraisals",
+      "subtext": "Bring in your gold, silver, or coins for a no-obligation quote — every day, walk-ins welcome.",
+      "badge": "EVERY DAY, NO OBLIGATION",
+      "image": "assets/promotions/free-appraisals.jpg",
+      "imagePosition": "center 85%"
+    },
+    {
+      "id": "holiday-season",
+      "headline": "Holiday Gift Event",
+      "subtext": "Estate jewelry and watches, newly arrived for the season.",
+      "badge": "LIMITED TIME",
+      "startDate": "2026-11-15",
+      "endDate": "2026-12-31"
+    },
+    {
+      "id": "spring-buy-event",
+      "headline": "Spring Buying Event",
+      "subtext": "Top prices paid on gold and silver this month — bring in your items today.",
+      "badge": "THIS MONTH",
+      "startDate": "2026-03-01",
+      "endDate": "2026-03-31"
+    },
+    {
+      "id": "summer-coin-show",
+      "headline": "Summer Coin Show Special",
+      "subtext": "New rare coin arrivals from the collector's show now on display.",
+      "badge": "NEW ARRIVALS",
+      "startDate": "2026-06-01",
+      "endDate": "2026-08-31",
+      "image": "assets/promotions/summer-coin-show.jpg"
+    }
+  ]
+}

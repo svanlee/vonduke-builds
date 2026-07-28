@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Morgan Trading Company — Live Display</title>
+  <meta name="description" content="Live gold and silver spot price display for Morgan Trading Company." />
+  <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <header class="header">
+      <div class="brand">
+        <h1 id="business-name">Morgan Trading Company</h1>
+        <div class="tagline" id="business-tagline">Current Spot Prices</div>
+      </div>
+
+      <div class="metal-row">
+        <section class="metal-panel" id="gold-panel" aria-label="Gold spot price">
+          <div class="metal-label">Gold</div>
+          <div class="metal-price">
+            <span id="gold-price">$----.--</span>
+            <span class="metal-arrow" id="gold-arrow"></span>
+          </div>
+          <div class="metal-change" id="gold-change"></div>
+          <div class="metal-change-caption">30-Day Change</div>
+        </section>
+
+        <section class="metal-panel" id="clock-panel" aria-label="Current time and date">
+          <div class="clock-time" id="clock-time">--:--:-- <span class="meridiem" id="clock-meridiem"></span></div>
+          <div class="clock-date" id="clock-date">Loading date…</div>
+          <div class="sweep-line" id="sweep-line"></div>
+          <div class="last-updated" id="last-updated"></div>
+        </section>
+
+        <section class="metal-panel" id="silver-panel" aria-label="Silver spot price">
+          <div class="metal-label">Silver</div>
+          <div class="metal-price">
+            <span id="silver-price">$--.--</span>
+            <span class="metal-arrow" id="silver-arrow"></span>
+          </div>
+          <div class="metal-change" id="silver-change"></div>
+          <div class="metal-change-caption">30-Day Change</div>
+        </section>
+      </div>
+    </header>
+
+    <main class="slideshow" id="slideshow" aria-label="Store photo slideshow">
+      <div class="slideshow-empty" id="slideshow-empty" hidden>
+        <h2>Morgan Trading Company</h2>
+        <p>Drop images into the <code>/images</code> folder and refresh.</p>
+      </div>
+    </main>
+
+    <footer class="ticker" id="ticker" aria-label="Store announcements">
+      <div class="ticker-track" id="ticker-track"></div>
+    </footer>
+
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api/prices.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

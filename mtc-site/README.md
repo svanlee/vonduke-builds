@@ -48,18 +48,25 @@ python3 -m http.server 8099
 # open http://localhost:8099
 ```
 
-## Wiring up the Live Display data
+## Live Display (self-hosted)
 
-`live-display/data/config.json` controls the board. Set `pricesEndpoint` and/or
-`featuredEndpoint` to a URL returning JSON in the documented shape; if empty or
-unreachable, the board falls back to the values in the same file so a screen is
-never blank. This is where the **mtc-live-display** data source plugs in.
+`/live-display/` is a framed website page (header, intro, fullscreen control)
+that embeds the **self-hosted** kiosk board at `/live-display/board/`. The board
+is a first-party copy of the `mtc-live-display` app — no dependency on the
+external GitHub Pages deployment, so it keeps working on this origin after the
+domain cutover and the separate GitHub repo can be retired.
 
-Expected prices shape:
-```json
-{ "asOf": "2026-07-28T15:00:00Z",
-  "metals": [ { "symbol":"XAU","name":"Gold","unit":"oz","price":2650.00,"change":0.4 } ] }
-```
+- **The board:** `live-display/board/` — live gold & silver spot prices
+  (gold-api.com keyless primary), 30-day change, clock, showroom slideshow,
+  promotions, and announcements ticker.
+- **Point an in-store TV** at `…/live-display/board/` (or use the Fullscreen
+  button on `/live-display/`).
+- **Customize** via `live-display/board/config.js` (business name, refresh
+  interval, price multipliers, theme, kiosk auto-reload).
+- **Slideshow images** live in `live-display/board/images/` and are listed in
+  `images/manifest.json`. Add a photo + list it there to include it.
+- **Announcements** in `live-display/board/ticker.json`; **promotions** in
+  `promotions.json`.
 
 ## Deploying as a drop-in replacement for the Wix site
 
