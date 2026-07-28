@@ -23,6 +23,11 @@ set -euo pipefail
 
 SITE_URL="https://www.morgantradingcompany.com/"
 DOMAIN="www.morgantradingcompany.com"
+# Wix sites host their CSS/JS/images/fonts on external CDNs. Include those
+# hosts so --page-requisites can fetch them for a fully-rendered offline copy.
+# These hosts must be reachable under the environment's network policy.
+ASSET_HOSTS="static.parastorage.com,static.wixstatic.com,siteassets.parastorage.com,parastorage.com,wixstatic.com"
+FOLLOW_DOMAINS="$DOMAIN,morgantradingcompany.com,$ASSET_HOSTS"
 OUTPUT_DIR="${1:-morgantradingcompany-mirror}"
 
 if ! command -v wget >/dev/null 2>&1; then
@@ -58,7 +63,7 @@ wget \
   --adjust-extension \
   --page-requisites \
   --no-parent \
-  --domains="$DOMAIN" \
+  --domains="$FOLLOW_DOMAINS" \
   --span-hosts \
   --wait=1 \
   --random-wait \

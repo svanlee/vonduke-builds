@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .DS_Store
 aksumael-assets/
+
+# Website mirror output (belongs in its own dedicated repo, not here)
+morgantradingcompany-mirror/
+scratch-wget.log
