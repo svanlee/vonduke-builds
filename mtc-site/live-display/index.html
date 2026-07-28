@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Live Display | Morgan Trading Company</title>
-  <meta name="description" content="Live precious-metal spot prices, featured inventory, and today's deals from Morgan Trading Company in Gaylord, MI. Full-screen signage mode for in-store displays.">
+  <meta name="description" content="Live gold & silver spot prices, featured showroom photos, and store announcements from Morgan Trading Company in Gaylord, MI. Full-screen board for in-store display.">
   <link rel="icon" href="../assets/img/mtc-logo.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,78 +17,67 @@
 
   <main id="main">
 
-    <!-- Ticker -->
-    <div class="ticker" data-ticker aria-hidden="true"></div>
-
-    <div class="container ld-wrap">
+    <div class="container ld-intro">
       <div class="ld-top">
         <div>
           <p class="eyebrow">From the Showroom Floor</p>
           <h1>Live Display</h1>
+          <p>Current gold &amp; silver spot prices, featured showroom photos, and today's announcements — the same live board that runs on the screen in our store.</p>
         </div>
-        <div class="ld-controls">
-          <span class="ld-updated"><span class="ld-live-dot"></span><span data-updated>Updating…</span></span>
-          <span data-ld-status class="status-badge is-closed ld-status"><span class="dot"></span>—</span>
-          <button class="btn btn--ghost" data-action="signage" title="Full-screen for in-store TV">▶ Signage Mode</button>
+        <div class="ld-actions">
+          <span class="ld-live"><span class="dot"></span>Live</span>
+          <button class="btn btn--ghost" data-fs>⤢ Fullscreen</button>
+          <a class="btn btn--gold" href="https://svanlee.github.io/mtc-live-display/" target="_blank" rel="noopener">Open in New Tab ↗</a>
         </div>
       </div>
 
-      <p id="ld-error" style="display:none;color:var(--danger)">Couldn't load live data — showing the latest available values.</p>
-
-      <!-- Spot prices -->
-      <div class="ld-label"><h2>Precious Metal Spot Prices</h2><span class="line"></span></div>
-      <div class="spot-grid" id="spot-grid"><!-- rendered by JS --></div>
-      <p style="color:var(--muted);font-size:.82rem;margin-top:.9rem">Spot prices are indicative and update automatically. In-store offers are confirmed at the counter against live market values. <a href="../gold-silver-coins.html" style="color:var(--gold-deep);font-weight:600">Sell your metals →</a></p>
-
-      <!-- Featured inventory -->
-      <div class="ld-label"><h2>Featured &amp; Just In</h2><span class="line"></span></div>
-      <div class="ld-featured" id="featured-grid"><!-- rendered by JS --></div>
-
-      <!-- Info -->
-      <div class="ld-label"><h2>Today at MTC</h2><span class="line"></span></div>
-      <div class="info-grid">
-        <div class="info-card"><h3>Hours</h3>
-          <div class="hours-row"><span>Mon – Sat</span><span>10AM – 6PM</span></div>
-          <div class="hours-row"><span>Sunday</span><span class="closed">Closed</span></div>
-        </div>
-        <div class="info-card"><h3>Visit</h3><p>2484 S. Otsego Ave<br>Gaylord, MI 49734</p></div>
-        <div class="info-card"><h3>Call</h3><a class="btn btn--gold" href="tel:+19894482236">(989) 448-2236</a></div>
+      <div class="ld-features">
+        <span class="ld-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Live gold &amp; silver spot</span>
+        <span class="ld-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>30-day change &amp; clock</span>
+        <span class="ld-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>Showroom slideshow</span>
+        <span class="ld-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>Announcements ticker</span>
       </div>
     </div>
 
-    <p class="center" style="color:var(--muted);font-size:.85rem;padding-bottom:2rem">
-      Tip: press <strong>F</strong> or “Signage Mode” to launch the full-screen board for an in-store TV. Press <strong>Esc</strong> to exit.
-    </p>
+    <div class="container ld-stage-wrap">
+      <div class="ld-stage" id="ld-stage">
+        <div class="ld-stage__loading" id="ld-loading">
+          <div class="spin"></div>
+          <div>Loading live board…</div>
+        </div>
+        <iframe
+          id="ld-frame"
+          src="https://svanlee.github.io/mtc-live-display/"
+          title="Morgan Trading Company live spot-price and showroom board"
+          loading="lazy"
+          allow="fullscreen"
+          referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+      <p class="ld-note">Spot prices are indicative and refresh automatically. In-store offers are confirmed at the counter against live market values. For the best in-store experience, run this board fullscreen on a dedicated screen.</p>
+    </div>
 
   </main>
 
-  <!-- Full-screen signage stage -->
-  <div class="signage-stage" aria-hidden="true">
-    <div class="sg-head">
-      <div class="sg-brand">
-        <img src="../assets/img/mtc-logo.png" alt="">
-        <div class="sg-brand__name">Morgan Trading Co.<small>Buy · Sell · Trade</small></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:1.5rem">
-        <span data-ld-status class="status-badge is-closed ld-status"><span class="dot"></span>—</span>
-        <div class="sg-clock" id="sg-clock"></div>
-      </div>
-    </div>
-    <div class="sg-body">
-      <div class="sg-spots" id="sg-spots"><!-- spot cards --></div>
-      <div class="sg-panel">
-        <h3>Featured &amp; Just In</h3>
-        <div class="sg-feature show" id="sg-feature"></div>
-      </div>
-    </div>
-    <div class="sg-foot">
-      <div class="ticker signage" data-ticker aria-hidden="true"></div>
-    </div>
-    <button class="btn btn--ghost-light" data-action="exit-signage" style="position:fixed;top:1rem;right:1rem;z-index:600;padding:.5rem 1rem">✕ Exit</button>
-  </div>
-
   <div id="site-footer-mount"></div>
   <script src="../assets/js/main.js"></script>
-  <script src="../assets/js/live-display.js"></script>
+  <script>
+    (function(){
+      var frame = document.getElementById('ld-frame');
+      var loading = document.getElementById('ld-loading');
+      var stage = document.getElementById('ld-stage');
+      if (frame) frame.addEventListener('load', function(){ if(loading) loading.style.display='none'; });
+      // Fullscreen the board
+      document.querySelectorAll('[data-fs]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          if (document.fullscreenElement) { document.exitFullscreen(); return; }
+          if (stage.requestFullscreen) stage.requestFullscreen();
+          else if (stage.webkitRequestFullscreen) stage.webkitRequestFullscreen();
+        });
+      });
+      document.addEventListener('fullscreenchange', function(){
+        stage.classList.toggle('is-fs', !!document.fullscreenElement);
+      });
+    })();
+  </script>
 </body>
 </html>
