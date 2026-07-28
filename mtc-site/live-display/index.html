@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Display | Morgan Trading Company</title>
+  <meta name="description" content="Live precious-metal spot prices, featured inventory, and today's deals from Morgan Trading Company in Gaylord, MI. Full-screen signage mode for in-store displays.">
+  <link rel="icon" href="../assets/img/mtc-logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="live.css">
+</head>
+<body data-page="live" data-base="..">
+  <div id="site-header-mount"></div>
+
+  <main id="main">
+
+    <!-- Ticker -->
+    <div class="ticker" data-ticker aria-hidden="true"></div>
+
+    <div class="container ld-wrap">
+      <div class="ld-top">
+        <div>
+          <p class="eyebrow">From the Showroom Floor</p>
+          <h1>Live Display</h1>
+        </div>
+        <div class="ld-controls">
+          <span class="ld-updated"><span class="ld-live-dot"></span><span data-updated>Updating…</span></span>
+          <span data-ld-status class="status-badge is-closed ld-status"><span class="dot"></span>—</span>
+          <button class="btn btn--ghost" data-action="signage" title="Full-screen for in-store TV">▶ Signage Mode</button>
+        </div>
+      </div>
+
+      <p id="ld-error" style="display:none;color:var(--danger)">Couldn't load live data — showing the latest available values.</p>
+
+      <!-- Spot prices -->
+      <div class="ld-label"><h2>Precious Metal Spot Prices</h2><span class="line"></span></div>
+      <div class="spot-grid" id="spot-grid"><!-- rendered by JS --></div>
+      <p style="color:var(--muted);font-size:.82rem;margin-top:.9rem">Spot prices are indicative and update automatically. In-store offers are confirmed at the counter against live market values. <a href="../gold-silver-coins.html" style="color:var(--gold-deep);font-weight:600">Sell your metals →</a></p>
+
+      <!-- Featured inventory -->
+      <div class="ld-label"><h2>Featured &amp; Just In</h2><span class="line"></span></div>
+      <div class="ld-featured" id="featured-grid"><!-- rendered by JS --></div>
+
+      <!-- Info -->
+      <div class="ld-label"><h2>Today at MTC</h2><span class="line"></span></div>
+      <div class="info-grid">
+        <div class="info-card"><h3>Hours</h3>
+          <div class="hours-row"><span>Mon – Sat</span><span>10AM – 6PM</span></div>
+          <div class="hours-row"><span>Sunday</span><span class="closed">Closed</span></div>
+        </div>
+        <div class="info-card"><h3>Visit</h3><p>2484 S. Otsego Ave<br>Gaylord, MI 49734</p></div>
+        <div class="info-card"><h3>Call</h3><a class="btn btn--gold" href="tel:+19894482236">(989) 448-2236</a></div>
+      </div>
+    </div>
+
+    <p class="center" style="color:var(--muted);font-size:.85rem;padding-bottom:2rem">
+      Tip: press <strong>F</strong> or “Signage Mode” to launch the full-screen board for an in-store TV. Press <strong>Esc</strong> to exit.
+    </p>
+
+  </main>
+
+  <!-- Full-screen signage stage -->
+  <div class="signage-stage" aria-hidden="true">
+    <div class="sg-head">
+      <div class="sg-brand">
+        <img src="../assets/img/mtc-logo.png" alt="">
+        <div class="sg-brand__name">Morgan Trading Co.<small>Buy · Sell · Trade</small></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:1.5rem">
+        <span data-ld-status class="status-badge is-closed ld-status"><span class="dot"></span>—</span>
+        <div class="sg-clock" id="sg-clock"></div>
+      </div>
+    </div>
+    <div class="sg-body">
+      <div class="sg-spots" id="sg-spots"><!-- spot cards --></div>
+      <div class="sg-panel">
+        <h3>Featured &amp; Just In</h3>
+        <div class="sg-feature show" id="sg-feature"></div>
+      </div>
+    </div>
+    <div class="sg-foot">
+      <div class="ticker signage" data-ticker aria-hidden="true"></div>
+    </div>
+    <button class="btn btn--ghost-light" data-action="exit-signage" style="position:fixed;top:1rem;right:1rem;z-index:600;padding:.5rem 1rem">✕ Exit</button>
+  </div>
+
+  <div id="site-footer-mount"></div>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/live-display.js"></script>
+</body>
+</html>

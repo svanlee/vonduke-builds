@@ -1,0 +1,27 @@
+{
+  "$comment": "Live Display configuration. Point pricesEndpoint / featuredEndpoint at the mtc-live-display data source when available. If a fetch fails, the display falls back to the values below so a screen is never blank.",
+  "pricesEndpoint": "",
+  "featuredEndpoint": "",
+  "refreshSeconds": 60,
+  "signageRotateSeconds": 12,
+  "spotFallback": {
+    "asOf": "",
+    "metals": [
+      { "symbol": "XAU", "name": "Gold",     "unit": "oz", "price": 2650.00, "change": 0.0 },
+      { "symbol": "XAG", "name": "Silver",   "unit": "oz", "price": 31.20,  "change": 0.0 },
+      { "symbol": "XPT", "name": "Platinum", "unit": "oz", "price": 985.00, "change": 0.0 }
+    ]
+  },
+  "featuredFallback": [
+    { "title": "Rolex Datejust 36", "category": "Luxury Watch", "price": "Inquire", "image": "../assets/img/watches.png", "tag": "Just In" },
+    { "title": "1 oz Gold American Eagle", "category": "Bullion", "price": "Spot + Premium", "image": "../assets/img/gold-coins.png", "tag": "In Stock" },
+    { "title": "Diamond Solitaire Ring", "category": "Fine Jewelry", "price": "Inquire", "image": "../assets/img/jewelry.png", "tag": "Estate" },
+    { "title": "Louis Vuitton Neverfull", "category": "Designer Handbag", "price": "Inquire", "image": "../assets/img/handbags.png", "tag": "Authenticated" }
+  ],
+  "announcements": [
+    "Same-day cash for gold, silver & coins — paid at live spot prices.",
+    "Layaway available on most items — just 10% down, no credit check.",
+    "Licensed FFL dealer — buy, sell, trade & transfer firearms legally.",
+    "New arrivals weekly — follow @morgantradingcompany on Facebook."
+  ]
+}
