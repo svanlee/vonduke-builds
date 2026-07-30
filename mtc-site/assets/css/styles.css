@@ -135,6 +135,9 @@ ul { margin: 0; padding: 0; }
   min-height: var(--header-h);
 }
 .brand { display: flex; align-items: center; gap: .7rem; flex-shrink: 0; }
+/* Full brand logo on a clean white plate (works in both themes; the logo art is dark) */
+.brand__logo { height: 80px; width: auto; display: block; background: #fff; border-radius: 9px; padding: 7px 12px; box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .brand__logo { box-shadow: 0 0 0 1px var(--line), var(--shadow-sm); }
 .brand__mark { width: 76px; height: 76px; border-radius: 9px; background: #fff; box-shadow: var(--shadow-sm); }
 :root[data-theme="dark"] .brand__mark { box-shadow: 0 0 0 1px var(--line), var(--shadow-sm); }
 .brand__name {
@@ -341,6 +344,7 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
   .nav__sell { display:none; }
   .brand__name { font-size:1.1rem; }
   .brand__mark { width:56px; height:56px; }
+  .brand__logo { height:54px; padding:6px 9px; }
   :root { --header-h: 74px; }
 }
 @media (max-width: 360px){

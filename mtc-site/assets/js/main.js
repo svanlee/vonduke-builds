@@ -65,7 +65,7 @@
     { label: "Contact",  key: "contact",  href: p("contact.html") }
   ];
 
-  var LOGO = p("assets/img/mtc-logo.png") + "?v=2";
+  var LOGO = p("assets/img/mtc-logo-full.png") + "?v=3";
 
   /* ---- SVG icons ------------------------------------------------------ */
   var I = {
@@ -115,9 +115,8 @@
     return '' +
     '<a class="skip-link" href="#main">Skip to content</a>' +
     '<header class="site-header"><div class="container"><nav class="nav" aria-label="Primary">' +
-      '<a class="brand" href="' + p("index.html") + '" aria-label="' + BIZ.name + ' home">' +
-        '<img class="brand__mark" src="' + LOGO + '" width="76" height="76" alt="">' +
-        '<span class="brand__name">Morgan Trading Co.<small>Buy · Sell · Trade</small></span>' +
+      '<a class="brand" href="' + p("index.html") + '" aria-label="' + BIZ.name + ' — Buy Sell Trade — home">' +
+        '<img class="brand__logo" src="' + LOGO + '" alt="Morgan Trading Company — Buy Sell Trade">' +
       '</a>' +
       '<ul class="nav__links" id="nav-links">' + links + '</ul>' +
       '<div class="nav__cta">' +
