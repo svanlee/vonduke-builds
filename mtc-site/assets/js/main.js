@@ -12,14 +12,37 @@
   var PAGE = document.body.getAttribute("data-page") || "";
   var p = function (path) { return BASE + "/" + path; };
 
+  // Two store locations. Gaylord is the flagship (index 0) used in the header.
+  var LOCATIONS = [
+    {
+      name: "Gaylord",
+      tag: "Flagship",
+      phone: "(989) 448-2236",
+      phoneHref: "tel:+19894482236",
+      street: "2484 S. Otsego Ave",
+      city: "Gaylord, MI 49734",
+      mapHref: "https://maps.google.com/?q=2484+S+Otsego+Ave+Gaylord+MI+49734",
+      mapEmbed: "https://www.google.com/maps?q=2484+S+Otsego+Ave+Gaylord+MI+49734&output=embed"
+    },
+    {
+      name: "Alpena",
+      tag: "2nd Location",
+      phone: "(989) 340-2010",
+      phoneHref: "tel:+19893402010",
+      street: "486 S. Ripley Blvd",
+      city: "Alpena, MI 49707",
+      mapHref: "https://maps.google.com/?q=486+S+Ripley+Blvd+Alpena+MI+49707",
+      mapEmbed: "https://www.google.com/maps?q=486+S+Ripley+Blvd+Alpena+MI+49707&output=embed"
+    }
+  ];
+
   var BIZ = {
     name: "Morgan Trading Company",
-    phone: "(989) 448-2236",
-    phoneHref: "tel:+19894482236",
-    address: "2484 S. Otsego Ave, Gaylord, MI 49734",
-    mapHref: "https://maps.google.com/?q=2484+S+Otsego+Ave+Gaylord+MI+49734",
+    phone: LOCATIONS[0].phone,
+    phoneHref: LOCATIONS[0].phoneHref,
     facebook: "https://www.facebook.com/morgantradingcompany",
-    email: "info@morgantradingcompany.com"
+    email: "info@morgantradingcompany.com",
+    locations: LOCATIONS
   };
 
   // Primary navigation (label, page-key, href)
@@ -137,16 +160,20 @@
           '<li><a href="' + p("watches.html") + '">Luxury Watches</a></li>' +
           '<li><a href="' + p("luxury-handbags.html") + '">Luxury Handbags</a></li>' +
         '</ul></div>' +
-        '<div><h4>Visit</h4><ul class="footer-links">' +
-          '<li><a href="' + BIZ.mapHref + '" target="_blank" rel="noopener">' + BIZ.address + '</a></li>' +
-          '<li><a href="' + BIZ.phoneHref + '">' + BIZ.phone + '</a></li>' +
-          '<li style="margin-top:.4rem;color:#9a948a">Mon–Sat: 10AM–6PM<br>Sun: Closed</li>' +
+        '<div><h4>Two Locations</h4><ul class="footer-links">' +
+          LOCATIONS.map(function (L) {
+            return '<li style="margin-bottom:.6rem">' +
+              '<strong style="color:#fff">' + L.name + '</strong><br>' +
+              '<a href="' + L.mapHref + '" target="_blank" rel="noopener">' + L.street + '<br>' + L.city + '</a><br>' +
+              '<a href="' + L.phoneHref + '">' + L.phone + '</a></li>';
+          }).join("") +
+          '<li style="color:#9a948a">Mon–Sat: 10AM–6PM · Sun: Closed</li>' +
           '<li style="margin-top:.6rem"><a href="' + p("careers.html") + '">Careers</a> · <a href="' + p("disclosures.html") + '">Disclosures</a></li>' +
         '</ul></div>' +
       '</div>' +
       '<div class="footer-bottom">' +
         '<span>&copy; ' + new Date().getFullYear() + ' Morgan Trading Company. All rights reserved.</span>' +
-        '<span>FFL Dealer · Licensed Precious Metal &amp; Coin Dealer · Gaylord, Michigan</span>' +
+        '<span>FFL Dealer · Licensed Precious Metal &amp; Coin Dealer · Gaylord &amp; Alpena, Michigan</span>' +
       '</div>' +
     '</div></footer>';
   }
