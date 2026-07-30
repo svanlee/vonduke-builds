@@ -135,7 +135,8 @@ ul { margin: 0; padding: 0; }
   min-height: var(--header-h);
 }
 .brand { display: flex; align-items: center; gap: .7rem; flex-shrink: 0; }
-.brand__mark { width: 46px; height: 46px; }
+.brand__mark { width: 64px; height: 64px; border-radius: 8px; background: #fff; box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .brand__mark { box-shadow: 0 0 0 1px var(--line), var(--shadow-sm); }
 .brand__name {
   font-family: var(--serif); font-weight: 600; font-size: 1.15rem; line-height: 1;
   letter-spacing: .02em;
@@ -337,8 +338,8 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 @media (max-width: 600px){
   .nav__sell { display:none; }
   .brand__name { font-size:1rem; }
-  .brand__mark { width:40px; height:40px; }
-  :root { --header-h: 64px; }
+  .brand__mark { width:52px; height:52px; }
+  :root { --header-h: 68px; }
 }
 @media (max-width: 360px){
   .brand__name small { display:none; }

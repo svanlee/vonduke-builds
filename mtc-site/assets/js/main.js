@@ -116,7 +116,7 @@
     '<a class="skip-link" href="#main">Skip to content</a>' +
     '<header class="site-header"><div class="container"><nav class="nav" aria-label="Primary">' +
       '<a class="brand" href="' + p("index.html") + '" aria-label="' + BIZ.name + ' home">' +
-        '<img class="brand__mark" src="' + LOGO + '" width="46" height="46" alt="">' +
+        '<img class="brand__mark" src="' + LOGO + '" width="64" height="64" alt="">' +
         '<span class="brand__name">Morgan Trading Co.<small>Buy · Sell · Trade</small></span>' +
       '</a>' +
       '<ul class="nav__links" id="nav-links">' + links + '</ul>' +
