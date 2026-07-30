@@ -116,7 +116,7 @@
     '<a class="skip-link" href="#main">Skip to content</a>' +
     '<header class="site-header"><div class="container"><nav class="nav" aria-label="Primary">' +
       '<a class="brand" href="' + p("index.html") + '" aria-label="' + BIZ.name + ' home">' +
-        '<img class="brand__mark" src="' + LOGO + '" width="64" height="64" alt="">' +
+        '<img class="brand__mark" src="' + LOGO + '" width="76" height="76" alt="">' +
         '<span class="brand__name">Morgan Trading Co.<small>Buy · Sell · Trade</small></span>' +
       '</a>' +
       '<ul class="nav__links" id="nav-links">' + links + '</ul>' +
@@ -139,7 +139,10 @@
     '<footer class="site-footer"><div class="container">' +
       '<div class="footer-grid">' +
         '<div>' +
-          '<div class="footer-brand__name">Morgan Trading Company</div>' +
+          '<div class="footer-brand">' +
+            '<div class="footer-brand__name">Morgan Trading Company</div>' +
+            '<div class="footer-brand__tag">Buy · Sell · Trade</div>' +
+          '</div>' +
           '<p style="max-width:34ch">Northern Michigan’s trusted buy, sell &amp; trade destination — firearms, precious metals, jewelry, and luxury goods.</p>' +
           badge +
           '<div class="social" style="margin-top:1.2rem">' +
