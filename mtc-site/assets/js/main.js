@@ -51,7 +51,9 @@
     clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     fb: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12z"/></svg>',
     check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-    arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+    arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+    sun: '<svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    moon: '<svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
   };
 
   /* ---- Store hours (0=Sun .. 6=Sat) ---------------------------------- */
@@ -96,6 +98,7 @@
       '</a>' +
       '<ul class="nav__links" id="nav-links">' + links + '</ul>' +
       '<div class="nav__cta">' +
+        '<button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">' + I.sun + I.moon + '</button>' +
         '<a class="nav__phone nav__phone--header" href="' + BIZ.phoneHref + '">' + I.phone + BIZ.phone + '</a>' +
         '<a class="btn btn--gold nav__sell" href="' + p("sell.html") + '">Get an Offer</a>' +
         '<button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><span></span></button>' +
@@ -154,6 +157,17 @@
     var foot = document.getElementById("site-footer-mount");
     if (head) head.outerHTML = renderHeader();
     if (foot) foot.outerHTML = renderFooter();
+
+    // Theme toggle (init script in <head> already set the initial theme)
+    var themeBtn = document.getElementById("theme-toggle");
+    if (themeBtn) {
+      themeBtn.addEventListener("click", function () {
+        var cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        var next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try { localStorage.setItem("mtc-theme", next); } catch (e) {}
+      });
+    }
 
     // Mobile menu
     var toggle = document.getElementById("nav-toggle");
