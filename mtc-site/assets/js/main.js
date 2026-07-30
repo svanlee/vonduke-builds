@@ -65,7 +65,7 @@
     { label: "Contact",  key: "contact",  href: p("contact.html") }
   ];
 
-  var LOGO = p("assets/img/mtc-logo.png");
+  var LOGO = p("assets/img/mtc-logo.png") + "?v=2";
 
   /* ---- SVG icons ------------------------------------------------------ */
   var I = {
