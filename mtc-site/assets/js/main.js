@@ -89,7 +89,21 @@
   // Online" / "Browse Live Inventory" button lights up and points to it
   // (opening in a new tab). Blank = the Shop Online page shows its
   // "coming soon" state and the store links fall back to contact/phone.
-  var STORE = { url: "https://www.buya.com/StoreProfile/About/MORGAN-TRADING-COMPANY-ALPENA/3535" };
+  // url    — storefront link (fallback button / "view all")
+  // id      — Buya store id; enables the live product grid via Buya's public
+  //           JSON API (/api/stores/<id>/products, CORS-enabled). Blank = no grid.
+  // apiBase — Buya origin the API is served from.
+  // maxItems— how many item cards to render on our page (rest → "view all").
+  // NOTE: this reads Buya's undocumented public API. It works today and only
+  // shows the store's own items, but it isn't an official integration — if
+  // Buya changes it, the grid quietly falls back to the "View all on Buya"
+  // button. The blessed long-term path is Bravo's branded-website add-on.
+  var STORE = {
+    url: "https://www.buya.com/StoreProfile/About/MORGAN-TRADING-COMPANY-ALPENA/3535",
+    id: "3535",
+    apiBase: "https://www.buya.com",
+    maxItems: 24
+  };
 
   // Primary navigation (label, page-key, href)
   var NAV = [
@@ -384,6 +398,78 @@
     document.querySelectorAll("[data-store-when]").forEach(function (el) {
       el.hidden = (el.getAttribute("data-store-when") === "live") !== storeLive;
     });
+
+    // Live product grid (no-op unless STORE.id + a #store-items mount exist)
+    loadStoreItems();
+  }
+
+  /* ---- Live product grid (Buya store API) ---------------------------- */
+  function money(p) {
+    if (!p || p.amount == null) return "";
+    var n = parseFloat(p.amount);
+    return isNaN(n) ? "" : "$" + n.toFixed(2);
+  }
+  function storeItemsMarkup(items) {
+    return '<div class="store-grid">' + items.map(function (it) {
+      var img = it.image || {};
+      var src = img.path || "", hi = img.hiDpiPath || "";
+      var href = STORE.apiBase + (it.infoUrl || "");
+      var name = escHtml(it.name || "");
+      var price = money(it.actualPrice);
+      var orig = it.originalPrice;
+      var was = (orig && it.actualPrice && parseFloat(orig.amount) > parseFloat(it.actualPrice.amount))
+        ? '<span class="product-card__was">' + escHtml(money(orig)) + '</span>' : '';
+      var srcset = (src && hi) ? ' srcset="' + escHtml(src) + ' 1x, ' + escHtml(hi) + ' 2x"' : '';
+      var pic = src ? '<img src="' + escHtml(src) + '"' + srcset + ' loading="lazy" decoding="async" alt="' + name + '">' : '';
+      return '<a class="product-card" href="' + escHtml(href) + '" target="_blank" rel="noopener">' +
+        '<div class="product-card__img">' + pic + '</div>' +
+        '<div class="product-card__body"><h3 class="product-card__name">' + name + '</h3>' +
+        '<div class="product-card__price">' + escHtml(price) + was + '</div></div></a>';
+    }).join("") + '</div>';
+  }
+  function loadStoreItems() {
+    var mountEl = document.getElementById("store-items");
+    if (!mountEl || !STORE.id) return;
+    var CACHE = "mtc-storeitems-" + STORE.id, TTL = 15 * 60 * 1000;
+
+    function render(items) {
+      var avail = items.filter(function (i) { return !i.isSold && !i.isOutOfStock; });
+      if (!avail.length) return false;
+      mountEl.innerHTML = storeItemsMarkup(avail.slice(0, STORE.maxItems || 24));
+      mountEl.hidden = false;
+      document.querySelectorAll("[data-store-count]").forEach(function (el) { el.textContent = avail.length; });
+      document.querySelectorAll("[data-store-total]").forEach(function (el) { el.hidden = false; });
+      return true;
+    }
+
+    try {
+      var c = JSON.parse(localStorage.getItem(CACHE) || "null");
+      if (c && (Date.now() - c.t) < TTL && c.d) { if (render(c.d)) return; }
+    } catch (e) {}
+
+    var base = STORE.apiBase + "/api/stores/" + STORE.id + "/products";
+    fetch(base)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) {
+        var items = (d.items || []).slice();
+        var pager = (d.toolbar && d.toolbar.pager) || {};
+        var pages = Math.min(pager.pagesCount || 1, 3); // cap paging
+        var more = [];
+        for (var p = 2; p <= pages; p++) {
+          more.push(fetch(base + "?page=" + p)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; }));
+        }
+        return Promise.all(more).then(function (rest) {
+          rest.forEach(function (rd) { if (rd && rd.items) items = items.concat(rd.items); });
+          try { localStorage.setItem(CACHE, JSON.stringify({ t: Date.now(), d: items })); } catch (e) {}
+          render(items);
+        });
+      })
+      .catch(function (err) {
+        // Silent: the "View all on Buya" button remains as the fallback.
+        if (window.console) console.warn("Live inventory unavailable:", err.message);
+      });
   }
 
   /* ---- Live Google reviews widget ------------------------------------ */
