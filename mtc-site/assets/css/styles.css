@@ -332,15 +332,20 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
    Responsive: mobile nav
    ========================================================================= */
 @media (max-width: 1024px) {
+  /* backdrop-filter turns the header into a containing block for fixed
+     descendants, which traps the fixed mobile menu inside the header.
+     Drop it here (and use a solid header bg) so the menu fills the screen. */
+  .site-header { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--cream); }
   .nav__toggle { display:inline-flex; }
   .nav__links {
     position: fixed; inset: var(--header-h) 0 0 auto; width: min(86vw, 360px);
+    z-index: 120;
     flex-direction: column; align-items: stretch; gap:0;
     background: var(--cream); border-left:1px solid var(--line); box-shadow: var(--shadow-lg);
     padding: 1rem; overflow-y:auto;
     transform: translateX(100%); transition: transform .32s var(--ease);
   }
-  body.menu-open .nav__links { transform: translateX(0); }
+  body.menu-open .nav__links { transform: translateX(0) !important; }
   .nav__links a { padding: .9rem .6rem; font-size:1.05rem; border-bottom:1px solid var(--line); }
   .nav__links a[aria-current="page"]::after { display:none; }
   .submenu {
