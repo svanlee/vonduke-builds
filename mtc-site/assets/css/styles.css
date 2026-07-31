@@ -271,7 +271,22 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 
 /* Review stars */
 .stars { color: var(--gold); letter-spacing: .12em; font-size: 1.05rem; }
+.stars--lg { font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: .18em; line-height:1; }
 .info-card blockquote { font-family: var(--serif); font-style: italic; line-height: 1.5; color: var(--ink); }
+
+/* Verified rating showcase (aggregate social proof) */
+.rating-showcase {
+  max-width: 720px; margin-inline:auto; text-align:center;
+  background: var(--paper); border:1px solid var(--line); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); padding: clamp(2rem,5vw,3rem);
+  display:flex; flex-direction:column; align-items:center; gap:.85rem;
+}
+.rating-score { display:flex; align-items:baseline; gap:.5rem; }
+.rating-num { font-family: var(--serif); font-weight:700; color: var(--gold-deep); font-size: clamp(3rem,10vw,4.6rem); line-height:1; }
+.rating-outof { font-family: var(--sans); font-size:.9rem; letter-spacing:.14em; text-transform:uppercase; color: var(--muted); }
+.rating-meta { color: var(--ink-soft); max-width: 46ch; margin:0; }
+.rating-meta strong { color: var(--ink); }
+.rating-actions { display:flex; flex-wrap:wrap; gap:.7rem; justify-content:center; margin-top:.6rem; }
 
 /* ---- Callout band ----------------------------------------------------- */
 .band { background: var(--ink); color:#fff; border-radius: var(--radius-lg); padding: clamp(2rem,5vw,4rem); text-align:center; }
