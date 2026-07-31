@@ -71,6 +71,17 @@
     gtag("js", new Date()); gtag("config", id);
   })();
 
+  // ---- Live Google reviews (optional) ----------------------------------
+  // Turn on the live Google Reviews widget by filling BOTH values below:
+  //   placeId — your Google Place ID (looks like "ChIJ...").
+  //   apiKey  — a Google Cloud API key with the "Places API (New)" enabled,
+  //             RESTRICTED to HTTP referrer = your site's domain so it can't
+  //             be abused. (Google ties this to your billing account; the
+  //             free monthly credit covers a small business's traffic.)
+  // Leave either blank and the page keeps the static verified-rating badge.
+  // Responses are cached in the browser for 12h to stay well inside quota.
+  var REVIEWS = { placeId: "", apiKey: "", minRating: 4, max: 6 };
+
   // Primary navigation (label, page-key, href)
   var NAV = [
     { label: "Home",  key: "home",  href: p("index.html") },
@@ -351,6 +362,101 @@
         });
       }
     }
+
+    // Live Google reviews (no-op unless configured)
+    loadReviews();
+  }
+
+  /* ---- Live Google reviews widget ------------------------------------ */
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function starRow(n) {
+    var r = Math.round(n), out = "";
+    for (var i = 0; i < 5; i++) out += i < r ? "★" : "☆";
+    return out;
+  }
+  function reviewsMarkup(data) {
+    var reviews = (data.reviews || []).filter(function (r) {
+      return (r.rating || 0) >= (REVIEWS.minRating || 0);
+    }).slice(0, REVIEWS.max || 6);
+    if (!reviews.length) return "";
+    var mapsUri = data.googleMapsUri || "https://www.google.com/maps/search/?api=1&query=Morgan%20Trading%20Company%20Gaylord%20MI";
+    var rating = (data.rating || 0).toFixed(1);
+    var count = data.userRatingCount || 0;
+
+    var head =
+      '<div class="reviews-live__head">' +
+        '<div class="rating-score"><span class="rating-num">' + escHtml(rating) + '</span><span class="rating-outof">out of 5</span></div>' +
+        '<div class="stars stars--lg" role="img" aria-label="' + escHtml(rating) + ' out of 5 stars">' + starRow(data.rating || 0) + '</div>' +
+        '<p class="rating-meta">Based on <strong>' + escHtml(count) + '</strong> Google reviews</p>' +
+      '</div>';
+
+    var cards = reviews.map(function (r) {
+      var author = (r.authorAttribution && r.authorAttribution.displayName) || "Google user";
+      var uri = (r.authorAttribution && r.authorAttribution.uri) || mapsUri;
+      var initial = escHtml(author.trim().charAt(0).toUpperCase() || "G");
+      var when = escHtml(r.relativePublishTimeDescription || "");
+      var text = (r.text && r.text.text) || r.originalText && r.originalText.text || "";
+      return '' +
+        '<figure class="review-card">' +
+          '<div class="review-card__top">' +
+            '<span class="review-card__avatar" aria-hidden="true">' + initial + '</span>' +
+            '<div><a class="review-card__name" href="' + escHtml(uri) + '" target="_blank" rel="noopener nofollow">' + escHtml(author) + '</a>' +
+            '<div class="review-card__meta"><span class="stars" aria-label="' + (r.rating || 0) + ' star review">' + starRow(r.rating || 0) + '</span>' + (when ? '<span class="review-card__when">' + when + '</span>' : '') + '</div></div>' +
+          '</div>' +
+          '<blockquote class="review-card__text">' + escHtml(text) + '</blockquote>' +
+        '</figure>';
+    }).join("");
+
+    return head +
+      '<div class="reviews-live__grid">' + cards + '</div>' +
+      '<div class="reviews-live__foot"><a class="btn btn--gold" href="' + escHtml(mapsUri) + '" target="_blank" rel="noopener">Read all reviews on Google</a>' +
+      '<span class="reviews-live__attrib">Reviews from Google</span></div>';
+  }
+  function renderReviews(mountEl, data) {
+    var html = reviewsMarkup(data);
+    if (!html) return false;
+    mountEl.innerHTML = html;
+    mountEl.hidden = false;
+    // Hide the static fallback badge now that live reviews are showing
+    var badge = document.querySelector(".rating-showcase");
+    if (badge) badge.hidden = true;
+    return true;
+  }
+  function loadReviews() {
+    var mountEl = document.getElementById("reviews-live");
+    if (!mountEl) return;
+    if (!REVIEWS.placeId || !REVIEWS.apiKey) return; // not configured → keep badge
+
+    var CACHE_KEY = "mtc-reviews-" + REVIEWS.placeId;
+    var TTL = 12 * 60 * 60 * 1000; // 12h
+    try {
+      var cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (cached && (Date.now() - cached.t) < TTL && cached.d) {
+        if (renderReviews(mountEl, cached.d)) return;
+      }
+    } catch (e) {}
+
+    var url = "https://places.googleapis.com/v1/places/" + encodeURIComponent(REVIEWS.placeId);
+    fetch(url, {
+      headers: {
+        "X-Goog-Api-Key": REVIEWS.apiKey,
+        "X-Goog-FieldMask": "rating,userRatingCount,googleMapsUri,reviews"
+      }
+    })
+    .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
+    .then(function (data) {
+      if (!data || !data.reviews) throw new Error("no reviews in response");
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+      renderReviews(mountEl, data);
+    })
+    .catch(function (err) {
+      // Silent: the static verified-rating badge remains as the fallback.
+      if (window.console) console.warn("Live reviews unavailable:", err.message);
+    });
   }
 
   if (document.readyState === "loading") {

@@ -288,6 +288,21 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 .rating-meta strong { color: var(--ink); }
 .rating-actions { display:flex; flex-wrap:wrap; gap:.7rem; justify-content:center; margin-top:.6rem; }
 
+/* Live Google reviews widget */
+.reviews-live__head { text-align:center; display:flex; flex-direction:column; align-items:center; gap:.5rem; margin-bottom: clamp(1.6rem,4vw,2.4rem); }
+.reviews-live__grid { display:grid; gap: clamp(1rem,2vw,1.4rem); grid-template-columns: repeat(auto-fit, minmax(min(100%,300px),1fr)); }
+.review-card { margin:0; padding:1.4rem 1.5rem; background: var(--paper); border:1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:.7rem; }
+.review-card__top { display:flex; align-items:center; gap:.8rem; }
+.review-card__avatar { flex:0 0 auto; width:42px; height:42px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-family: var(--serif); font-weight:700; font-size:1.15rem; color:#fff; background: var(--gold-deep); }
+.review-card__name { font-weight:600; color: var(--ink); border-bottom:1px solid transparent; }
+.review-card__name:hover { border-bottom-color: var(--gold); }
+.review-card__meta { display:flex; align-items:center; gap:.5rem; margin-top:.15rem; }
+.review-card__meta .stars { font-size:.9rem; }
+.review-card__when { font-size:.8rem; color: var(--muted); }
+.review-card__text { font-family: var(--serif); font-style:italic; line-height:1.55; color: var(--ink-soft); margin:0; }
+.reviews-live__foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:1rem; margin-top: clamp(1.6rem,4vw,2.2rem); }
+.reviews-live__attrib { font-size:.78rem; letter-spacing:.06em; color: var(--muted); }
+
 /* ---- Callout band ----------------------------------------------------- */
 .band { background: var(--ink); color:#fff; border-radius: var(--radius-lg); padding: clamp(2rem,5vw,4rem); text-align:center; }
 .band h2 { color:#fff; }
