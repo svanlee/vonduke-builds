@@ -45,6 +45,32 @@
     locations: LOCATIONS
   };
 
+  // ---- Form delivery ---------------------------------------------------
+  // Forms POST to Web3Forms (free, no backend). To ACTIVATE: get a free
+  // access key at https://web3forms.com (enter the shop's email — that's
+  // where submissions are delivered) and paste it below. Until then, forms
+  // fall back to opening the visitor's email app addressed to the shop.
+  var FORMS = {
+    accessKey: "YOUR_WEB3FORMS_ACCESS_KEY", // <-- paste the real key here
+    endpoint: "https://api.web3forms.com/submit",
+    fallbackEmail: "info@morgantradingcompany.com"
+  };
+
+  // ---- Analytics -------------------------------------------------------
+  // Optional. To turn on Google Analytics 4, paste your Measurement ID
+  // (looks like "G-XXXXXXXXXX"). Left blank = no analytics, no cookies.
+  var ANALYTICS = { ga4: "" };
+  (function () {
+    var id = ANALYTICS.ga4;
+    if (!id || id.indexOf("G-") !== 0) return;
+    var s = document.createElement("script");
+    s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + id;
+    document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    gtag("js", new Date()); gtag("config", id);
+  })();
+
   // Primary navigation (label, page-key, href)
   var NAV = [
     { label: "Home",  key: "home",  href: p("index.html") },
@@ -154,6 +180,7 @@
           '<li><a href="' + p("trade.html") + '">Trade</a></li>' +
           '<li><a href="' + p("layaway.html") + '">Layaway</a></li>' +
           '<li><a href="' + p("live-display/index.html") + '">Live Display</a></li>' +
+          '<li><a href="' + p("faq.html") + '">FAQ</a></li>' +
         '</ul></div>' +
         '<div><h4>Shop</h4><ul class="footer-links">' +
           '<li><a href="' + p("firearms.html") + '">Firearms &amp; Ammo</a></li>' +
@@ -197,6 +224,49 @@
         try { localStorage.setItem("mtc-theme", next); } catch (e) {}
       });
     }
+
+    // Contact / lead forms → Web3Forms (with mailto fallback)
+    document.querySelectorAll("form.mtc-form").forEach(function (form) {
+      var status = form.querySelector(".form-status");
+      var btn = form.querySelector('[type="submit"]');
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (form.reportValidity && !form.reportValidity()) return;
+        var data = new FormData(form);
+        var subject = form.getAttribute("data-subject") || "New message from the website";
+        function show(msg, ok) {
+          if (!status) return;
+          status.hidden = false;
+          status.textContent = msg;
+          status.style.color = ok ? "var(--success)" : "var(--danger)";
+        }
+        // Fallback: no key configured → open the visitor's email client
+        if (!FORMS.accessKey || FORMS.accessKey.indexOf("YOUR_") === 0) {
+          var body = [];
+          data.forEach(function (v, k) { body.push(k + ": " + v); });
+          window.location.href = "mailto:" + FORMS.fallbackEmail +
+            "?subject=" + encodeURIComponent(subject) +
+            "&body=" + encodeURIComponent(body.join("\n"));
+          show("Opening your email app to send this to us…", true);
+          return;
+        }
+        data.append("access_key", FORMS.accessKey);
+        data.append("subject", subject);
+        data.append("from_name", "MTC Website");
+        var orig = btn ? btn.textContent : "";
+        if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+        fetch(FORMS.endpoint, { method: "POST", body: data })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (j.success) {
+              form.reset();
+              show("Thanks! We got your message and will be in touch shortly. For the fastest response, call " + BIZ.phone + ".", true);
+            } else { show("Something went wrong — please call us at " + BIZ.phone + ".", false); }
+          })
+          .catch(function () { show("Couldn't send just now — please call us at " + BIZ.phone + ".", false); })
+          .then(function () { if (btn) { btn.disabled = false; btn.textContent = orig; } });
+      });
+    });
 
     // Mobile menu
     var toggle = document.getElementById("nav-toggle");

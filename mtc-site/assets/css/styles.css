@@ -258,6 +258,10 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 .status-badge.is-closed { background:#f6e7e3; color: var(--danger); }
 .status-badge.is-closed .dot { background: var(--danger); }
 
+/* Review stars */
+.stars { color: var(--gold); letter-spacing: .12em; font-size: 1.05rem; }
+.info-card blockquote { font-family: var(--serif); font-style: italic; line-height: 1.5; color: var(--ink); }
+
 /* ---- Callout band ----------------------------------------------------- */
 .band { background: var(--ink); color:#fff; border-radius: var(--radius-lg); padding: clamp(2rem,5vw,4rem); text-align:center; }
 .band h2 { color:#fff; }

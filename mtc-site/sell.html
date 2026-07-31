@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/styles.css?v=202607301932">
+  <link rel="stylesheet" href="assets/css/styles.css?v=202607311348">
   <script>(function(){try{var t=localStorage.getItem("mtc-theme")||"dark";document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body data-page="sell" data-base=".">
@@ -17,7 +17,7 @@
   <main id="main">
 
     <section class="page-hero">
-      <div class="page-hero__media"><img src="assets/img/gold-coins.png" alt=""></div>
+      <div class="page-hero__media"><img src="assets/img/gold-coins.webp" alt="Gold, silver bars and collectible coins" decoding="async" loading="lazy"></div>
       <div class="container"><div class="page-hero__inner">
         <p class="breadcrumb"><a href="index.html">Home</a> / Sell</p>
         <h1>Sell for Cash — Today</h1>
@@ -40,12 +40,12 @@
       <div class="container">
         <div class="sec-head center" data-reveal><p class="eyebrow">We Buy</p><h2>What You Can Sell Us</h2></div>
         <div class="cat-grid" data-reveal>
-          <a class="cat-card" href="firearms.html"><img src="assets/img/firearms.png" alt=""><div class="cat-card__label"><span>FFL Dealer</span><h3>Firearms &amp; Ammo</h3></div></a>
-          <a class="cat-card" href="gold-silver-coins.html"><img src="assets/img/gold-coins.png" alt=""><div class="cat-card__label"><span>Precious Metals</span><h3>Gold, Silver &amp; Coins</h3></div></a>
-          <a class="cat-card" href="jewelry.html"><img src="assets/img/jewelry.png" alt=""><div class="cat-card__label"><span>Fine Jewelry</span><h3>Jewelry &amp; Diamonds</h3></div></a>
-          <a class="cat-card" href="watches.html"><img src="assets/img/watches.png" alt=""><div class="cat-card__label"><span>Timepieces</span><h3>Luxury Watches</h3></div></a>
-          <a class="cat-card" href="luxury-handbags.html"><img src="assets/img/handbags.png" alt=""><div class="cat-card__label"><span>Designer</span><h3>Luxury Handbags</h3></div></a>
-          <a class="cat-card" href="general-merchandise.html"><img src="assets/img/instruments.png" alt=""><div class="cat-card__label"><span>And More</span><h3>General Merchandise</h3></div></a>
+          <a class="cat-card" href="firearms.html"><img src="assets/img/firearms.webp" alt="Firearms and ammunition — licensed FFL dealer" decoding="async" loading="lazy"><div class="cat-card__label"><span>FFL Dealer</span><h3>Firearms &amp; Ammo</h3></div></a>
+          <a class="cat-card" href="gold-silver-coins.html"><img src="assets/img/gold-coins.webp" alt="Gold, silver bars and collectible coins" decoding="async" loading="lazy"><div class="cat-card__label"><span>Precious Metals</span><h3>Gold, Silver &amp; Coins</h3></div></a>
+          <a class="cat-card" href="jewelry.html"><img src="assets/img/jewelry.webp" alt="Fine jewelry and diamonds" decoding="async" loading="lazy"><div class="cat-card__label"><span>Fine Jewelry</span><h3>Jewelry &amp; Diamonds</h3></div></a>
+          <a class="cat-card" href="watches.html"><img src="assets/img/watches.webp" alt="Luxury watches" decoding="async" loading="lazy"><div class="cat-card__label"><span>Timepieces</span><h3>Luxury Watches</h3></div></a>
+          <a class="cat-card" href="luxury-handbags.html"><img src="assets/img/handbags.webp" alt="Designer luxury handbags" decoding="async" loading="lazy"><div class="cat-card__label"><span>Designer</span><h3>Luxury Handbags</h3></div></a>
+          <a class="cat-card" href="general-merchandise.html"><img src="assets/img/instruments.webp" alt="General merchandise including musical instruments" decoding="async" loading="lazy"><div class="cat-card__label"><span>And More</span><h3>General Merchandise</h3></div></a>
         </div>
       </div>
     </section>
@@ -60,7 +60,7 @@
             <p class="lead">Send a few details and photos and we'll follow up with an estimate. Final offers are always confirmed in person.</p>
             <p style="margin-top:1rem">Prefer to talk? Call <a href="tel:+19894482236" style="color:var(--gold-deep);font-weight:600">(989) 448-2236</a>.</p>
           </div>
-          <form class="info-card" onsubmit="return MTCsellForm(event)" novalidate>
+          <form class="mtc-form info-card" data-subject="New Sell Quote — MTC Website" novalidate>
             <div class="form-grid">
               <div class="field"><label for="n">Name</label><input id="n" name="name" required></div>
               <div class="field"><label for="ph">Phone</label><input id="ph" name="phone" type="tel" required></div>
@@ -73,7 +73,7 @@
               <div class="field full"><label for="d">Item details</label><textarea id="d" name="details" placeholder="Brand, model, condition, quantity…"></textarea></div>
             </div>
             <button class="btn btn--gold btn--lg full" type="submit" style="width:100%;margin-top:1rem">Request My Estimate</button>
-            <p id="sell-msg" style="margin:.8rem 0 0;font-size:.9rem;color:var(--success);display:none">Thanks! We'll be in touch shortly. For the fastest response, call (989) 448-2236.</p>
+            <p class="form-status" hidden style="margin:.8rem 0 0;font-size:.9rem"></p>
           </form>
         </div>
       </div>
@@ -89,10 +89,6 @@
 
   </main>
   <div id="site-footer-mount"></div>
-  <script src="assets/js/main.js?v=202607301932"></script>
-  <script>
-    function MTCsellForm(e){e.preventDefault();var f=e.target;if(!f.name.value||!f.phone.value){f.reportValidity&&f.reportValidity();return false;}
-      document.getElementById('sell-msg').style.display='block';f.reset();return false;}
-  </script>
+  <script src="assets/js/main.js?v=202607311348"></script>
 </body>
 </html>

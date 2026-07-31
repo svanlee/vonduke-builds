@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/styles.css?v=202607301932">
+  <link rel="stylesheet" href="assets/css/styles.css?v=202607311348">
   <script>(function(){try{var t=localStorage.getItem("mtc-theme")||"dark";document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body data-page="careers" data-base=".">
@@ -17,7 +17,7 @@
   <main id="main">
 
     <section class="page-hero">
-      <div class="page-hero__media"><img src="assets/img/instruments.png" alt=""></div>
+      <div class="page-hero__media"><img src="assets/img/instruments.webp" alt="General merchandise including musical instruments" decoding="async" loading="lazy"></div>
       <div class="container"><div class="page-hero__inner">
         <p class="breadcrumb"><a href="index.html">Home</a> / Careers</p>
         <h1>Join the Team</h1>
@@ -39,7 +39,7 @@
               <li>Willingness to learn and grow with us</li>
             </ul>
           </div>
-          <form class="info-card" onsubmit="return MTCcareers(event)" novalidate>
+          <form class="mtc-form info-card" data-subject="New Careers Inquiry — MTC Website" novalidate>
             <h3 style="margin-top:0">Express Interest</h3>
             <div class="form-grid">
               <div class="field"><label for="cn">Name</label><input id="cn" name="name" required></div>
@@ -48,7 +48,7 @@
               <div class="field full"><label for="cm">Tell us about yourself</label><textarea id="cm" name="message" placeholder="Your experience and what you're interested in…"></textarea></div>
             </div>
             <button class="btn btn--gold btn--lg" type="submit" style="width:100%;margin-top:1rem">Submit Interest</button>
-            <p id="c-msg" style="margin:.8rem 0 0;font-size:.9rem;color:var(--success);display:none">Thanks for your interest! We'll reach out if there's a fit. You're also welcome to stop by in person.</p>
+            <p class="form-status" hidden style="margin:.8rem 0 0;font-size:.9rem"></p>
           </form>
         </div>
       </div>
@@ -56,7 +56,6 @@
 
   </main>
   <div id="site-footer-mount"></div>
-  <script src="assets/js/main.js?v=202607301932"></script>
-  <script>function MTCcareers(e){e.preventDefault();var f=e.target;if(!f.name.value||!f.phone.value){f.reportValidity&&f.reportValidity();return false;}document.getElementById('c-msg').style.display='block';f.reset();return false;}</script>
+  <script src="assets/js/main.js?v=202607311348"></script>
 </body>
 </html>

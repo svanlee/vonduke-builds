@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/styles.css?v=202607301932">
+  <link rel="stylesheet" href="assets/css/styles.css?v=202607311348">
   <script>(function(){try{var t=localStorage.getItem("mtc-theme")||"dark";document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body data-page="contact" data-base=".">
@@ -17,7 +17,7 @@
   <main id="main">
 
     <section class="page-hero">
-      <div class="page-hero__media"><img src="assets/img/gold-coins.png" alt=""></div>
+      <div class="page-hero__media"><img src="assets/img/gold-coins.webp" alt="Gold, silver bars and collectible coins" decoding="async" loading="lazy"></div>
       <div class="container"><div class="page-hero__inner">
         <p class="breadcrumb"><a href="index.html">Home</a> / Locations</p>
         <h1>Two Locations to Serve You</h1>
@@ -73,6 +73,32 @@
       </div>
     </section>
 
+    <!-- Contact form -->
+    <section class="section bg-cream-2">
+      <div class="container">
+        <div class="split" data-reveal>
+          <div>
+            <p class="eyebrow">Send a Message</p>
+            <h2>Questions? Reach Out</h2>
+            <p class="lead">Have a question about buying, selling, trading, layaway, or a specific item? Send us a note and we'll get back to you.</p>
+            <p style="margin-top:1rem">Prefer to talk now? Call <a href="tel:+19894482236" style="color:var(--gold-deep);font-weight:600">(989) 448-2236</a> (Gaylord) or <a href="tel:+19893402010" style="color:var(--gold-deep);font-weight:600">(989) 340-2010</a> (Alpena).</p>
+          </div>
+          <form class="mtc-form info-card" data-subject="New Contact Message — MTC Website" novalidate>
+            <div class="form-grid">
+              <div class="field"><label for="cn">Name</label><input id="cn" name="name" required></div>
+              <div class="field"><label for="cp">Phone</label><input id="cp" name="phone" type="tel"></div>
+              <div class="field full"><label for="ce">Email</label><input id="ce" name="email" type="email" required></div>
+              <div class="field full"><label for="cl">Which location?</label>
+                <select id="cl" name="location"><option>Either / No preference</option><option>Gaylord</option><option>Alpena</option></select></div>
+              <div class="field full"><label for="cmsg">Message</label><textarea id="cmsg" name="message" required placeholder="How can we help?"></textarea></div>
+            </div>
+            <button class="btn btn--gold btn--lg" type="submit" style="width:100%;margin-top:1rem">Send Message</button>
+            <p class="form-status" hidden style="margin:.8rem 0 0;font-size:.9rem"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <section class="section--tight"><div class="container">
       <div class="band" data-reveal>
         <h2>Follow Us on Facebook</h2>
@@ -83,6 +109,6 @@
 
   </main>
   <div id="site-footer-mount"></div>
-  <script src="assets/js/main.js?v=202607301932"></script>
+  <script src="assets/js/main.js?v=202607311348"></script>
 </body>
 </html>
