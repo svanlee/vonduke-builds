@@ -16,6 +16,7 @@ a veto layer with no log is unfalsifiable.
 """
 
 import json
+import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from typing import Callable, Optional
 MESH_LLM_URL     = "http://127.0.0.1:9337/v1/chat/completions"
 MESH_LLM_TIMEOUT = 2.0          # hard cap — slow veto = failed veto
 MESH_LLM_MODEL   = "mesh-llm"
+AUDIT_LOG_PATH   = "data/supervisor_audit.jsonl"
 
 
 class Ruling(str, Enum):
@@ -218,17 +220,17 @@ class Supervisor:
             v = inv(proposed, current, belief)
             if v is not None:
                 v.latency_ms = (time.perf_counter() - t0) * 1000
-                return self._finish(v)
+                return self._finish(v, current)
 
         if self.enable_tier2 and proposed not in FAST_PATH:
             v = self._tier2(proposed, current, belief)
             if v is not None:
                 v.latency_ms = (time.perf_counter() - t0) * 1000
-                return self._finish(v)
+                return self._finish(v, current)
 
         return self._finish(Verdict(
             Ruling.ALLOW, "pass", 1, proposed,
-            latency_ms=(time.perf_counter() - t0) * 1000))
+            latency_ms=(time.perf_counter() - t0) * 1000), current)
 
     # ----------------------------------------------------------------- private
 
@@ -271,7 +273,7 @@ class Supervisor:
             print(f"[supervisor] tier2 unavailable ({e}) — failing open")
             return None
 
-    def _finish(self, v: Verdict) -> Verdict:
+    def _finish(self, v: Verdict, current: str) -> Verdict:
         self.stats[v.ruling.value] += 1
         if v.ruling is not Ruling.ALLOW:
             print(f'[SUPERVISOR] {v.ruling.value.upper()} {v.proposed}'
@@ -284,4 +286,23 @@ class Supervisor:
                     v.reason += " | human override"
             except Exception:
                 pass
+        self._append_audit(v, current)
         return v
+
+    def _append_audit(self, v: Verdict, current: str) -> None:
+        """Append-only audit trail — every verdict, no exceptions. See
+        module docstring: a veto layer with no log is unfalsifiable."""
+        verdict_name = "VETO" if v.ruling is Ruling.DENY else v.ruling.value.upper()
+        row = {
+            "timestamp":  time.time(),
+            "from_state": current,
+            "to_state":   v.proposed,
+            "verdict":    verdict_name,
+            "reason":     v.reason,
+        }
+        try:
+            os.makedirs(os.path.dirname(AUDIT_LOG_PATH), exist_ok=True)
+            with open(AUDIT_LOG_PATH, "a") as f:
+                f.write(json.dumps(row) + "\n")
+        except Exception as e:
+            print(f"[supervisor] audit log write failed: {e}")
