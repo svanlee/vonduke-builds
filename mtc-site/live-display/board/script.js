@@ -307,6 +307,57 @@
     return filename.replace(/\.[^/.]+$/, "").replace(/[-_]\d+$/, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ---- Live product photos from the store's Buya inventory ----
+  async function discoverStoreItems() {
+    const cfg = CFG.storeItems;
+    if (!cfg || !cfg.enabled || !Array.isArray(cfg.stores) || !cfg.stores.length) return [];
+    const CACHE = "mtc_board_items_v1", TTL = (cfg.cacheMinutes || 15) * 60 * 1000;
+    try {
+      const c = JSON.parse(localStorage.getItem(CACHE) || "null");
+      if (c && (Date.now() - c.t) < TTL && Array.isArray(c.d) && c.d.length) return c.d;
+    } catch (e) { /* fall through to fetch */ }
+
+    const size = cfg.imageSize || "800x800";
+    const all = [];
+    await Promise.all(cfg.stores.map(async function (st) {
+      try {
+        let page = 1, pages = 1, got = 0;
+        do {
+          const res = await fetch(cfg.apiBase + "/api/stores/" + st.id + "/products?page=" + page, { cache: "no-store" });
+          if (!res.ok) break;
+          const d = await res.json();
+          const pager = (d.toolbar && d.toolbar.pager) || {};
+          pages = Math.min(pager.pagesCount || 1, 4);
+          (d.items || []).forEach(function (it) {
+            if (it.isSold || it.isOutOfStock) return;
+            const raw = (it.image && it.image.path) || "";
+            if (!raw) return;
+            const img = raw.replace(/\/Image\/\d+x\d+_/, "/Image/" + size + "_");
+            const amt = it.actualPrice && it.actualPrice.amount;
+            const price = amt != null ? "$" + parseFloat(amt).toFixed(2) : "";
+            all.push({ image: img, name: it.name || "", price: price, location: st.label || "" });
+            got++;
+          });
+          page++;
+        } while (page <= pages && got < (cfg.maxPerStore || 40));
+      } catch (e) { /* skip this store; others still load */ }
+    }));
+
+    // Shuffle so both locations' items are mixed through the rotation.
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = all[i]; all[i] = all[j]; all[j] = t;
+    }
+    try { localStorage.setItem(CACHE, JSON.stringify({ t: Date.now(), d: all })); } catch (e) {}
+    return all;
+  }
+
   async function discoverImages() {
     const { manifestPath, imageFolder } = CFG.slideshow;
     try {
@@ -374,6 +425,33 @@
     return { el: div, kind: "image" };
   }
 
+  function buildStoreItemSlide(item) {
+    const div = document.createElement("div");
+    div.className = "slide slide--image slide--item";
+    div.style.backgroundImage = `url("${item.image}")`;
+    const caption = document.createElement("div");
+    caption.className = "slide-caption slide-caption--item";
+    const showPrice = !CFG.storeItems || CFG.storeItems.showPrice !== false;
+    const showLoc = !CFG.storeItems || CFG.storeItems.showLocation !== false;
+    caption.innerHTML =
+      `<span class="item-name">${escapeHtml(item.name)}</span>` +
+      (showPrice && item.price ? `<span class="item-price">${escapeHtml(item.price)}</span>` : "") +
+      (showLoc && item.location ? `<span class="item-loc">${escapeHtml(item.location)}</span>` : "");
+    div.appendChild(caption);
+    return { el: div, kind: "image" };
+  }
+
+  // Alternate two slide lists (store items / showroom photos), appending
+  // whatever is left once the shorter list runs out.
+  function weave(a, b) {
+    const out = [], n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      if (i < a.length) out.push(a[i]);
+      if (i < b.length) out.push(b[i]);
+    }
+    return out;
+  }
+
   function buildVideoSlide(src) {
     const div = document.createElement("div");
     div.className = "slide slide--video";
@@ -427,9 +505,11 @@
     const container = document.getElementById("slideshow");
     const emptyState = document.getElementById("slideshow-empty");
 
-    const [images, videos, promos] = await Promise.all([discoverImages(), discoverVideos(), discoverPromotions()]);
+    const [images, videos, promos, storeItems] = await Promise.all([
+      discoverImages(), discoverVideos(), discoverPromotions(), discoverStoreItems(),
+    ]);
 
-    if (!images.length && !videos.length && !promos.length) {
+    if (!images.length && !videos.length && !promos.length && !storeItems.length) {
       emptyState.hidden = false;
       return;
     }
@@ -441,7 +521,10 @@
     let imageOrder = images.slice();
     if (CFG.slideshow.shuffle) imageOrder = imageOrder.sort(() => Math.random() - 0.5);
 
-    const imageSlides = imageOrder.map(buildImageSlide);
+    // Weave live product photos in among the showroom photos so both show.
+    const storeSlides = storeItems.map(buildStoreItemSlide);
+    const showroomSlides = imageOrder.map(buildImageSlide);
+    const imageSlides = storeSlides.length ? weave(storeSlides, showroomSlides) : showroomSlides;
     const videoSlideDefs = videos.map(buildVideoSlide);
     const promoSlideDefs = promos.map(buildPromoSlide);
 

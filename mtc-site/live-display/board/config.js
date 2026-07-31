@@ -101,6 +101,25 @@ window.MTC_CONFIG = {
     captionColor: {},
   },
 
+  // Live product photos pulled from the store's Buya inventory. These are
+  // woven in among the showroom photos, each captioned with the item name +
+  // price. Reads Buya's public JSON API (/api/stores/<id>/products), which is
+  // CORS-enabled; if it's ever unreachable the board just shows the local
+  // showroom photos as before. Set enabled:false to turn the feed off.
+  storeItems: {
+    enabled: true,
+    apiBase: "https://www.buya.com",
+    stores: [
+      { id: "2272", label: "Gaylord" },
+      { id: "3535", label: "Alpena" },
+    ],
+    imageSize: "800x800", // Buya ImageService box; larger = crisper on a TV
+    maxPerStore: 40,
+    cacheMinutes: 15,
+    showPrice: true,
+    showLocation: true,
+  },
+
   promotions: {
     enabled: true,
     dataPath: "promotions.json",
