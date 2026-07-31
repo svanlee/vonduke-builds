@@ -82,6 +82,15 @@
   // Responses are cached in the browser for 12h to stay well inside quota.
   var REVIEWS = { placeId: "", apiKey: "", minRating: 4, max: 6 };
 
+  // ---- Online store (Bravo / Buya) -------------------------------------
+  // Bravo has no drop-in inventory widget for a third-party site; it powers
+  // an auto-synced storefront (Buya or a Bravo company-branded website)
+  // instead. Paste that storefront's public URL below and every "Shop
+  // Online" / "Browse Live Inventory" button lights up and points to it
+  // (opening in a new tab). Blank = the Shop Online page shows its
+  // "coming soon" state and the store links fall back to contact/phone.
+  var STORE = { url: "" };
+
   // Primary navigation (label, page-key, href)
   var NAV = [
     { label: "Home",  key: "home",  href: p("index.html") },
@@ -89,6 +98,7 @@
     { label: "Sell",  key: "sell",  href: p("sell.html") },
     { label: "Trade", key: "trade", href: p("trade.html") },
     { label: "Shop",  key: "shop",  href: p("shop.html"), children: [
+        { label: "Shop Online — Live Inventory", href: p("store.html") },
         { label: "Firearms & Ammo",      href: p("firearms.html") },
         { label: "Gold, Silver & Coins", href: p("gold-silver-coins.html") },
         { label: "Jewelry & Diamonds",   href: p("jewelry.html") },
@@ -365,6 +375,15 @@
 
     // Live Google reviews (no-op unless configured)
     loadReviews();
+
+    // Online store (Bravo/Buya) — wire buttons + toggle live/pending blocks
+    var storeLive = !!(STORE.url && /^https?:\/\//.test(STORE.url));
+    document.querySelectorAll("[data-store-link]").forEach(function (a) {
+      if (storeLive) { a.href = STORE.url; a.target = "_blank"; a.rel = "noopener"; }
+    });
+    document.querySelectorAll("[data-store-when]").forEach(function (el) {
+      el.hidden = (el.getAttribute("data-store-when") === "live") !== storeLive;
+    });
   }
 
   /* ---- Live Google reviews widget ------------------------------------ */
