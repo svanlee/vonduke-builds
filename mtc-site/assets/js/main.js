@@ -46,14 +46,14 @@
   };
 
   // ---- Form delivery ---------------------------------------------------
-  // Forms POST to Web3Forms (free, no backend). To ACTIVATE: get a free
-  // access key at https://web3forms.com (enter the shop's email — that's
-  // where submissions are delivered) and paste it below. Until then, forms
-  // fall back to opening the visitor's email app addressed to the shop.
+  // Forms deliver to the shop's inbox via FormSubmit.co — no API key, no
+  // backend. The FIRST time a form is submitted, FormSubmit emails
+  // `email` a one-time confirmation link; click it once and every
+  // submission after that lands in the inbox. If the request ever fails,
+  // the form falls back to opening the visitor's email app.
   var FORMS = {
-    accessKey: "YOUR_WEB3FORMS_ACCESS_KEY", // <-- paste the real key here
-    endpoint: "https://api.web3forms.com/submit",
-    fallbackEmail: "info@morgantradingcompany.com"
+    email: "info@morgantradingcompany.com",
+    endpoint: "https://formsubmit.co/ajax/info@morgantradingcompany.com"
   };
 
   // ---- Analytics -------------------------------------------------------
@@ -197,7 +197,8 @@
               '<a href="' + L.phoneHref + '">' + L.phone + '</a></li>';
           }).join("") +
           '<li style="color:#9a948a">Mon–Sat: 10AM–6PM · Sun: Closed</li>' +
-          '<li style="margin-top:.6rem"><a href="' + p("careers.html") + '">Careers</a> · <a href="' + p("disclosures.html") + '">Disclosures</a></li>' +
+          '<li><a href="mailto:' + BIZ.email + '">' + BIZ.email + '</a></li>' +
+          '<li style="margin-top:.6rem"><a href="' + p("faq.html") + '">FAQ</a> · <a href="' + p("careers.html") + '">Careers</a> · <a href="' + p("disclosures.html") + '">Disclosures</a></li>' +
         '</ul></div>' +
       '</div>' +
       '<div class="footer-bottom">' +
@@ -240,30 +241,31 @@
           status.textContent = msg;
           status.style.color = ok ? "var(--success)" : "var(--danger)";
         }
-        // Fallback: no key configured → open the visitor's email client
-        if (!FORMS.accessKey || FORMS.accessKey.indexOf("YOUR_") === 0) {
+        function mailtoFallback() {
           var body = [];
-          data.forEach(function (v, k) { body.push(k + ": " + v); });
-          window.location.href = "mailto:" + FORMS.fallbackEmail +
+          data.forEach(function (v, k) { if (k.charAt(0) !== "_") body.push(k + ": " + v); });
+          window.location.href = "mailto:" + FORMS.email +
             "?subject=" + encodeURIComponent(subject) +
             "&body=" + encodeURIComponent(body.join("\n"));
-          show("Opening your email app to send this to us…", true);
-          return;
         }
-        data.append("access_key", FORMS.accessKey);
-        data.append("subject", subject);
-        data.append("from_name", "MTC Website");
+        // FormSubmit control fields
+        data.append("_subject", subject);
+        data.append("_template", "table");
+        data.append("_captcha", "false");
         var orig = btn ? btn.textContent : "";
         if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
-        fetch(FORMS.endpoint, { method: "POST", body: data })
+        fetch(FORMS.endpoint, { method: "POST", body: data, headers: { "Accept": "application/json" } })
           .then(function (r) { return r.json(); })
           .then(function (j) {
-            if (j.success) {
+            if (j && (j.success === true || j.success === "true")) {
               form.reset();
               show("Thanks! We got your message and will be in touch shortly. For the fastest response, call " + BIZ.phone + ".", true);
-            } else { show("Something went wrong — please call us at " + BIZ.phone + ".", false); }
+            } else { throw new Error("send failed"); }
           })
-          .catch(function () { show("Couldn't send just now — please call us at " + BIZ.phone + ".", false); })
+          .catch(function () {
+            mailtoFallback();
+            show("Opening your email app to send this to us — or call " + BIZ.phone + ".", true);
+          })
           .then(function () { if (btn) { btn.disabled = false; btn.textContent = orig; } });
       });
     });
