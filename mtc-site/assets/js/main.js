@@ -89,7 +89,7 @@
   // Online" / "Browse Live Inventory" button lights up and points to it
   // (opening in a new tab). Blank = the Shop Online page shows its
   // "coming soon" state and the store links fall back to contact/phone.
-  var STORE = { url: "" };
+  var STORE = { url: "https://www.buya.com/StoreProfile/About/MORGAN-TRADING-COMPANY-ALPENA/3535" };
 
   // Primary navigation (label, page-key, href)
   var NAV = [

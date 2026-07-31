@@ -303,6 +303,11 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 .reviews-live__foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:1rem; margin-top: clamp(1.6rem,4vw,2.2rem); }
 .reviews-live__attrib { font-size:.78rem; letter-spacing:.06em; color: var(--muted); }
 
+/* Shop Online (Bravo/Buya front door) */
+.store-cta { text-align:center; max-width: 760px; margin-inline:auto; }
+.store-cta .lead { margin-inline:auto; }
+.store-cta__actions { display:flex; flex-wrap:wrap; gap:.8rem; justify-content:center; }
+
 /* ---- Callout band ----------------------------------------------------- */
 .band { background: var(--ink); color:#fff; border-radius: var(--radius-lg); padding: clamp(2rem,5vw,4rem); text-align:center; }
 .band h2 { color:#fff; }
