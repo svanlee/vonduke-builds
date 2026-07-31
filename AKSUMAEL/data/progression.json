@@ -1,6 +1,10 @@
 {
-  "phase": "wood",
-  "phase_start_tick": 0,
-  "completed_phases": [],
-  "updated": "2026-07-22 13:28:27"
+  "phase": "diamond",
+  "phase_start_tick": 103,
+  "completed_phases": [
+    "wood",
+    "stone",
+    "iron"
+  ],
+  "updated": "2026-07-31 09:42:02"
 }

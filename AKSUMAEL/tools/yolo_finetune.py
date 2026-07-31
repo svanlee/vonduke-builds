@@ -268,10 +268,12 @@ def _cap_recent_frames(train_img_dir: str = None, train_lbl_dir: str = None,
 
 
 def train(epochs: int = 30, imgsz: int = 320, batch: int = 8,
-          env_id: str = 'minecraft_survival'):
+          env_id: str = 'minecraft_survival', device: str = None):
     """
     Fine-tune a YOLO detector on the labeled dataset for `env_id`.
     Trains on the RTX 4050 GPU when available; falls back to CPU otherwise.
+    Pass device='cpu' to force CPU (useful for mini-retrains that should run
+    alongside the bot without competing for VRAM).
 
     env_id='minecraft_survival' (the default) preserves the original
     hardcoded behavior for backward compatibility with existing callers —
@@ -340,8 +342,15 @@ def train(epochs: int = 30, imgsz: int = 320, batch: int = 8,
 
     import torch
     _has_cuda = torch.cuda.is_available()
-    _device   = 0 if _has_cuda else 'cpu'
-    _amp      = _has_cuda           # AMP only with CUDA
+    if device == 'cpu':
+        _device = 'cpu'
+        _amp    = False
+    elif device is not None:
+        _device = device
+        _amp    = _has_cuda and str(device) != 'cpu'
+    else:
+        _device = 0 if _has_cuda else 'cpu'
+        _amp    = _has_cuda           # AMP only with CUDA
     # 0 workers — this process shares a GPU/CUDA context with the live
     # AKSUMAEL capture/YOLO threads, and DataLoader worker subprocesses
     # opening a second CUDA context on top of that is what was tearing
@@ -438,6 +447,7 @@ if __name__ == '__main__':
     elif cmd == 'train':
         epochs = int(sys.argv[2]) if len(sys.argv) > 2 else 30
         env_id = sys.argv[3] if len(sys.argv) > 3 else 'minecraft_survival'
-        train(epochs=epochs, env_id=env_id)
+        _dev   = sys.argv[4] if len(sys.argv) > 4 else None
+        train(epochs=epochs, env_id=env_id, device=_dev)
     else:
         print(USAGE)

@@ -70,6 +70,10 @@ Current agent state:
 - Reward trend (last 10): {snapshot.get('reward_avg', '?')}
 {snapshot.get('memory_context', '')}
 
+HARD RULES (always enforce, override any other goal):
+- If 'village_house' or 'villager' appears in Objects detected AND the current goal is 'find_and_chop_tree', override goal to 'explore' with reason "avoiding village structures". Do not chop wood inside or adjacent to villages.
+- If health < 0.3 or a confirmed hostile mob (zombie, skeleton, spider, creeper) is detected, override to flee.
+
 Your job: assess whether the agent is making progress toward its goal or is stuck/misaligned. Return a JSON directive (no markdown, just JSON):
 
 If the agent is making progress: {{"action": "continue"}}

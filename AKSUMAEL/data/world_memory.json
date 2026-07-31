@@ -1,138 +1,158 @@
 {
   "seen_objects": {
-    "hotbar": 351389,
+    "hotbar": 428137,
     "xp_bar": 163869,
-    "health_bar": 422773,
-    "armor_bar": 118831,
-    "hunger_bar": 207546,
-    "coal_ore": 10051,
-    "diamond_ore": 8216,
-    "emerald_ore": 47091,
-    "redstone_ore": 61625,
-    "lapis_ore": 24843,
-    "gold_ore": 19090,
-    "bed": 8,
-    "torch": 41,
-    "crosshair": 340,
-    "oak_planks": 67,
-    "log": 248411,
-    "leaves": 71745,
-    "birch_log": 30343,
-    "pig": 44306,
-    "chicken": 40215,
-    "cobblestone": 89,
+    "health_bar": 491749,
+    "armor_bar": 119164,
+    "hunger_bar": 255212,
+    "coal_ore": 11046,
+    "diamond_ore": 188497,
+    "emerald_ore": 83865,
+    "redstone_ore": 131940,
+    "lapis_ore": 27401,
+    "gold_ore": 122518,
+    "bed": 1220,
+    "torch": 65,
+    "crosshair": 735,
+    "oak_planks": 337,
+    "log": 872192,
+    "leaves": 240838,
+    "birch_log": 136531,
+    "pig": 82352,
+    "chicken": 188615,
+    "cobblestone": 163,
     "gravel": 4,
     "stone": 16,
     "spider": 37584,
     "zombie": 17622,
     "skeleton": 14416,
     "creeper": 4959,
-    "cow": 102042,
-    "sheep": 19190,
-    "crafting_table": 4
+    "cow": 479220,
+    "sheep": 131256,
+    "crafting_table": 4,
+    "chest_row": 39,
+    "copper_ore": 20,
+    "villager": 94,
+    "carrot": 3,
+    "iron_trapdoor": 18309,
+    "redstone_lamp": 788,
+    "iron_door": 108,
+    "coal ore block": 3,
+    "redstone ore block": 1,
+    "enderman": 1,
+    "water": 41,
+    "tree leaves": 3
   },
   "recent_events": [
     {
-      "t": "03:11:12",
+      "t": "13:06:33",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:06:58",
       "event": "survey sweep"
     },
     {
-      "t": "03:11:23",
+      "t": "13:08:32",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:08:57",
       "event": "survey sweep"
     },
     {
-      "t": "03:11:33",
+      "t": "13:09:19",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:09:44",
       "event": "survey sweep"
     },
     {
-      "t": "03:11:56",
+      "t": "13:09:57",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:10:25",
       "event": "survey sweep"
     },
     {
-      "t": "03:12:06",
+      "t": "13:14:03",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:14:27",
       "event": "survey sweep"
     },
     {
-      "t": "03:12:17",
+      "t": "13:15:18",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:15:43",
       "event": "survey sweep"
     },
     {
-      "t": "03:12:28",
+      "t": "13:17:17",
+      "event": "chopped log"
+    },
+    {
+      "t": "13:17:42",
       "event": "survey sweep"
     },
     {
-      "t": "03:12:37",
+      "t": "13:17:56",
       "event": "survey sweep"
     },
     {
-      "t": "03:12:59",
+      "t": "13:18:16",
       "event": "survey sweep"
     },
     {
-      "t": "03:13:09",
+      "t": "13:18:29",
       "event": "survey sweep"
     },
     {
-      "t": "03:13:20",
+      "t": "13:18:59",
       "event": "survey sweep"
     },
     {
-      "t": "03:13:31",
+      "t": "13:27:15",
       "event": "survey sweep"
     },
     {
-      "t": "03:13:40",
-      "event": "survey sweep"
-    },
-    {
-      "t": "03:14:03",
-      "event": "survey sweep"
-    },
-    {
-      "t": "03:14:13",
-      "event": "survey sweep"
-    },
-    {
-      "t": "03:14:24",
-      "event": "survey sweep"
-    },
-    {
-      "t": "03:47:59",
-      "event": "survey sweep"
-    },
-    {
-      "t": "04:31:56",
-      "event": "survey sweep"
-    },
-    {
-      "t": "04:33:21",
-      "event": "survey sweep"
-    },
-    {
-      "t": "04:48:55",
-      "event": "survey sweep"
+      "t": "13:29:08",
+      "event": "chopped log"
     }
   ],
-  "total_ticks": 402500,
-  "deaths": 1979,
-  "surveys": 21516,
-  "depth_estimate": 64,
-  "hunger_level": 19,
-  "game_tick": 17500,
-  "pickaxe_uses": 642,
-  "y_level": 64,
+  "total_ticks": 884400,
+  "deaths": 8082,
+  "surveys": 48794,
+  "depth_estimate": 16,
+  "hunger_level": 11,
+  "game_tick": 19400,
+  "pickaxe_uses": 2084,
+  "y_level": 16,
   "biome": "overworld",
-  "wood_count": 149,
-  "food_items": [],
+  "wood_count": 1014,
+  "food_items": [
+    "carrot"
+  ],
   "animals_seen": {
-    "pig": 402500,
-    "chicken": 402500,
-    "cow": 402500,
-    "sheep": 402493
+    "pig": 879754,
+    "chicken": 884304,
+    "cow": 880731,
+    "sheep": 879749
   },
   "near_water": false,
-  "llm_calls": 2890,
-  "known_trees": [],
+  "llm_calls": 3330,
+  "known_trees": [
+    {
+      "x": -2.0,
+      "z": 49.0,
+      "timestamp": 1784977761.9711416
+    }
+  ],
   "fort_location": null,
   "base_coords": [
     40,
@@ -140,12 +160,12 @@
     -44
   ],
   "home": null,
-  "facing": "north",
-  "fps": 22,
-  "chunk_x": 6,
-  "chunk_z": -2,
+  "facing": "east",
+  "fps": 32,
+  "chunk_x": -1,
+  "chunk_z": 3,
   "light_level": null,
   "day_count": null,
-  "fsm_state": "MINE",
-  "last_saved": "2026-07-23 05:23:10"
+  "fsm_state": "COLLECT",
+  "last_saved": "2026-07-31 13:29:17"
 }

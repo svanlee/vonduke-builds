@@ -137,3 +137,120 @@
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [4.8, 16, 38.8], "tick": 4263, "ts": 1784740572.9858594}
 {"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [11.0, 18, 2.0], "tick": 4482, "ts": 1784740840.6266453}
 {"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784768938.4988213}
+{"goal": "find_and_chop_tree", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1784800733.589562}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 472, "ts": 1784801423.8345764}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [11.0, 22, 21.0], "tick": 256, "ts": 1784806505.7063015}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [11.0, 22, 21.0], "tick": 257, "ts": 1784806505.9563518}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [11.0, 26, 26.0], "tick": 1551, "ts": 1784808612.8529284}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 2516, "ts": 1784810020.264267}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 2718, "ts": 1784810239.7931461}
+{"goal": "fish_for_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [11.0, 26, 26.0], "tick": 3497, "ts": 1784811287.964178}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [11.0, 26, 26.0], "tick": 3699, "ts": 1784811600.3899329}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 4048, "ts": 1784811995.1283123}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 4206, "ts": 1784812214.152943}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 4408, "ts": 1784812511.703265}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 4715, "ts": 1784812889.0635858}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 4968, "ts": 1784813166.323789}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 5180, "ts": 1784813416.186511}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 5622, "ts": 1784814052.4853475}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 5996, "ts": 1784814613.28917}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 6198, "ts": 1784814901.6469007}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 6484, "ts": 1784815264.588262}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 6820, "ts": 1784815720.8223786}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.0, 22, 21.0], "tick": 7110, "ts": 1784816034.7446465}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 41027, "ts": 1784848234.5042107}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 44926, "ts": 1784851836.385923}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": [12.0, 22, 21.0], "tick": 55620, "ts": 1784862644.818957}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [16.0, 18, 31.0], "tick": 207, "ts": 1784890282.4697268}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [12.9, 17, 28.3], "tick": 883, "ts": 1784890614.5049465}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [17.0, 18, 38.0], "tick": 1090, "ts": 1784890856.7300446}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": [14.3, 17, 25.4], "tick": 205, "ts": 1784891550.8493176}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 213, "ts": 1785027371.4739296}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1785027587.272296}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 64, "ts": 1785028679.0953815}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 1600, "ts": 1785029188.5872438}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 1817, "ts": 1785029275.292939}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2064, "ts": 1785029370.4372892}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2275, "ts": 1785029459.6164289}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2486, "ts": 1785029540.5400093}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2724, "ts": 1785029644.2060647}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2980, "ts": 1785029735.7895617}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3184, "ts": 1785029802.829741}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3390, "ts": 1785029915.3851879}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3595, "ts": 1785029995.6492193}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 3800, "ts": 1785030077.827528}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4003, "ts": 1785030152.3292391}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4224, "ts": 1785030248.777078}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4428, "ts": 1785030331.0389526}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4631, "ts": 1785030396.2421668}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 4834, "ts": 1785030466.7863235}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 5042, "ts": 1785030639.627956}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 5279, "ts": 1785030774.5306873}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 5577, "ts": 1785030897.6832156}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 5781, "ts": 1785030981.190176}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 5986, "ts": 1785031067.325782}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 6190, "ts": 1785031149.511241}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 6398, "ts": 1785031232.6481326}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 6601, "ts": 1785031322.1753106}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 6806, "ts": 1785031409.622809}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 7011, "ts": 1785031557.6967137}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 7675, "ts": 1785031824.840882}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 7887, "ts": 1785031917.2513275}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 8183, "ts": 1785032036.948978}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 8431, "ts": 1785032133.97634}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 8972, "ts": 1785032380.667471}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 9175, "ts": 1785032487.5358777}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 9383, "ts": 1785032567.3932972}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 9766, "ts": 1785032706.6701171}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 68, "ts": 1785033329.4296558}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 64, "ts": 1785034276.807994}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 65, "ts": 1785034391.3168151}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 721, "ts": 1785034655.5370142}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 65, "ts": 1785035020.2755184}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 65, "ts": 1785035842.5674725}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 64, "ts": 1785036444.6344423}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 505, "ts": 1785038007.480777}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2591, "ts": 1785039216.4975066}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 2793, "ts": 1785039343.3967283}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 9163, "ts": 1785042768.2305634}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 9365, "ts": 1785042878.1583896}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 10521, "ts": 1785043518.2198787}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 64, "ts": 1785073096.5431445}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 719, "ts": 1785073330.563024}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 61, "position": null, "tick": 66, "ts": 1785076799.3716493}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 456, "ts": 1785076911.4659514}
+{"goal": "mine_ore", "reason": "timeout: no known ore_ore location", "ticks_active": 4539, "position": null, "tick": 4542, "ts": 1785078725.7438743}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": null, "tick": 2, "ts": 1785081279.9139178}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": null, "tick": 3, "ts": 1785081296.7655668}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": null, "tick": 4, "ts": 1785081299.505593}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": null, "tick": 5, "ts": 1785081302.2413201}
+{"goal": "find_and_chop_tree", "reason": "success: enough logs collected", "ticks_active": 0, "position": null, "tick": 6, "ts": 1785081304.982119}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 208, "ts": 1785081540.962502}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 457, "ts": 1785081650.224425}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 238, "ts": 1785147029.5374775}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 208, "ts": 1785147413.65712}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785149221.2979605}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1785149431.48164}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1785151267.0451472}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 208, "ts": 1785158271.3207188}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785158452.2324128}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 210, "ts": 1785159559.111056}
+{"goal": "find_food", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 210, "ts": 1785236641.266012}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785239617.9309697}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 211, "ts": 1785243302.8524997}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 3754, "position": null, "tick": 3760, "ts": 1785328414.1289759}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785330223.5230942}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 205, "ts": 1785338241.1577497}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1785338571.5867596}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1785340299.8216252}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 235, "ts": 1785342815.2815783}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1785343383.9973166}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785343554.5163672}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1785344682.4284122}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1785351732.4050357}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785352185.2044115}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1785352921.3818123}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 204, "ts": 1785499761.7482173}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 206, "ts": 1785501631.8977451}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 209, "ts": 1785509434.6657393}
+{"goal": "craft_planks", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785512455.6948767}

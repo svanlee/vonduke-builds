@@ -35,13 +35,9 @@ LOCAL_LLM_TIMEOUT = 40      # seconds — live 2026-07-19 measurement shows this
 LOCAL_LLM_ENABLED = True
 
 # Inventory reads ask the local vision model to return structured JSON, but
-# it's currently replying with unrelated object-detection-style output
-# ("[{'label': ...}]") that never parses — every attempt burns up to
-# max_tokens (1200) at ~30 tok/s before failing, which was adding 30-60s to
-# every EXPLORE cycle for a read that always comes back empty anyway. Off
-# until the underlying JSON-format issue is fixed — see behaviors/
-# inventory_reader.py's InventoryReader._read_raw(), which short-circuits to
-# an empty read while this is False.
+# Disabled: Qwen3.5-4B-Vision is locked in GUI detection mode for any
+# UI screenshot and outputs bounding-box JSON regardless of prompt/system.
+# Inventory knowledge is maintained via InventoryTracker inference instead.
 INVENTORY_READER_ENABLED = False
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
@@ -83,6 +79,14 @@ LOOP_INTERVAL_SEC  = 0.25  # seconds between ticks — faster loop for responsiv
 YOLO_EVERY_N_TICKS = 1     # run YOLO every tick
 KEY_HOLD_MS  = 500   # ms to hold each key press (was hardcoded 20ms)
 MINE_HOLD_MS = 450   # ms to hold left-click per mining tick (fills most of LOOP_INTERVAL)
+
+# ── FSM state enable flags ────────────────────────────────────────────────────
+ENABLE_EAT   = False   # allow EAT state (hunger recovery)
+ENABLE_HUNT  = False   # allow HUNT state (find food)
+ENABLE_MINE  = True    # allow MINE state (ore mining + tree chopping via left-click)
+ENABLE_CHOP  = True    # allow CHOP state (tree chopping)
+ENABLE_LEARN      = False   # disabled — YOLO-World does zero-shot detection, no orbit data collection needed
+ENABLE_AUTO_RETRAIN = False  # disabled — no retraining needed with YOLO-World
 
 LLM_EVERY_N_TICKS      = 30    # call LLM every 30 ticks (~15s) while in EXPLORE/EAT
 LLM_EVERY_N_TICKS_MINE = 60    # slower cadence while actively MINE-ing/chopping —
@@ -248,10 +252,10 @@ I2C_BUS        = 1
 I2C_DEADZONE   = 15
 
 # Blend mode: "aksumael_only" | "human_only" | "assist" | "blend"
-BLEND_MODE = "aksumael_only"
+BLEND_MODE = "human_only"
 
 # ── Audio ─────────────────────────────────────────────────────
-ENABLE_TTS      = False     # AKSUMAEL speaks (pyttsx3, no mic needed)
+ENABLE_TTS      = True      # AKSUMAEL speaks (pyttsx3, no mic needed)
 
 # ── SmolVLA policy (driving sim / robocar) ──────────────────────────
 ENABLE_SMOLVLA           = False
@@ -267,13 +271,39 @@ ELEVENLABS_API_KEY = "YOUR_ELEVENLABS_KEY_HERE"
 ELEVENLABS_VOICE   = "Rachel"
 
 # Game audio device index.
-# -1 = auto (first available input device)
-# Set to the ALSA card number of the Rybozen capture card audio output
-# Run: arecord -l  — look for "USB3.0 Audio" and use its card number
-GAME_AUDIO_INDEX = 4
+# Use 12 ("default") to let PipeWire route the stream.
+# The wrapper sets PIPEWIRE_NODE='USB3.0 Video Analog Stereo' so PipeWire
+# connects this process's recording to the Rybozen capture card audio,
+# not the laptop mic.
+# Run: wpctl status — look for "USB3.0 Video Analog Stereo" to confirm.
+GAME_AUDIO_INDEX = 12
 
 # ── YOLO / Labeling ───────────────────────────────────────────
-YOLO_MODEL          = "data/models/aksumael_mc.pt"
+# YOLO_USE_WORLD = True  →  use YOLO-World zero-shot text-query detection (no training needed).
+# YOLO_USE_WORLD = False →  use the trained aksumael_mc.pt weights (legacy path).
+YOLO_USE_WORLD      = False  # CPU ONNX fallback needs this False; fine-tuned aksumael_mc.pt used instead of YOLO-World
+YOLO_WORLD_MODEL    = "yolov8s-world.pt"   # downloads automatically on first run (~50 MB)
+YOLO_WORLD_CLASSES  = [
+    # Entities — discrete objects, YOLO-World handles well
+    "cow", "sheep", "pig", "chicken",
+    "zombie", "skeleton", "spider", "creeper", "enderman",
+    # Ores — small distinct blocks embedded in stone faces
+    "coal ore", "iron ore", "gold ore", "diamond ore", "emerald ore", "redstone ore",
+    # Wood — log columns visible in forests; "oak log" matches Minecraft terminology
+    # better than "wood log" in CLIP embedding space (confirmed 2026-07-29: "wood log"
+    # failed to fire on oak logs, which were instead mis-detected as "bed" at conf 0.20
+    # due to the wooden grain texture on the top face)
+    "oak log", "birch log",
+    # Structures / items — discrete placed objects
+    # NOTE: "bed" removed — its wooden texture false-fires on oak log tops at conf~0.20;
+    # add back only if sleep goal is actively needed and with a tighter threshold
+    "chest", "crafting table", "furnace",
+    # NOTE: background terrain classes REMOVED ("grass block", "dirt", "sand",
+    # "gravel", "stone", "water", "lava", "tree leaves") — YOLO-World fires
+    # full-frame detections for these since the whole scene matches them.
+    # Use color_detector.py for terrain/water signals instead.
+]
+YOLO_MODEL          = "data/models/aksumael_mc.pt"   # used only when YOLO_USE_WORLD=False
 # Also passed as conf= directly to the model call (vision/yolo.py) — that's
 # what actually controls which boxes Ultralytics returns at all; it's not
 # just a post-hoc filter here (confirmed still wired up as of 2026-07-15).
@@ -298,7 +328,7 @@ YOLO_LABEL_DB       = "data/yolo_labels.json"
 # (SIGABRT, no Python traceback, crashed the whole process) rather than a
 # catchable OOM error. Skipping ahead of time is cheaper than recovering
 # after the fact (2026-07-18).
-YOLO_MIN_FREE_VRAM_MB = 400
+YOLO_MIN_FREE_VRAM_MB = 200  # steady-state free is ~310-350MB; model weights already resident in VRAM; inference working mem <100MB; SIGABRT at <10MB free
 
 # ── YOLO Fine-Tuning ──────────────────────────────────────────
 COLLECT_FRAMES         = False   # disabled — survey behavior handles collection now

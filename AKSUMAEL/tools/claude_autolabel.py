@@ -27,13 +27,73 @@
 import json
 import shutil
 import sys
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from core.class_registry import load_classes, get_or_add_class, normalize_class_name
-from core.llm_router import try_claude
+
+# ── Direct Gemini API call (bypasses local mesh-llm) ─────────────────────────
+# The autolabeler needs reliable vision labeling. The Anthropic key has no
+# credits; the local mesh-llm shares VRAM with the running AKSUMAEL process.
+# Gemini 2.0 Flash is free-tier and supports multimodal vision. Read key from
+# file, never print or log it.
+_GOOGLE_KEY_PATH = Path.home() / ".config" / "google" / "key"
+_GEMINI_MODEL = "gemini-2.0-flash"
+_GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{_GEMINI_MODEL}:generateContent"
+)
+
+
+def _call_gemini_api(prompt: str, img_b64: str, timeout: float = 30.0) -> str | None:
+    """Call the Gemini API with an image + prompt.
+
+    Returns the text response, or None on any failure. Never prints/logs the key.
+    """
+    if not _GOOGLE_KEY_PATH.exists():
+        print("[AUTOLABEL] ERROR: no API key at ~/.config/google/key", file=sys.stderr)
+        return None
+    api_key = _GOOGLE_KEY_PATH.read_text().strip()
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": img_b64,
+                        }
+                    },
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 1024,
+        },
+    }
+    url = f"{_GEMINI_API_URL}?key={api_key}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(f"[AUTOLABEL] Gemini API HTTP {e.code}: {body[:200]}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"[AUTOLABEL] Gemini API error: {e}", file=sys.stderr)
+        return None
 
 SURVEY_DIR = Path("data/survey_frames")
 IMG_OUT = Path("data/yolo_dataset/images/train")
@@ -76,18 +136,23 @@ If nothing recognizable: []
 
 
 def label_frame(img_path: Path) -> list[dict]:
+    import base64
     with open(img_path, "rb") as f:
         raw_bytes = f.read()
-    # frame_to_b64() expects an OpenCV BGR frame and re-encodes it; the
-    # survey frames on disk are already JPEGs, so base64-encode directly
-    # instead of decoding+reencoding through cv2 for no reason.
-    import base64
+    # Survey frames on disk are already JPEGs — base64-encode directly
+    # instead of decoding+reencoding through cv2.
     img_b64 = base64.standard_b64encode(raw_bytes).decode()
 
-    raw = try_claude(_build_prompt(), max_tokens=1024, images=[img_b64], timeout=30.0)
+    raw = _call_gemini_api(_build_prompt(), img_b64, timeout=30.0)
     if raw is None:
-        raise RuntimeError("claude call failed (see core.llm_router logs)")
-    return json.loads(raw)
+        raise RuntimeError("Gemini API call failed")
+
+    # Strip markdown fences if Claude wrapped the JSON
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+    return json.loads(text)
 
 
 def write_yolo_label(labels: list[dict], out_path: Path) -> int:
@@ -115,7 +180,8 @@ def save_for_review(img_path: Path, labels: list[dict]):
     (REVIEW_DIR / f"{stem}.json").write_text(json.dumps(labels, indent=2))
 
 
-def run(dry_run=False, min_confidence=0.6):
+def run(dry_run=False, min_confidence=0.6, rate_limit_sec=5.0):
+    import time as _time
     frames = sorted(SURVEY_DIR.glob("*.jpg")) + sorted(SURVEY_DIR.glob("*.png"))
     already_labeled = {p.stem for p in LBL_OUT.glob("*.txt")}
     pending = [f for f in frames if f.stem not in already_labeled]
@@ -125,6 +191,8 @@ def run(dry_run=False, min_confidence=0.6):
 
     for i, img_path in enumerate(pending):
         print(f"[AUTOLABEL] {i+1}/{len(pending)}: {img_path.name}")
+        if i > 0:
+            _time.sleep(rate_limit_sec)  # respect Gemini free-tier 15 RPM limit
         try:
             labels = label_frame(img_path)
             # Filter low-confidence predictions and validate class names

@@ -29,6 +29,7 @@ import re
 import time
 
 import config
+from core.escalation_ipc import poll_pending, resolve as ipc_resolve
 from memory.goals import INJECTED_GOALS_PATH, GOALS_PATH
 from memory import MemoryContext
 from axon.command_parser import parse, parse_deterministic
@@ -236,6 +237,140 @@ class _StreamRecorder:
         return np.concatenate(self._frames, axis=0).flatten()
 
 
+# ── Voice-to-label ────────────────────────────────────────────────────────
+# Phrases like "that is a tree", "that's lava", "label this bedrock",
+# "this is a bee" save the current live frame as a labeled training sample.
+import re as _re
+_LABEL_PATTERNS = _re.compile(
+    r"(?:that(?:'s| is)(?: a| an)?|this is(?: a| an)?|label this(?: as)?|"
+    r"label as|mark this(?: as)?|call this(?: a| an)?|"
+    r"orbit this(?: as)?|survey this(?: as)?|scan this(?: as)?)\s+([a-z][a-z _]+[a-z])",
+    _re.IGNORECASE,
+)
+_FRAME_SERVER_URL = "http://localhost:8765/frame"
+_LABEL_DATASET_IMG = os.path.join(BASE_DIR, "data", "yolo_dataset", "images", "train")
+_LABEL_DATASET_LBL = os.path.join(BASE_DIR, "data", "yolo_dataset", "labels", "train")
+
+# Synonyms Scott might say → canonical class name
+_LABEL_SYNONYMS: dict[str, str] = {
+    "tree": "log",
+    "oak tree": "log",
+    "birch tree": "birch_log",
+    "iron": "iron_ore",
+    "diamond": "diamond_ore",
+    "gold": "gold_ore",
+    "coal": "coal_ore",
+    "fire": "fire_hazard",
+    "bee hive": "bee",
+    "beehive": "bee",
+    "bees": "bee",
+    "villager house": "village_house",
+    "village house": "village_house",
+    "house": "village_house",
+    "golem": "iron_golem",
+    "iron golem": "iron_golem",
+    "iron giant": "iron_golem",
+    "kitty": "cat",
+    "kitten": "cat",
+    # hostile mobs
+    "ender man": "enderman",
+    "tall black guy": "enderman",
+    "cave spider": "cave_spider",
+    "baby spider": "cave_spider",
+    "wither skeleton": "wither_skeleton",
+    "magma cube": "magma_cube",
+    "magma slime": "magma_cube",
+    "zombie piglin": "zombified_piglin",
+    "zombie pig": "zombified_piglin",
+    "piglin zombie": "zombified_piglin",
+    # passive mobs
+    "polar bear": "polar_bear",
+    "dog": "wolf",
+    "puppy": "wolf",
+    "donkey": "donkey",
+    # blocks
+    "mossy stone": "mossy_cobblestone",
+    "mossy stone floor": "mossy_cobblestone",
+    "mossy stone tile": "mossy_cobblestone",
+    "mossy cobblestone": "mossy_cobblestone",
+    "mossy floor": "mossy_cobblestone",
+    "nether rack": "netherrack",
+    "soul sand": "soul_sand",
+    "glow stone": "glowstone",
+    "nether bricks": "nether_brick",
+    "nether brick": "nether_brick",
+    "enchantment table": "enchanting_table",
+    "nether gate": "nether_portal",
+    "nether portal": "nether_portal",
+    "portal": "nether_portal",
+}
+
+
+def _voice_label(raw_label: str) -> bool:
+    """Fetch the current live frame and save it as a labeled YOLO training
+    sample. Returns True on success. Uses get_or_add_class so new labels
+    (like lava, bedrock) are added to data.yaml automatically."""
+    label = raw_label.strip().lower().replace(" ", "_")
+    # Apply synonym map before class lookup
+    canonical = _LABEL_SYNONYMS.get(raw_label.strip().lower(), label)
+
+    try:
+        from core.class_registry import get_or_add_class
+        class_id = get_or_add_class(canonical, source='voice_label')
+        if class_id is None:
+            print(f'[AXON-LABEL] could not resolve class for "{canonical}"')
+            return False
+    except Exception as e:
+        print(f'[AXON-LABEL] class registry error: {e}')
+        return False
+
+    # Fetch current frame from the MJPEG frame server
+    try:
+        import urllib.request, numpy as np, cv2
+        with urllib.request.urlopen(_FRAME_SERVER_URL, timeout=3) as resp:
+            data = resp.read()
+        arr = np.frombuffer(data, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            raise ValueError("empty frame")
+    except Exception as e:
+        print(f'[AXON-LABEL] could not fetch frame: {e}')
+        return False
+
+    # Save image + label (wide center bbox — good enough for coarse learning)
+    ts = int(time.time() * 1000)
+    stem = f"voice_{ts}_{canonical}"
+    os.makedirs(_LABEL_DATASET_IMG, exist_ok=True)
+    os.makedirs(_LABEL_DATASET_LBL, exist_ok=True)
+    img_path = os.path.join(_LABEL_DATASET_IMG, f"{stem}.jpg")
+    lbl_path = os.path.join(_LABEL_DATASET_LBL, f"{stem}.txt")
+
+    cv2.imwrite(img_path, frame)
+    # YOLO label: <class_id> <cx> <cy> <w> <h> (normalised, center box ~60% of frame)
+    with open(lbl_path, "w") as f:
+        f.write(f"{class_id} 0.500000 0.500000 0.700000 0.700000\n")
+
+    print(f'[AXON-LABEL] saved {stem} — class {class_id} ({canonical})')
+
+    # Also write learning_trigger.json so the bot runs a full 24-frame orbit
+    # on the labeled object — same pipeline as the Qwen vision watcher.
+    _LEARNING_TRIGGER_PATH = os.path.join(BASE_DIR, "data", "learning_trigger.json")
+    trigger = {
+        "label":       canonical,
+        "description": f"voice-labeled by user as: {raw_label.strip()}",
+        "box":         [0, 0, frame.shape[1], frame.shape[0]],  # full-frame bbox
+        "box_frac":    [0.5, 0.5, 1.0, 1.0],
+        "conf":        1.0,   # user-confirmed, max confidence
+        "ts":          time.time(),
+        "source":      "voice_label",
+    }
+    with open(_LEARNING_TRIGGER_PATH, "w") as f:
+        json.dump(trigger, f)
+    print(f'[AXON-LABEL] learning trigger written → orbit "{canonical}"')
+
+    return True
+
+
 def _enqueue_goal(goal: str, reason: str) -> bool:
     """Append to data/injected_goals.json in the same {"queue": [...]}
     format mastermind/agent_client.py writes, so GoalStack.check_injected_goals()
@@ -387,6 +522,19 @@ class AxonHub:
         return result.get('text', '').strip()
 
     def _handle_command(self, transcript: str):
+        # ── Voice labeling ("that is a tree", "that's lava", etc.) ──────────
+        # Checked first — short-circuits before goal/LLM parsing so labeling
+        # phrases don't get force-fit into goal strings.
+        lm = _LABEL_PATTERNS.search(transcript)
+        if lm:
+            raw_label = lm.group(1).strip()
+            print(f'[AXON] voice label: "{transcript}" → "{raw_label}"')
+            if _voice_label(raw_label):
+                self.speaker.say(f"Got it, labeled that as {raw_label}.")
+            else:
+                self.speaker.say(f"Couldn't save the label for {raw_label}.")
+            return
+
         # Env-switch ("switch to minecraft" / "focus on GOAT Racer" / ...)
         # checked before anything else — it's neither a goal nor a status
         # query, and free-text env names like "GOAT Racer" would otherwise
@@ -441,6 +589,49 @@ class AxonHub:
         # likely ambient speech, not a failed request. Log only, stay quiet.
         print(f'[AXON] heard (unrecognized): "{transcript}"')
 
+    def _check_escalation(self) -> None:
+        """
+        Poll for a pending supervisor escalation written by core/fsm.py.
+        If found: announce via TTS, listen 8s for "proceed"/"yes", resolve.
+        Called from the main run loop on every iteration.
+        """
+        req = poll_pending()
+        if req is None:
+            return
+
+        proposed = req.get("proposed", "?")
+        reason   = req.get("reason", "no reason given")
+        msg = (f"Bot paused. Action {proposed} blocked: {reason}. "
+               f"Say 'proceed' to override, or stay silent to refuse.")
+        print(f"[AXON] supervisor escalation: {proposed} — {reason}")
+
+        try:
+            self.speaker.say(msg)
+        except Exception as e:
+            print(f"[AXON] TTS error during escalation: {e}")
+
+        approved = False
+        if self._model is not None:
+            try:
+                import sounddevice as sd
+                listen_sec = 8.0
+                frames = int(listen_sec * SAMPLE_RATE)
+                audio = sd.rec(frames, samplerate=SAMPLE_RATE, channels=1,
+                               dtype='float32', device=self._in_device_idx, blocking=True)
+                result = self._model.transcribe(audio.flatten(), fp16=False, language='en')
+                text   = result.get('text', '').strip().lower()
+                print(f"[AXON] escalation heard: '{text}'")
+                approved = any(w in text for w in ('proceed', 'yes', 'go', 'allow', 'override'))
+            except Exception as e:
+                print(f"[AXON] escalation listen error ({e}) — refusing")
+
+        ipc_resolve(approved)
+        try:
+            self.speaker.say("Override accepted. Proceeding." if approved
+                             else "Action refused.")
+        except Exception:
+            pass
+
     def _answer_question(self, question: str):
         """Answer a spoken question out loud via mesh-llm, using the same
         self-built memory system (memory/context.py) that feeds the
@@ -484,6 +675,9 @@ class AxonHub:
 
         while True:
             try:
+                # Always check for pending supervisor escalations, regardless of mode.
+                self._check_escalation()
+
                 if self.mode == MODE_ON:
                     chunk = self._record(LISTEN_CHUNK_SEC)
                     transcript = self._transcribe(chunk).strip()
@@ -503,6 +697,67 @@ class AxonHub:
             except Exception as e:
                 print(f'[AXON] loop error: {e}')
                 time.sleep(1.0)
+
+
+def _ask_scott(verdict, speaker: Speaker, model, in_device_idx: int,
+               listen_sec: float = 8.0) -> bool:
+    """
+    Supervisor escalation callback — human-in-the-loop veto override.
+
+    Called by Supervisor._finish() when a Tier 1 invariant returns ESCALATE.
+    Announces the veto via piper TTS, then listens for up to `listen_sec`
+    seconds with Whisper. Returns True (allow the action anyway) only if Scott
+    clearly says "proceed" or "yes". Defaults to False (refuse) on silence,
+    ambiguous speech, or any error.
+
+    Wire-up (core/fsm.py __init__):
+        from axon.hub import make_escalation_cb
+        self.supervisor = Supervisor(
+            enable_tier2=False,
+            escalate_cb=make_escalation_cb(hub)
+        )
+    """
+    import sounddevice as sd
+
+    msg = (f"Supervisor escalation: {verdict.proposed} blocked. "
+           f"Reason: {verdict.reason}. Say 'proceed' to override.")
+    print(f"[AXON] escalation announced: {msg}")
+    try:
+        speaker.say(msg)
+    except Exception as e:
+        print(f"[AXON] TTS failed during escalation: {e}")
+
+    # Listen for override
+    try:
+        frames = int(listen_sec * SAMPLE_RATE)
+        audio = sd.rec(frames, samplerate=SAMPLE_RATE, channels=1,
+                       dtype='float32', device=in_device_idx, blocking=True)
+        result = model.transcribe(audio.flatten(), fp16=False, language='en')
+        text   = result.get('text', '').strip().lower()
+        print(f"[AXON] escalation heard: '{text}'")
+        approved = any(w in text for w in ('proceed', 'yes', 'go', 'allow', 'override'))
+        if approved:
+            speaker.say("Override accepted. Proceeding.")
+        else:
+            speaker.say("Understood. Action refused.")
+        return approved
+    except Exception as e:
+        print(f"[AXON] escalation listen failed ({e}) — refusing by default")
+        return False
+
+
+def make_escalation_cb(hub: "AxonHub"):
+    """
+    Return a closure over hub.speaker, hub._model, hub._in_device_idx
+    suitable for passing as Supervisor(escalate_cb=...).
+
+    Returns None if hub is not enabled (no whisper model loaded).
+    """
+    if not hub.enabled or hub._model is None:
+        return None
+    def _cb(verdict):
+        return _ask_scott(verdict, hub.speaker, hub._model, hub._in_device_idx)
+    return _cb
 
 
 def run():

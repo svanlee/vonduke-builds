@@ -1,6 +1,12 @@
 # AKSUMAEL KB2040 — boot.py
+# Enables USB CDC data endpoint (pad_bridge ASCII protocol) alongside
+# existing HID devices. Hard-reset required after any change to this file.
 import usb_hid
+import usb_cdc
 import storage
+
+# Enable two CDC endpoints: console (REPL) + data (pad_bridge)
+usb_cdc.enable(console=True, data=True)
 
 GAMEPAD_REPORT_DESCRIPTOR = bytes((
     # Validated 2026-07-23 on gamepad-tester.net/Chrome — reports as
@@ -58,9 +64,7 @@ gamepad = usb_hid.Device(
 # Absolute pointer — separate from usb_hid.Device.MOUSE (relative, used for
 # camera-look / TYPE_MOUSE_R) so desktop-style "click at this coordinate"
 # (TYPE_MOUSE_A) can land the cursor exactly instead of approximating it
-# with relative deltas. Top-level usage is Pointer (0x01), not Mouse
-# (0x02), specifically so it doesn't collide with adafruit_hid.Mouse's
-# usage-page/usage lookup for the relative MOUSE device in code.py.
+# with relative deltas.
 ABS_POINTER_REPORT_DESCRIPTOR = bytes((
     0x05, 0x01,        # Usage Page (Generic Desktop)
     0x09, 0x01,        # Usage (Pointer)
@@ -74,7 +78,7 @@ ABS_POINTER_REPORT_DESCRIPTOR = bytes((
     0x75, 0x01,        #   Report Size (1)
     0x81, 0x02,        #   Input (Data,Var,Abs)
     0x95, 0x01,        #   Report Count (1)
-    0x75, 0x06,        #   Report Size (6)  -- pad to a full byte
+    0x75, 0x06,        #   Report Size (6)
     0x81, 0x03,        #   Input (Const,Var,Abs)
     0x05, 0x01,        #   Usage Page (Generic Desktop)
     0x09, 0x30,        #   Usage (X)
@@ -92,7 +96,7 @@ mouse_abs = usb_hid.Device(
     usage_page=0x01,
     usage=0x01,
     report_ids=(0,),
-    in_report_lengths=(5,),   # buttons(1) + x(2) + y(2), little-endian
+    in_report_lengths=(5,),
     out_report_lengths=(0,),
 )
 

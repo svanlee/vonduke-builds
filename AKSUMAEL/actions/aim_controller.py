@@ -106,6 +106,6 @@ class AimController:
                                    max_ticks=max_aim_ticks,
                                    move_key=move_key)
         if on_target and attack_click:
-            executor.execute({'click': [50, 50], 'source': 'aim'})
+            executor.execute({'mouse_button': 'left', 'source': 'aim'})
             return True
         return False

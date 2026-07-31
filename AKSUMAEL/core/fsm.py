@@ -29,13 +29,51 @@
 # (key, click, look, gamepad, observation, action, confidence) and can be
 # merged or used directly.
 
+import json
 import math
 import enum
+import os
 import time
 import config
 from core.aim import bbox_to_mouse_delta, is_on_target
+from core.supervisor import Supervisor, BeliefProxy, Ruling
+from core.escalation_ipc import request_human, await_response
 from vision.color_detector import sample_box_pixel_count
 from vision.target_lock import TargetLock
+
+_LEARN_TRIGGER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'learning_trigger.json')
+_last_learn_trigger_ts = 0.0
+_LEARN_TRIGGER_COOLDOWN = 60.0   # seconds between auto-triggers to avoid spamming orbit
+
+
+def _write_learn_trigger(target: dict, source: str = 'fsm') -> bool:
+    """Write data/learning_trigger.json so LearningOrbit picks it up on the next tick.
+    Returns True if written, False if suppressed by cooldown."""
+    global _last_learn_trigger_ts
+    now = time.time()
+    if now - _last_learn_trigger_ts < _LEARN_TRIGGER_COOLDOWN:
+        return False
+    label = target.get('label', 'unknown')
+    trigger = {
+        'label':    label,
+        'description': f'auto-detected by bot approach ({source})',
+        'box':      [target.get('x1', 0), target.get('y1', 0),
+                     target.get('x2', 100), target.get('y2', 100)],
+        'box_frac': [0.5, 0.5, 0.4, 0.4],
+        'conf':     target.get('conf', 0.5),
+        'ts':       now,
+        'source':   source,
+    }
+    try:
+        os.makedirs(os.path.dirname(_LEARN_TRIGGER_PATH), exist_ok=True)
+        with open(_LEARN_TRIGGER_PATH, 'w') as f:
+            json.dump(trigger, f)
+        _last_learn_trigger_ts = now
+        print(f'[FSM] learn trigger → "{label}" ({source})')
+        return True
+    except Exception as e:
+        print(f'[FSM] learn trigger write error: {e}')
+        return False
 
 
 # ── Target label sets ─────────────────────────────────────────────────────────
@@ -86,6 +124,7 @@ TREE_TARGETS = {
 
 PASSIVE_MOBS = {
     'cow', 'sheep', 'pig', 'chicken',
+    'duck',   # class 75 added in 76-class retrain (2026-07-31)
 }
 
 FISH_TARGETS = {'water'}
@@ -151,7 +190,11 @@ MINE_HOLD_CONF = 0.30
 
 # Ore must be fully undetected (not just low-confidence) for this many
 # consecutive ticks before we treat it as broken and move to COLLECT.
-MINE_ABSENT_TICKS_TO_BREAK = 3
+MINE_ABSENT_TICKS_TO_BREAK = 8   # raised 3→8: YOLO-World loses "oak log" when bot
+                                  # is right up against the block (fills viewport,
+                                  # CLIP confidence drops). 3 ticks (~1.5s) exited
+                                  # MINE before the log broke; 8 ticks gives ~4s of
+                                  # continuous mining through detection gaps.
 
 # Direct pixel-cluster break check for color-sourced MINE targets (see
 # vision.color_detector.sample_box_pixel_count). Re-samples the LOCKED
@@ -191,7 +234,7 @@ PROTECTED_BLOCKS = frozenset({
 # color-based ore targeting (diamond/gold/redstone/emerald via color) as a
 # deliberate side effect of this safety fix — YOLO-sourced ore detection is
 # unaffected.
-SAFE_COLOR_MINE_LABELS = frozenset({'log', 'leaves', 'birch_log'})
+SAFE_COLOR_MINE_LABELS = frozenset({'log', 'leaves', 'birch_log', 'oak_log'})
 
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
@@ -234,6 +277,7 @@ HUNT_GRACE_TICKS    = 30    # ticks HUNT is shielded from the hunger override
 HUNT_KILL_LABELS = frozenset({
     'raw_beef', 'beef', 'raw_porkchop', 'porkchop', 'raw_chicken', 'chicken_raw',
     'raw_mutton', 'mutton', 'leather', 'feather', 'wool',
+    'duck', 'raw_duck',   # class 75 added in 76-class retrain (2026-07-31)
 })
 
 # ── Sector-scan EXPLORE sweep ────────────────────────────────────────────
@@ -548,6 +592,21 @@ class GameFSM:
         self.state        = State.EXPLORE
         self._state_ticks = 0   # ticks spent in the current state
 
+        # Supervisory veto layer (see core/supervisor.py).
+        # Tier 2 (mesh-llm) disabled until Tier 1 latency is confirmed < 1 ms.
+        # escalate_cb is wired at runtime by AxonHub (see axon/hub.make_escalation_cb).
+        # When Axon is not running the supervisor still works — escalation just
+        # refuses (returns False) because escalate_cb is None.
+        def _ipc_escalate_cb(verdict):
+            """Non-blocking from FSM's perspective: write request, poll for answer."""
+            request_human(verdict)
+            return await_response()
+
+        self.supervisor        = Supervisor(enable_tier2=False, escalate_cb=_ipc_escalate_cb)
+        self._world_mem_cache  = None   # updated each tick() call
+        self._last_vision_ts   = 0.0    # updated when a frame arrives
+        self._inventory_cache  = None   # InventoryTracker, updated each tick() call
+
         # MINE tracking
         self._smooth_dx         = 0
         self._smooth_dy         = 0
@@ -673,6 +732,12 @@ class GameFSM:
         self._state_ticks += 1
         self._total_ticks += 1
 
+        # Cache world_mem, inventory, and vision timestamp for supervisor (see _goto).
+        self._world_mem_cache = world_mem
+        self._inventory_cache = inventory
+        if frame is not None:
+            self._last_vision_ts = time.time()
+
         # ── Watchdog: force EXPLORE if stuck in one state too long ────────
         # Evaluated before every other priority (including fall/hunger) so a
         # genuinely stalled state always gets rescued regardless of what a
@@ -729,7 +794,9 @@ class GameFSM:
         # Only force the transition on entry — once already in EAT, fall
         # through so lower-priority checks (hostile mob, etc.) still run
         # every tick and _do_eat() below drives the actual eat attempts.
-        if hunger_frac < 0.20 and self.state != State.EAT:
+        # Skip hunger check when goal is mine_ore: creative mode hides the
+        # hunger bar, causing the bot to read it as 0 and loop in EAT forever.
+        if hunger_frac < 0.20 and self.state != State.EAT and goal != 'mine_ore' and config.ENABLE_EAT:
             if self.state == State.HUNT and self._hunt_grace_ticks_left > 0:
                 # EAT found no food and handed off to HUNT — let it actually
                 # chase the animal instead of bouncing straight back to EAT.
@@ -800,24 +867,47 @@ class GameFSM:
         # must only ever be reached via INTERACT_TARGETS (right-click), never
         # broken. Protected blocks are NOT stripped from `objects` itself so
         # interact_obj (picked from `objects` below) still sees them.
+        # When goal is mine_ore, also allow color-sourced ore detections —
+        # the HSV ore detector (vision/color_detector.py) finds ore by pixel
+        # color and its results are normally filtered to prevent chest-breaking
+        # (log HSV matches chest wood). In an ore cave with no chests the risk
+        # is negligible and color detection is our only signal when YOLO misses.
+        _ore_goal_active = (goal == 'mine_ore')
         non_blacklisted = [
             o for o in objects
             if o.get('label', '') not in self._ore_blacklist
             and o.get('label', '').lower() not in PROTECTED_BLOCKS
             and (o.get('source') != 'color'
-                 or o.get('label', '').lower() in SAFE_COLOR_MINE_LABELS)
+                 or o.get('label', '').lower() in SAFE_COLOR_MINE_LABELS
+                 or (_ore_goal_active
+                     and o.get('label', '').lower() in ORE_TARGETS))
         ]
         # While already MINEing, accept much lower-confidence ore detections —
         # a partially-broken block's changed texture tanks YOLO's confidence
         # well below MIN_CONF even though the ore is still there to finish off.
-        _ore_conf_floor = MINE_HOLD_CONF if self.state == State.MINE else MIN_CONF
+        # When actively hunting ore via mine_ore goal, accept color-sourced ore
+        # detections at a lower confidence floor (color conf maxes at 0.75 but
+        # tracks pixel count — a small ore glint gives conf~0.15-0.30, well below
+        # MIN_CONF=0.50). YOLO-sourced detections still require MIN_CONF.
+        _color_ore_conf_floor = 0.10
+        if self.state == State.MINE:
+            _ore_conf_floor = MINE_HOLD_CONF
+        elif _ore_goal_active:
+            _ore_conf_floor = _color_ore_conf_floor
+        else:
+            _ore_conf_floor = MIN_CONF
         ore_obj      = _pick_best_ore(non_blacklisted, min_conf=_ore_conf_floor)
         tree_obj     = _pick_tree_target(non_blacklisted)
         if (tree_obj is not None and world_mem is not None
                 and getattr(world_mem, 'pos_x', None) is not None
                 and getattr(world_mem, 'pos_z', None) is not None):
             world_mem.record_tree_sighting(world_mem.pos_x, world_mem.pos_z)
-        mine_obj     = ore_obj or tree_obj or _pick_best(non_blacklisted, MINE_TARGETS)
+        # When goal is mine_ore, only target ores — no log/tree fallback.
+        # This keeps the bot scanning for ore instead of mining trees.
+        if _ore_goal_active:
+            mine_obj = ore_obj
+        else:
+            mine_obj = ore_obj or tree_obj or _pick_best(non_blacklisted, MINE_TARGETS)
         interact_obj = _pick_best(objects, INTERACT_TARGETS)
         animal_obj   = _pick_best(objects, PASSIVE_MOBS)
         water_obj    = _pick_best(objects, FISH_TARGETS)
@@ -861,6 +951,10 @@ class GameFSM:
             return self._do_fish(bobber_obj, water_obj)
 
         elif s == State.HUNT:
+            # Exit HUNT immediately when goal is mine_ore — ores take priority
+            if _ore_goal_active:
+                print('[FSM] HUNT → EXPLORE (mine_ore goal active, abandoning hunt)')
+                return self._goto(State.EXPLORE, _idle())
             return self._do_hunt(objects, animal_obj, fw, fh)
 
         elif s == State.FARM:
@@ -877,12 +971,12 @@ class GameFSM:
             if ore_obj:
                 ad = self._do_approach(ore_obj, fw, fh, world_mem)[1]
                 return self._goto(State.APPROACH, ad, world_mem)
-            # Priority 4: tree (need wood)
-            if tree_obj:
+            # Priority 4: tree (need wood) — skip when goal is mine_ore
+            if tree_obj and not _ore_goal_active:
                 ad = self._do_approach(tree_obj, fw, fh, world_mem)[1]
                 return self._goto(State.APPROACH, ad, world_mem)
-            # Priority 5: animal (need food)
-            if animal_obj:
+            # Priority 5: animal (need food) — skip when goal is mine_ore or HUNT disabled
+            if config.ENABLE_HUNT and animal_obj and not _ore_goal_active:
                 return self._goto(State.HUNT, self._begin_hunt(objects, animal_obj))
             # Priority 6: fish (near water)
             if water_obj:
@@ -1225,7 +1319,14 @@ class GameFSM:
         # only; keep approaching until we can see an actual log block.
         if self._state_ticks >= APPROACH_TICKS:
             if 'leaves' in target.get('label', '').lower():
-                # Reset timer so we keep approaching (don't spam the transition)
+                # We're close to the tree canopy. Stop walking forward so we
+                # don't plunge inside — instead scan left/right to find the
+                # log trunk face. Alternate scan direction every 4 ticks so
+                # the bot pans around the tree rather than walking into it.
+                ad['key'] = None   # stop forward movement
+                _scan_dir = 1 if (self._state_ticks // 4) % 2 == 0 else -1
+                ad['look'] = {'dx': _scan_dir * 4, 'dy': -2}  # slight pitch-down + pan
+                ad['observation'] = 'Scanning for log trunk (stopped at leaf canopy)'
                 self._state_ticks = APPROACH_TICKS - 2
             elif self._approach_stall_count >= STALL_TICKS_TO_JUMP:
                 # Currently stalled/jumping (see guard above) — don't slide
@@ -1252,6 +1353,12 @@ class GameFSM:
                 # of holding click on canopy that yields nothing.
                 locked_label = self._mine_target.get('label', '') if self._mine_target else ''
                 if 'leaves' in locked_label:
+                    self._mine_target = None
+                    return self._goto(State.EXPLORE, _idle())
+                if not config.ENABLE_MINE:
+                    if config.ENABLE_LEARN and self._mine_target:
+                        _write_learn_trigger(self._mine_target, source='approach_mine')
+                    print('[FSM] MINE disabled — triggering learn orbit, returning EXPLORE')
                     self._mine_target = None
                     return self._goto(State.EXPLORE, _idle())
                 return self._goto(State.MINE, mine_ad, world_mem)
@@ -1430,10 +1537,11 @@ class GameFSM:
             ad['look'] = {'dx': dx, 'dy': dy}
 
         if on_target:
-            ad['click']    = [50.0, 50.0]        # left-click screen centre
-            ad['delay_ms'] = config.MINE_HOLD_MS  # hold for full mining tick
+            ad['mouse_hold'] = 'down'            # hold LMB via TYPE_MOUSE_R (game-captured)
+            ad['delay_ms']   = config.MINE_HOLD_MS
             phase = 'mining'
         else:
+            ad['mouse_hold'] = 'up'              # release LMB while re-aiming
             phase = 'aiming'
 
         label = mine_obj.get('label', 'block')
@@ -1642,6 +1750,9 @@ class GameFSM:
 
         if self._eat_phase == 'select':
             if self._eat_slot > EAT_HOTBAR_SLOTS:
+                if not config.ENABLE_HUNT:
+                    print('[EAT] no food in hotbar, HUNT disabled — returning to EXPLORE')
+                    return self._goto(State.EXPLORE, {})
                 print('[EAT] no food in hotbar, transitioning to HUNT')
                 self._hunt_grace_ticks_left = HUNT_GRACE_TICKS
                 _detections = [animal_obj] if animal_obj else []
@@ -1845,6 +1956,30 @@ class GameFSM:
 
     def _goto(self, new_state: State, action: dict, world_mem=None):
         """Transition to a new state (or stay if already there)."""
+        # ── Supervisory veto (Tier 1 deterministic invariants) ──────────────
+        # Only runs on actual transitions — staying in the same state skips
+        # the review so the control loop isn't penalised every tick.
+        if new_state != self.state:
+            _wm = world_mem or self._world_mem_cache
+            _inv = self._inventory_cache
+            _inv_count = len([k for k, v in _inv.items.items() if v > 0]) if _inv is not None else 0
+            _belief = BeliefProxy(
+                world_mem=_wm,
+                last_vision_ts=self._last_vision_ts,
+                inventory_count=_inv_count,
+            )
+            _verdict = self.supervisor.review(
+                new_state.value, self.state.value, _belief)
+            if _verdict.ruling is not Ruling.ALLOW:
+                _sub = _verdict.substitute
+                if _sub and _sub != new_state.value:
+                    try:
+                        new_state = State(_sub)
+                    except ValueError:
+                        new_state = State.EXPLORE
+                else:
+                    new_state = State.EXPLORE
+        # ── Normal transition logic follows ─────────────────────────────────
         if new_state != self.state:
             print(f'[FSM] {self.state.value} → {new_state.value}')
             if self.state == State.MINE and new_state != State.MINE:

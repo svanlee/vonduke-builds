@@ -35,8 +35,9 @@ systemctl --user stop aksumael 2>/dev/null
 systemctl --user stop mesh-llm 2>/dev/null
 sleep 3  # let VRAM clear
 
-echo "[AUTOTRAIN-RESTART] training..."
-PYTORCH_MULTIPROCESSING_START_METHOD=spawn "$VENV_PYTHON" tools/yolo_finetune.py train
+EPOCHS="${AKSUMAEL_TRAIN_EPOCHS:-30}"   # learning_orbit passes 10; full autotrain uses 30
+echo "[AUTOTRAIN-RESTART] training ($EPOCHS epochs)..."
+PYTORCH_MULTIPROCESSING_START_METHOD=spawn "$VENV_PYTHON" tools/yolo_finetune.py train "$EPOCHS"
 TRAIN_RC=$?
 if [[ $TRAIN_RC -eq 0 ]]; then
     echo "[AUTOTRAIN-RESTART] training complete"

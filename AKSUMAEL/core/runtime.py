@@ -299,19 +299,32 @@ def run():
     from behaviors.torch_placement import TorchBehavior
     from behaviors.crafting import CraftingBehavior
     from behaviors.inventory_reader import InventoryReader
+    from memory.hotbar_reader import HotbarReader
     from behaviors.junk_dropper import JunkDropper
     from behaviors.chest_manager import ChestManager
     from behaviors.scan import EnvironmentScanner
     from behaviors.launch_game import GameLauncher
+    from behaviors.frame_orbiter import FrameOrbiter, pick_orbit_target
+    from behaviors.learning_orbit import LearningOrbit
     from core.fsm import GameFSM, State, ORE_TARGETS, TREE_TARGETS
     auto_trainer = AutoTrainer(yolo)
     surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer,
                                capture_fn=lambda: pipeline.latest_raw_frame) if collector else None
+    orbiter = FrameOrbiter(collector, executor,
+                           capture_fn=lambda: pipeline.latest_raw_frame,
+                           auto_trainer=auto_trainer) if collector else None
+    learning_orbiter = LearningOrbit(executor,
+                                     capture_fn=lambda: pipeline.latest_raw_frame,
+                                     auto_trainer=auto_trainer) if executor else None
+    if learning_orbiter:
+        learning_orbiter.start_watcher()   # background Qwen polling thread
+    _last_orbit_tick_time = 0.0   # wall-clock time of last orbit run
     respawner = RespawnBehavior(executor, goals)
     hunger_behavior = HungerBehavior(executor, goals)
     night_survival  = NightSurvivalBehavior(executor, goals)
     torch_behavior  = TorchBehavior(executor)
-    inv_reader = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
+    inv_reader     = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
+    hotbar_reader  = HotbarReader()
     crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
     junk_dropper = JunkDropper(executor, inventory_reader=inv_reader)
     chest_mgr = ChestManager()
@@ -676,7 +689,10 @@ def run():
             # class) belongs here; the others caused _menu_open false-positives
             # that idled the bot and triggered spurious Escape presses.
             _hud_labels  = {o.get('label') for o in objects}
-            _menu_open   = bool(_hud_labels & {'inventory'})
+            # YOLO can detect 'inventory' once trained; executor.menu_open tracks
+            # it via key presses in the meantime (inventory class had 0 training
+            # examples — 2026-07-31). OR so both paths contribute.
+            _menu_open   = bool(_hud_labels & {'inventory'}) or executor.menu_open
             _hud_present = bool(_hud_labels & {'hotbar', 'health_bar', 'hunger_bar'})
 
             # ── Human-assist mode gate (core/human_assist.py) ──────
@@ -714,9 +730,7 @@ def run():
                 _color_dets = detect_ores_by_color(frame)
                 if _color_dets:
                     _new = [d for d in _color_dets if d['label'] not in {o.get('label') for o in objects}]
-                    if _new:
-                        for d in _new:
-                            print(f'[COLOR] {d["label"]} detected by color (conf={d["conf"]:.2f})')
+                    # COLOR logging removed — was spamming every tick
                     objects = merge_with_yolo(objects, _color_dets)
                     # Save tree frames that color caught but YOLO missed as
                     # training data — no-op when no tree labels present.
@@ -760,7 +774,12 @@ def run():
             _hunger_val = world_mem.hunger_pct
             _escape_active = goals.current_goal() in (
                 'dig_up', 'mine_up', 'escape_underground')
-            if (isinstance(_hunger_val, (int, float))
+            # data/disable_hunger.flag disables the auto-eat push (e.g. in
+            # creative mode where the HUD reader has no real hunger bar to read).
+            _hunger_disabled = pathlib.Path('data/disable_hunger.flag').exists()
+            if (not _hunger_disabled
+                    and config.ENABLE_EAT
+                    and isinstance(_hunger_val, (int, float))
                     and _hunger_val < 0.30
                     and not goals.has_goal('eat')
                     and not _escape_active):
@@ -833,7 +852,11 @@ def run():
                 goals.save()
 
             # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
-            if tick % 60 == 0 and inv_reader._cache_ts > 0:
+            # Skip when mine_ore is the primary goal — crafting chains should
+            # not interrupt ore mining (bot has creative-mode access to tools).
+            if (tick % 60 == 0 and inv_reader._cache_ts > 0
+                    and goals.current != 'mine_ore'
+                    and 'mine_ore' not in goals.stack):
                 goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
 
             if tick % 50 == 0:
@@ -871,14 +894,33 @@ def run():
                     if audio_ev.get('persona'):
                         tts.say_line(audio_ev['persona'])
 
-            # ── Unknown object prompt ──────────────────────────
+            # ── Unknown object → learning orbit ────────────────
+            # Two trigger paths:
+            #  1. Qwen watcher (background thread in LearningOrbit) sets
+            #     self._pending_trigger — checked via has_pending()
+            #  2. YOLO low-conf detection — forwarded via trigger_from_yolo()
+            _safe_for_learning = (
+                fsm_state in (State.EXPLORE, None)
+                and not replayer.is_active()
+                and not _menu_open
+            )
             if yolo.has_unknowns():
                 unknown = yolo.pop_unknown()
-                if unknown:
-                    tts.say_line('unknown_object')
-                    print(f'[YOLO] unknown at {unknown["box"]} '
-                          f'conf={unknown["conf"]:.2f} '
-                          f'— click in window to label')
+                if unknown and learning_orbiter and config.ENABLE_LEARN:
+                    if _safe_for_learning and learning_orbiter.should_trigger(unknown):
+                        learning_orbiter.trigger_from_yolo(unknown)
+                    else:
+                        tts.say_line('unknown_object')
+                        print(f'[YOLO] unknown conf={unknown["conf"]:.2f} — '
+                              f'skipped learning (state={fsm_state})')
+
+            if (config.ENABLE_LEARN
+                    and learning_orbiter
+                    and _safe_for_learning
+                    and learning_orbiter.has_pending()):
+                tts.say_line('unknown_object')
+                print('[LEARNING] ★ entering learning orbit')
+                learning_orbiter.run_pending(frame)
 
             # ── FSM tick (runs every tick; drives core gameplay) ──────
             # Hunger fraction comes from hud_reader's HUD pixel sample
@@ -1206,7 +1248,7 @@ def run():
                     and not _menu_open
                     and not _f3_open
                     and fsm_state == State.EXPLORE
-                    and goals.current_goal() not in ('dig_up', 'mine_up')
+                    and goals.current_goal() not in ('dig_up', 'mine_up', 'mine_ore')
                     and (tick - _last_scan_tick) >= config.SCAN_COOLDOWN_TICKS):
                 # EXPLORE-only (see EnvironmentScanner docstring): the sweep
                 # yanks the camera off whatever's on-screen for several
@@ -1700,6 +1742,18 @@ def run():
                           f'{skill.name} — fails goal-skill hard gate')
                     skill, match = None, 0.0
 
+                # Block animal-hunting skills when ENABLE_HUNT=False — prevents
+                # stored replays (e.g. animal_fa8) from attacking mobs or golems
+                # when hunting is disabled. Skills may use 'animal' as a generic
+                # trigger or have 'animal' in their name; block both patterns.
+                if skill and not config.ENABLE_HUNT:
+                    _animal_trigger_labels = {'cow', 'sheep', 'pig', 'chicken', 'animal'}
+                    _triggers = {t.lower() for t in getattr(skill, 'trigger_objects', [])}
+                    if (_triggers & _animal_trigger_labels
+                            or skill.name.lower().startswith('animal')):
+                        print(f'[SKILL] ENABLE_HUNT=False: blocking animal skill {skill.name}')
+                        skill, match = None, 0.0
+
                 # EAT/HUNT need exclusive per-tick FSM control (see the FSM
                 # comment below) — a generic-trigger skill (e.g. an
                 # "animal"-triggered skill firing off the same passive-mob
@@ -1756,6 +1810,7 @@ def run():
                         replayer.start(skill, aim_box=aim_box, aim_ctrl=aim_ctrl)
                     skills.mark_used(skill)
                     inventory.on_skill_fired(skill.name)
+                    hotbar_reader.on_skill(skill.name)
                     if skill.name.startswith('mine_'):
                         world_mem.record_pickaxe_use()
                     used_skill = skill
@@ -2068,6 +2123,25 @@ def run():
                     surveyor.run(frame, objects)
                     world_mem.record_survey()
 
+            # ── Curriculum orbit ─────────────────────────────────
+            # Every ~120s during EXPLORE, pick the most interesting visible object
+            # and collect 10-15 labeled frames from multiple angles. Drives the
+            # "see object → orbit → mini-train" active-curriculum loop described
+            # in the architecture doc. Never fires during MINE/COMBAT/FISH/etc.
+            import time as _time
+            _ORBIT_INTERVAL_SEC = 120.0
+            if (config.ENABLE_LEARN
+                    and orbiter
+                    and fsm_state in (State.EXPLORE, None)
+                    and not replayer.is_active()
+                    and not _menu_open
+                    and _time.time() - _last_orbit_tick_time >= _ORBIT_INTERVAL_SEC):
+                _target = pick_orbit_target(objects)
+                if _target and orbiter.cooldown_ok(_target):
+                    print(f'[CURRICULUM] orbit trigger → "{_target}"')
+                    _last_orbit_tick_time = _time.time()
+                    orbiter.run(_target, objects, frame)
+
             # ── Controller blend ───────────────────────────────
             # Only actually drive the real Minecraft controller/hardware
             # while attention is focused on 'minecraft' (the default, and
@@ -2093,6 +2167,11 @@ def run():
                 router.update_aksumael(action_dict)
                 final = action_dict
                 final['source'] = src_tag
+
+            # ── Hotbar slot tracking (key presses 1-9) ─────────
+            _pressed_key = final.get('key') if isinstance(final, dict) else None
+            if _pressed_key and str(_pressed_key) in '123456789':
+                hotbar_reader.on_key(str(_pressed_key))
 
             # ── Pitch drift clamp ──────────────────────────────
             # Track every look-dy actually dispatched this tick (FSM aim,
@@ -2217,14 +2296,32 @@ def run():
                 _last_inv_change_tick  = tick
                 _last_goal_change_tick = tick
 
+            # ── Hotbar: merge inferred items into inventory tracker ─
+            if tick % 100 == 0:
+                try:
+                    inventory.merge_hotbar(hotbar_reader.all_items())
+                except Exception as _hb_err:
+                    print(f'[HOTBAR] merge error: {_hb_err}')
+
+            # ── YOLO hot-reload after CPU mini-retrain ──────────────
+            _reload_signal = pathlib.Path('/tmp/aksumael_yolo_reload')
+            if tick % 50 == 0 and _reload_signal.exists():
+                try:
+                    _reload_signal.unlink(missing_ok=True)
+                    yolo.reload_weights()
+                    print(f'[YOLO] hot-reloaded weights after mini-retrain (tick={tick})')
+                except Exception as _rl_err:
+                    print(f'[YOLO] hot-reload error: {_rl_err}')
+
             # ── RL policy bookkeeping + status summary ──────────
             if tick % 100 == 0:
                 rl.save()
                 _active_goal = goals.current_goal() or 'none'
                 _inv_snap    = inv_reader.read(force=False) if inv_reader._cache_ts > 0 else {}
                 _inv_str     = ', '.join(f'{k}:{v}' for k, v in list(_inv_snap.items())[:6]) or 'unknown'
+                _held        = hotbar_reader.held_item() or '?'
                 _skill_count = len(skills.skills)
-                print(f'[STATUS] tick={tick} | goal={_active_goal} | '
+                print(f'[STATUS] tick={tick} | goal={_active_goal} | held={_held} | '
                       f'inv=[{_inv_str}] | skills={_skill_count} | '
                       f'llm_calls={_llm_call_count} | pickaxe_uses={world_mem.pickaxe_uses} | '
                       f'phase={progression.phase}')
@@ -2422,7 +2519,7 @@ def _is_mining_skill(name: str) -> bool:
 # core.fsm's label sets — this only needs to catch that class of mismatch,
 # not do full label classification.
 _GOAL_CATEGORY_KEYWORDS = {
-    'tree': ('tree', 'chop', 'wood', 'log', 'axe', 'lumber'),
+    'tree': ('tree', 'chop', 'wood', 'log', 'axe', 'lumber', 'plank'),
     'ore':  ('ore', 'mine', 'diamond', 'coal', 'iron', 'gold',
              'redstone', 'lapis', 'copper', 'emerald', 'stone'),
 }

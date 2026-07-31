@@ -27,19 +27,22 @@ import numpy as np
 
 ORE_COLOR_RANGES = [
     # label,            H_lo H_hi  S_lo S_hi  V_lo V_hi  min_px
-    # Diamond: tight teal/cyan — high sat+val, large cluster required
-    ('diamond_ore',     85,  105,  140,  255,  160, 255,  60),
+    # Diamond: teal/cyan — calibrated 2026-07-25 against real cave frame.
+    # Measured H mean=73.9 (min=70) on actual diamond ore pixels; old H_lo=85
+    # was missing all of them. S_lo/V_lo also relaxed (mean V=92.9 so V_lo=100
+    # was dropping ~half the pixels). New range covers measured spread with margin.
+    ('diamond_ore',     65,  110,   80,  255,   70, 255,  40),
     # Emerald: bright pure green — tightened to avoid oxidised copper (teal H~85-100)
     # Raised sat+val floors to exclude dull greenish cave blocks. min_px raised
     # to 150 to avoid FP from bright leaf pixels when near trees.
     ('emerald_ore',     55,   75,  180,  255,  170, 255,  150),
-    # Gold: bright yellow, very high sat+val, large cluster required
-    # (torchlight and sunlit wood also produce yellow — raised to 200px to
-    # further reduce FP near trees)
-    ('gold_ore',        20,   30,  180,  255,  180, 255,  200),
-    # Redstone: glowing red/pink — tightened to avoid copper orange (H~10-20)
-    # Raised sat+val floors; also covers high-H red wraparound (H 168-180)
-    ('redstone_ore',     0,    8,  190,  255,  160, 255,  100),
+    # Gold: bright yellow-orange — lowered S/V floors for cave torchlight
+    # (gold in cave shadow reads S~100-140, V~80-130; min_px raised to 80
+    # to compensate for wider range allowing more terrain noise)
+    ('gold_ore',        18,   35,   80,  255,   80, 255,   80),
+    # Redstone: glowing red/pink — relaxed S/V floors for cave lighting;
+    # also covers high-H red wraparound (H 168-180)
+    ('redstone_ore',     0,   10,  130,  255,  100, 255,   80),
     # Lapis DISABLED — cave stone blue causes constant false positives.
     # YOLO handles lapis detection; re-enable only after tuning HSV ranges.
     # ('lapis_ore',      100,  130,  100,  255,   80, 200,  20),
@@ -124,7 +127,7 @@ ORE_COLOR_RANGES = [
     # min_px raised significantly (2026-07-22) to reduce terrain false
     # positives — cow brown ≈ dirt/wood, sheep/chicken white ≈ birch/stone.
     # YOLO handles these when mobs are actually in frame; color is fallback.
-    ('cow',              10,   30,   30,  120,   10,   80,  300),
+    ('cow',              10,   20,   30,   90,   10,   60,  500),
     ('pig',               0,   15,  100,  200,  120,  200,  400),
     ('sheep',             0,  179,    0,   30,  180,  255,  500),
     ('chicken',           0,  179,    0,   30,  150,  255,  400),

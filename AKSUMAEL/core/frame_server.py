@@ -13,11 +13,23 @@ import io
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 import cv2
 import numpy as np
 
 _pipeline_ref = None
+
+
+class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """HTTPServer that handles each request in its own thread.
+
+    Without this, the single-threaded HTTPServer gets blocked by the
+    long-lived MJPEG /stream connection and cannot accept /frame or any
+    other concurrent request until the stream client disconnects.
+    """
+    daemon_threads = True        # threads die when the server exits
+    allow_reuse_address = True   # SO_REUSEADDR — survives quick restart
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -47,14 +59,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         out = frame.copy()
         for obj in (objs or []):
-            x1 = int(obj.get('x1', 0))
-            y1 = int(obj.get('y1', 0))
-            x2 = int(obj.get('x2', 0))
-            y2 = int(obj.get('y2', 0))
+            box = obj.get('box')
+            if not box or len(box) < 4:
+                continue
+            x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
             label = f"{obj.get('label', '?')} {obj.get('conf', 0):.2f}"
-            cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            col = (0, 0, 220) if obj.get('unknown') else (0, 200, 0)
+            cv2.rectangle(out, (x1, y1), (x2, y2), col, 2)
             cv2.putText(out, label, (x1, max(y1 - 5, 12)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
         return out
 
     def _encode_jpeg(self, frame):
@@ -133,7 +146,7 @@ class FrameServer:
         global _pipeline_ref
         _pipeline_ref = pipeline
         self._port   = port
-        self._server = HTTPServer(('0.0.0.0', port), _Handler)
+        self._server = _ThreadingHTTPServer(('0.0.0.0', port), _Handler)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name='FrameServer',

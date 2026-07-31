@@ -121,8 +121,11 @@ class GoalStack:
 
     def auto_update(self, world_memory, inventory, tick: int = 0):
         """Heuristic goal updates based on world state."""
-        # Hunger overrides everything
-        if hasattr(world_memory, 'hunger_pct') and world_memory.hunger_pct < 0.30:
+        # Hunger overrides everything — only when ENABLE_EAT is on
+        import config as _cfg
+        if (_cfg.ENABLE_EAT
+                and hasattr(world_memory, 'hunger_pct')
+                and world_memory.hunger_pct < 0.30):
             if self.current != "eat":
                 self.push("eat")
         elif self.current == "eat" and hasattr(world_memory, 'hunger_pct') and world_memory.hunger_pct > 0.70:
@@ -148,8 +151,10 @@ class GoalStack:
         # the next crafting step the instant the raw-material threshold is hit,
         # same pattern as suggest_craft_goal() for pickaxe tiers. Guarded by
         # has_craft_goal() so this doesn't re-push every tick while the goal
-        # it just pushed is still active.
-        if not self.has_craft_goal() and hasattr(inventory, 'wood_subgoal'):
+        # it just pushed is still active. Skipped when mine_ore is active —
+        # crafting chains must not interrupt ore mining.
+        _ore_mining = (self.current == 'mine_ore' or 'mine_ore' in self.stack)
+        if not self.has_craft_goal() and not _ore_mining and hasattr(inventory, 'wood_subgoal'):
             _wood_goal = inventory.wood_subgoal()
             if _wood_goal:
                 self.push(_wood_goal)

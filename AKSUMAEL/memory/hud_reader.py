@@ -118,8 +118,12 @@ class HudReader:
         self._prev_health_px = health_px
         self._prev_hunger_px = hunger_px
 
-        if self._max_health_px:
+        # Require a minimum pixel count to guard against creative-mode calibration
+        # poisoning: if the running max is very small (< 15 px), the HUD reader
+        # hasn't seen a real full-bar reading yet — hold the default (1.0).
+        MIN_CALIBRATION_PX = 15
+        if self._max_health_px >= MIN_CALIBRATION_PX:
             self.health_pct = min(1.0, health_px / self._max_health_px)
-        if self._max_hunger_px:
+        if self._max_hunger_px >= MIN_CALIBRATION_PX:
             self.hunger_pct = min(1.0, hunger_px / self._max_hunger_px)
         return self.health_pct, self.hunger_pct

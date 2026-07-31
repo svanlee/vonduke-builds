@@ -29,12 +29,13 @@ CRASH_RESTART_SEC=30   # seconds to wait after a crash before restarting
 rm -f "$CTL_FILE"
 
 wait_for_hardware() {
-    echo "[WRAPPER] Waiting for capture card ($CAPTURE_DEVICE) and serial port (/dev/ttyUSB0)..."
+    local uart_port; uart_port=$(python3 -c "import sys; sys.path.insert(0,'$AKSUMAEL_DIR'); import config; print(config.UART_PORT)" 2>/dev/null || echo "/dev/ttyUSB0")
+    echo "[WRAPPER] Waiting for capture card ($CAPTURE_DEVICE) and serial port ($uart_port)..."
     local waited=0
     while true; do
         local missing=()
         [[ ! -e "$CAPTURE_DEVICE" ]] && missing+=("$CAPTURE_DEVICE")
-        [[ ! -e "/dev/ttyUSB0" ]]    && missing+=("/dev/ttyUSB0")
+        [[ ! -e "$uart_port" ]]      && missing+=("$uart_port")
         if [[ ${#missing[@]} -eq 0 ]]; then
             echo "[WRAPPER] Hardware ready — capture card and serial port detected."
             return 0
@@ -81,6 +82,15 @@ start_aksumael() {
     echo "[WRAPPER] Starting AKSUMAEL..."
     cd "$AKSUMAEL_DIR"
     export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
+    # Make CUDA errors synchronous so they become catchable Python exceptions
+    # instead of C++ std::terminate() that kills the whole process.
+    export CUDA_LAUNCH_BLOCKING=1
+    export PYTORCH_CUDA_ALLOC_CONF=garbage_collection_threshold:0.6
+    # Route AKSUMAEL's audio recording to the Rybozen capture card (game audio),
+    # not the laptop mic. PIPEWIRE_NODE tells PipeWire which source to connect
+    # this process's input streams to. axon/hub.py runs as a separate process
+    # and won't inherit this, so voice commands still capture from the default mic.
+    export PIPEWIRE_NODE='USB3.0 Video Analog Stereo'
     # Use the existing DISPLAY if set; otherwise try :0 (X.Org login screen).
     # This lets cv2.imshow / LabelingUI open a real window on the Victus screen.
     export DISPLAY="${DISPLAY:-:0}"

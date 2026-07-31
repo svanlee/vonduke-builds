@@ -231,29 +231,45 @@ class YOLOThread(threading.Thread):
 
     def run(self):
         print('[YOLO] YOLOThread started (GPU, no throttle)')
+        _consecutive_errors = 0
         while not self._stop.is_set():
-            frame = self._cap.get_latest_small()
-            if frame is None:
-                time.sleep(0.01)
-                continue
-
-            objects = self._yolo.detect(frame, track=self._track_mode)
-
-            with self._lock:
-                self._frame   = frame
-                self._objects = objects
-
-            # Push to display queue; discard the stale entry if consumer is behind
-            item = (frame, objects)
-            if self._dq.full():
-                try:
-                    self._dq.get_nowait()
-                except queue.Empty:
-                    pass
             try:
-                self._dq.put_nowait(item)
-            except queue.Full:
-                pass   # benign — next inference will overwrite
+                frame = self._cap.get_latest_small()
+                if frame is None:
+                    time.sleep(0.01)
+                    continue
+
+                objects = self._yolo.detect(frame, track=self._track_mode)
+                _consecutive_errors = 0  # reset on success
+
+                with self._lock:
+                    self._frame   = frame
+                    self._objects = objects
+
+                # Push to display queue; discard the stale entry if consumer is behind
+                item = (frame, objects)
+                if self._dq.full():
+                    try:
+                        self._dq.get_nowait()
+                    except queue.Empty:
+                        pass
+                try:
+                    self._dq.put_nowait(item)
+                except queue.Full:
+                    pass   # benign — next inference will overwrite
+
+            except Exception as e:
+                _consecutive_errors += 1
+                print(f'[YOLO] inference error (#{_consecutive_errors}): {e}')
+                if _consecutive_errors >= 5:
+                    print('[YOLO] too many consecutive errors — reloading model weights')
+                    try:
+                        self._yolo.reload_weights()
+                        _consecutive_errors = 0
+                    except Exception as reload_err:
+                        print(f'[YOLO] reload failed: {reload_err}')
+                        _consecutive_errors = 0
+                time.sleep(0.5)
 
         print('[YOLO] YOLOThread stopped')
 

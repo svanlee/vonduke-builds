@@ -31,26 +31,165 @@ _HUD_BAR_REGIONS = {
 }
 _HUD_BAR_LABELS = set(_HUD_BAR_REGIONS)
 
+# Passive/hostile mobs are multi-block entities — a sheep, cow or creeper
+# at any reasonable range will be at least 40 px in its larger dimension.
+# Flowers, tall grass, and other small decorations can fire the same labels
+# at tiny box sizes (≤30 px).  Reject mob detections whose *larger* side is
+# below this threshold to suppress false-positives from small decor items.
+_MOB_LABELS = {
+    'sheep', 'cow', 'pig', 'chicken',
+    'zombie', 'skeleton', 'spider', 'creeper', 'enderman',
+}
+_MOB_MIN_SIDE_PX = 35   # smaller dimension must be at least this many pixels
+
 
 class YOLODetector:
     def __init__(self):
         self.model = None
+        self._ort_session = None   # onnxruntime CPU fallback
         self.label_db = {}        # user-taught labels: box_hash → label
         self.unknown_queue = []   # boxes below confidence threshold
         self._load_model()
+        self._load_onnx_fallback()
         self._load_label_db()
 
     def _load_model(self):
         try:
             import torch
-            from ultralytics import YOLO
             self._device = 0 if torch.cuda.is_available() else 'cpu'
-            self.model = YOLO(config.YOLO_MODEL)
-            self.model.to(self._device)
             _dev_name = torch.cuda.get_device_name(0) if self._device == 0 else 'CPU'
-            print(f'[YOLO] loaded {config.YOLO_MODEL} → {_dev_name}')
+            if getattr(config, 'YOLO_USE_WORLD', False):
+                from ultralytics import YOLOWorld
+                self.model = YOLOWorld(config.YOLO_WORLD_MODEL)
+                self.model.set_classes(config.YOLO_WORLD_CLASSES)
+                self.model.to(self._device)
+                print(f'[YOLO] YOLO-World loaded ({len(config.YOLO_WORLD_CLASSES)} classes) → {_dev_name}')
+            else:
+                from ultralytics import YOLO
+                self.model = YOLO(config.YOLO_MODEL)
+                self.model.to(self._device)
+                print(f'[YOLO] loaded {config.YOLO_MODEL} → {_dev_name}')
         except Exception as e:
             print(f'[YOLO] failed to load: {e} — running without YOLO')
+
+    def _load_onnx_fallback(self):
+        """Load ONNX model via onnxruntime for CPU fallback when GPU VRAM is low."""
+        self._ort_session = None
+        if getattr(config, 'YOLO_USE_WORLD', False):
+            return   # YOLO-World uses the world model directly; no retrained ONNX to load
+        onnx_path = config.YOLO_MODEL.replace('.pt', '.onnx')
+        if not os.path.exists(onnx_path):
+            print(f'[YOLO] no ONNX fallback at {onnx_path} — skipping will stay as-is')
+            return
+        try:
+            import onnxruntime as ort
+            sess_opts = ort.SessionOptions()
+            sess_opts.inter_op_num_threads = 4
+            sess_opts.intra_op_num_threads = 4
+            self._ort_session = ort.InferenceSession(
+                onnx_path, sess_options=sess_opts,
+                providers=['CPUExecutionProvider'],
+            )
+            self._ort_input_name = self._ort_session.get_inputs()[0].name
+            # Output shape [1, nc+4, 8400] — nc derived at load time
+            out_shape = self._ort_session.get_outputs()[0].shape
+            self._ort_nc = out_shape[1] - 4
+            print(f'[YOLO] ONNX CPU fallback ready: {onnx_path} (nc={self._ort_nc})')
+        except Exception as e:
+            print(f'[YOLO] ONNX fallback load error: {e}')
+            self._ort_session = None
+
+    def _detect_cpu(self, frame) -> list:
+        """Run ONNX CPU inference — called when GPU VRAM is too low for PyTorch."""
+        if self._ort_session is None:
+            return []
+        import numpy as np
+        import cv2 as _cv2
+        try:
+            h0, w0 = frame.shape[:2]
+            imgsz = 320
+            r = min(imgsz / h0, imgsz / w0)
+            nh, nw = int(h0 * r), int(w0 * r)
+            resized = _cv2.resize(frame, (nw, nh))
+            top, left = (imgsz - nh) // 2, (imgsz - nw) // 2
+            blob_img = np.zeros((imgsz, imgsz, 3), dtype=np.uint8)
+            blob_img[top:top + nh, left:left + nw] = resized
+            # BGR→RGB, HWC→CHW, normalise
+            inp = blob_img[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+            inp = inp[np.newaxis]  # [1, 3, 320, 320]
+
+            raw = self._ort_session.run(None, {self._ort_input_name: inp})[0]  # [1, nc+4, 8400]
+            preds = raw[0].T  # [8400, nc+4]
+
+            class_scores = preds[:, 4:]
+            max_scores   = class_scores.max(axis=1)
+            cls_ids      = class_scores.argmax(axis=1)
+            boxes_xywh   = preds[:, :4]
+
+            mask = max_scores >= config.YOLO_CONF_THRESHOLD
+            boxes_xywh = boxes_xywh[mask]
+            max_scores  = max_scores[mask]
+            cls_ids     = cls_ids[mask]
+            if len(boxes_xywh) == 0:
+                return []
+
+            # centre-xywh → xyxy, undo letterbox
+            x1 = (boxes_xywh[:, 0] - boxes_xywh[:, 2] / 2 - left) / r
+            y1 = (boxes_xywh[:, 1] - boxes_xywh[:, 3] / 2 - top)  / r
+            x2 = (boxes_xywh[:, 0] + boxes_xywh[:, 2] / 2 - left) / r
+            y2 = (boxes_xywh[:, 1] + boxes_xywh[:, 3] / 2 - top)  / r
+            boxes_xyxy = np.stack([x1, y1, x2, y2], axis=1)
+
+            indices = _cv2.dnn.NMSBoxes(
+                boxes_xyxy.tolist(), max_scores.tolist(),
+                config.YOLO_CONF_THRESHOLD, 0.45,
+            )
+            if len(indices) == 0:
+                return []
+
+            names = self.model.names if self.model else {}
+            out = []
+            for i in (indices.flatten() if hasattr(indices, 'flatten') else indices):
+                box   = [round(float(v), 1) for v in boxes_xyxy[i]]
+                conf  = round(float(max_scores[i]), 2)
+                cls   = int(cls_ids[i])
+                label = names.get(cls, str(cls)).replace(' ', '_')
+
+                if label in _HUD_BAR_LABELS:
+                    cx_frac = ((box[0] + box[2]) / 2) / w0
+                    cy_frac = ((box[1] + box[3]) / 2) / h0
+                    region  = _HUD_BAR_REGIONS[label]
+                    if not (region['x'][0] <= cx_frac <= region['x'][1]
+                            and region['y'][0] <= cy_frac <= region['y'][1]):
+                        continue
+
+                # Mob size gate (same as GPU path — see _MOB_MIN_SIDE_PX)
+                if label in _MOB_LABELS:
+                    bw = box[2] - box[0]
+                    bh = box[3] - box[1]
+                    if min(bw, bh) < _MOB_MIN_SIDE_PX:
+                        continue
+
+                box_key    = self._box_key(box)
+                user_label = self.label_db.get(box_key)
+                obj = {
+                    'cls':        cls,
+                    'label':      user_label or label,
+                    'conf':       conf,
+                    'box':        box,
+                    'user_label': user_label is not None,
+                    'unknown':    conf < config.YOLO_CONF_THRESHOLD,
+                    'track_id':   None,  # no ByteTrack in CPU path
+                }
+                if obj['unknown'] and not user_label:
+                    self._add_unknown(obj)
+                out.append(obj)
+
+            print(f'[YOLO] CPU fallback: {len(out)} det(s)')
+            return out
+        except Exception as e:
+            print(f'[YOLO] CPU detect error: {e}')
+            return []
 
     def _vram_headroom_ok(self) -> bool:
         """False when free VRAM is below config.YOLO_MIN_FREE_VRAM_MB. The
@@ -68,17 +207,26 @@ class YOLODetector:
             return True  # can't check — don't block detection over it
 
     def reload_weights(self, path: str = None):
-        """Hot-swap YOLO model weights. Call after retraining completes."""
+        """Hot-swap YOLO model weights (GPU + ONNX CPU fallback). Call after retraining.
+        In YOLO-World mode this refreshes the class list instead (no weights to swap)."""
         import config as cfg
+        if getattr(cfg, 'YOLO_USE_WORLD', False):
+            if self.model and hasattr(self.model, 'set_classes'):
+                self.model.set_classes(cfg.YOLO_WORLD_CLASSES)
+                print(f'[YOLO] YOLO-World class list refreshed ({len(cfg.YOLO_WORLD_CLASSES)} classes)')
+            return True
         weights = path or cfg.YOLO_MODEL
+        ok = True
         try:
             from ultralytics import YOLO
             self.model = YOLO(weights)
             print(f'[YOLO] hot-reloaded weights from {weights}')
-            return True
         except Exception as e:
             print(f'[YOLO] reload failed: {e}')
-            return False
+            ok = False
+        # Also rebuild the ONNX CPU session from the newly exported .onnx
+        self._load_onnx_fallback()
+        return ok
 
     def _load_label_db(self):
         path = config.YOLO_LABEL_DB
@@ -115,7 +263,7 @@ class YOLODetector:
         if self.model is None or frame is None:
             return []
         if self._device == 0 and not self._vram_headroom_ok():
-            return []
+            return self._detect_cpu(frame)
         try:
             # conf= must be passed here — without it, Ultralytics applies
             # its own internal default (0.25) to decide which boxes even
@@ -135,7 +283,7 @@ class YOLODetector:
                 conf  = round(float(b.conf), 2)
                 box   = [round(float(x), 1) for x in b.xyxy[0].tolist()]
                 cls   = int(b.cls)
-                label = results.names[cls]
+                label = results.names[cls].replace(' ', '_')   # normalise YOLO-World labels
                 track_id = int(b.id) if getattr(b, 'id', None) is not None else None
 
                 # Check user label DB
@@ -151,6 +299,17 @@ class YOLODetector:
                     if not (region['x'][0] <= cx_frac <= region['x'][1]
                             and region['y'][0] <= cy_frac <= region['y'][1]):
                         continue   # outside this bar's known region — noise or mislabel
+
+                # Mob size gate: mobs are multi-block entities; tiny boxes
+                # (< _MOB_MIN_SIDE_PX on their smaller side) are almost
+                # certainly flowers, tall grass, or other small decor items
+                # mislabelled as mobs by the model.
+                eff_label = user_label or label
+                if eff_label in _MOB_LABELS:
+                    bw = box[2] - box[0]
+                    bh = box[3] - box[1]
+                    if min(bw, bh) < _MOB_MIN_SIDE_PX:
+                        continue
 
                 obj = {
                     'cls':        cls,

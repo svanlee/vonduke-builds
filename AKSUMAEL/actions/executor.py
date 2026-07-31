@@ -20,6 +20,10 @@ class ActionExecutor:
         # Remember what the user actually asked for, so we know what to
         # reconnect back to if we fall back to 'print' at startup.
         self._intended_mode = self.mode
+        # Track inventory/menu state via 'e' key presses instead of relying
+        # on YOLO detection (inventory class had 0 training examples — 2026-07-31).
+        # 'e' toggles menu open/closed; 'escape' always closes.
+        self._menu_open: bool = False
 
         if self.mode == 'kb2040':
             self._init_kb2040()
@@ -51,9 +55,21 @@ class ActionExecutor:
             print(f'[ACTION] CH9329 init failed: {e} — falling back to print')
             self.mode = 'print'
 
+    @property
+    def menu_open(self) -> bool:
+        """True when the bot has opened a menu screen (inventory, chest, etc.).
+        Tracked via key presses rather than YOLO so it works without training data."""
+        return self._menu_open
+
     def execute(self, action_dict: dict):
         if not action_dict:
             return
+        # Key-press menu tracking: 'e' toggles inventory; 'escape'/'esc' always closes.
+        _key = (action_dict.get('key') or '').lower()
+        if _key == 'e':
+            self._menu_open = not self._menu_open
+        elif _key in ('escape', 'esc'):
+            self._menu_open = False
         if self.mode == 'print':
             self._check_reconnect()
         if self.mode == 'print':

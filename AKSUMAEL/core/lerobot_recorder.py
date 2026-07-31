@@ -16,7 +16,12 @@ import time
 
 import cv2
 import numpy as np
-import pandas as pd
+try:
+    import pandas as pd
+    _PANDAS_OK = True
+except ImportError:
+    pd = None  # type: ignore[assignment]
+    _PANDAS_OK = False
 
 import config
 
@@ -145,6 +150,9 @@ class LeRobotRecorder:
             return
 
         self._rows[-1]['next.done'] = True
+        if not _PANDAS_OK:
+            print('[LeRobotRecorder] pandas not available — skipping parquet write')
+            return
         df = pd.DataFrame(self._rows)
         out_path = os.path.join(
             self.episodes_dir, f'episode_{self.episode_index:06d}.parquet')

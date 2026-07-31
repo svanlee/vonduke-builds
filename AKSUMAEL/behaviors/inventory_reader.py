@@ -38,40 +38,22 @@ def _parse_json_response(raw) -> dict | list | None:
         return None
 
 
-_INVENTORY_PROMPT = """This is a screenshot from Minecraft Java Edition.
+_INVENTORY_PROMPT = """This is a Minecraft Java Edition screenshot showing the inventory screen.
 
-TASK: Read the player's inventory and return item slots as JSON.
+First check: do you see a dark inventory panel with item slots? If not (just game world visible), return exactly: {"inventory_closed": true}
 
-The inventory screen (press E) has:
-- A 3×9 MAIN GRID (27 slots numbered 0-26, row-major, top-left = 0)
-- A HOTBAR row (9 slots numbered 27-35, left = 27)
-- A small 2×2 crafting area + result in the top-right (ignore these for slot numbering)
-- Armour slots on the left (ignore)
+If inventory IS open, list every non-empty slot as a JSON object. Use this format:
+{"item_name": {"count": N, "slot": S}, ...}
 
-INSTRUCTIONS:
-1. First check: is an inventory/crafting screen actually open?
-   If you see only the game world with no UI panel, return: {"inventory_closed": true}
-2. Number the slots left-to-right, top-to-bottom:
-   Row 0: slots 0-8  (top row of main grid)
-   Row 1: slots 9-17 (middle row)
-   Row 2: slots 18-26 (bottom row)
-   Hotbar: slots 27-35 (bottom strip)
-3. For each non-empty slot, record:
-   - "count": stack size (integer shown in slot corner; 1 if no number visible)
-   - "slot": slot index (0-35)
-4. If the same item appears in multiple slots, sum the counts but report the
-   FIRST slot index (lowest number) where it appears.
-5. Use Minecraft snake_case IDs. Common ones:
-   oak_log, spruce_log, birch_log, dark_oak_log, jungle_log, acacia_log,
-   oak_planks, spruce_planks, birch_planks, cobblestone, stone, dirt, gravel,
-   stick, coal, charcoal, iron_ore, iron_ingot, gold_ore, gold_ingot,
-   diamond, diamond_ore, redstone, lapis_lazuli, emerald,
-   wooden_pickaxe, stone_pickaxe, iron_pickaxe, wooden_axe, stone_axe,
-   wooden_sword, stone_sword, bread, apple, raw_beef, cooked_beef,
-   torch, crafting_table, furnace, chest, bow, arrow, shield
+Rules:
+- item_name: Minecraft snake_case (oak_log, iron_pickaxe, cobblestone, torch, etc.)
+- count: the number shown in the corner of the slot (integer; use 1 if no number)
+- slot: position 0-35 (main grid 0-26 top-left, hotbar 27-35)
+- If the same item is in multiple slots, sum counts and use the lowest slot number
+- Ignore armour slots and the 2x2 crafting grid
 
-Respond with ONLY a valid JSON object — no markdown fences, no commentary:
-{"cobblestone": {"count": 23, "slot": 5}, "stick": {"count": 8, "slot": 14}, "oak_log": {"count": 4, "slot": 0}}"""
+Return ONLY valid JSON, no markdown, no explanation.
+Example: {"cobblestone": {"count": 23, "slot": 5}, "oak_log": {"count": 4, "slot": 0}, "iron_pickaxe": {"count": 1, "slot": 27}}"""
 
 
 class InventoryReader:
@@ -182,8 +164,9 @@ class InventoryReader:
         # Generous budget — the model 'thinks' before answering, which can
         # burn several hundred tokens before the actual JSON reply.
         raw, _provider = route_llm_call(
-            _INVENTORY_PROMPT, max_tokens=1200, images=[frame_to_b64(frame)],
-            timeout=45, local_retries=3)
+            _INVENTORY_PROMPT, max_tokens=600, images=[frame_to_b64(frame)],
+            timeout=30, local_retries=2,
+            system='You are a Minecraft inventory assistant. Always respond with valid JSON only. Never output bounding boxes or labels.')
         if raw is None:
             print('[INV] all LLM tiers failed')
             return {'items': [], 'parse_error': True}, False

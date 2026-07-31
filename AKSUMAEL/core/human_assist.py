@@ -371,7 +371,7 @@ class HumanAssist:
         # changed) never reaches action dispatch below (2026-07-19,
         # urgent fix: toggling Start while LT was physically held used to
         # phantom-fire a SHIFT press — see _prev_lt_held note below).
-        if rising & 0x0080:
+        if rising & 0x0200:   # BTN_START = 0x0200 (was wrong 0x0080 = RT bit, never fired)
             self.human_mode = not self.human_mode
             if self.human_mode:
                 print('[HumanAssist] Switched to HUMAN mode')

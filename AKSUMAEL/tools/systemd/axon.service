@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
 ExecStart=/usr/bin/bash /home/ros/vonduke-builds/AKSUMAEL/tools/start_axon.sh
 Restart=no
+Environment=NO_AT_BRIDGE=1
 StandardOutput=append:/tmp/axon.log
 StandardError=append:/tmp/axon.log
 

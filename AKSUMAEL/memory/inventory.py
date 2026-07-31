@@ -107,9 +107,59 @@ class InventoryTracker:
         order they should be dropped."""
         return [item for item in JUNK_ITEMS if self.items.get(item, 0) > 0]
 
+    def merge_screen_read(self, screen_items: dict):
+        """Merge a real screen-read inventory dict {item: count} into the
+        tracker. Screen reads are authoritative — they overwrite inferred
+        counts for items they see, and zero out items that were inferred
+        but aren't on screen (likely already used/dropped). Items present
+        on screen but unknown to inference are added directly."""
+        if not screen_items:
+            return
+        # Zero out any inferred items that the screen read didn't see
+        # (only clear items that look like things we'd track, not tools)
+        _CONSUMABLES = {
+            'cobblestone', 'dirt', 'gravel', 'sand', 'oak_log', 'birch_log',
+            'wood', 'oak_planks', 'birch_planks', 'stick', 'coal', 'charcoal',
+            'iron_ore', 'iron_ingot', 'gold_ore', 'gold_ingot', 'diamond',
+            'redstone', 'lapis', 'emerald', 'copper', 'copper_ingot',
+            'torch', 'bread', 'apple', 'raw_beef', 'cooked_beef',
+        }
+        for item in list(self.items.keys()):
+            if item in _CONSUMABLES and item not in screen_items:
+                del self.items[item]
+        # Apply screen-read counts
+        for item, count in screen_items.items():
+            if isinstance(count, int) and count > 0:
+                self.items[item] = count
+        self.save()
+        print(f'[INV] merged screen read — tracker now: '
+              + ', '.join(f'{k}:{v}' for k, v in list(self.items.items())[:8]))
+
+    def merge_hotbar(self, hotbar_items: dict):
+        """Merge hotbar vision read {item: count} into tracker.
+        Hotbar is a subset of inventory — update counts for items seen."""
+        for item, count in hotbar_items.items():
+            if isinstance(count, int) and count > 0:
+                # Only update if count is higher than what we inferred,
+                # or if we have no record of this item
+                if self.items.get(item, 0) < count:
+                    self.items[item] = count
+
     def context_summary(self) -> str:
         if not self.items:
             return "Inventory: empty (nothing mined yet this session)"
         top = sorted(self.items.items(), key=lambda x: -x[1])[:8]
         parts = ", ".join(f"{k}×{v}" for k, v in top)
         return f"Inventory (estimated): {parts}"
+
+    def planning_summary(self) -> str:
+        """Richer summary for goal-planning context — includes what the bot
+        can craft and what it's missing."""
+        lines = [self.context_summary()]
+        subgoal = self.wood_subgoal()
+        if subgoal:
+            lines.append(f'Next suggested craft: {subgoal}')
+        if self.should_drop_junk():
+            junk = self.junk_to_drop()
+            lines.append(f'Inventory getting full — junk to drop: {", ".join(junk)}')
+        return ' | '.join(lines)

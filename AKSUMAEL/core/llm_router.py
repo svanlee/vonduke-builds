@@ -147,7 +147,7 @@ def _record(provider: str):
 
 def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
                     timeout: float = 45.0, local_retries: int = 1,
-                    use_cloud: bool = False):
+                    use_cloud: bool = False, system: str = None):
     """
     Route a single-turn LLM prompt to the local mesh-llm server.
 
@@ -174,7 +174,7 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
     with _lock:
         _call_counter += 1
 
-    result = _try_local(prompt, max_tokens, images, timeout, local_retries)
+    result = _try_local(prompt, max_tokens, images, timeout, local_retries, system=system)
     if result is not None:
         _record('local')
         return result, 'local'

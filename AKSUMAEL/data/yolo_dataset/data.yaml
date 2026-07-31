@@ -1,7 +1,7 @@
 path: data/yolo_dataset
 train: images/train
 val: images/val
-nc: 53
+nc: 76
 names:
   0: health_bar
   1: hunger_bar
@@ -47,12 +47,35 @@ names:
   41: sheep_wool
   42: iron_ingot
   43: diamond
-  44: duck
-  45: village_house
-  46: birch_log
-  47: oak_planks
-  48: cobblestone
-  49: oak_door
-  50: stone
-  51: gravel
-  52: sand
+  44: village_house
+  45: birch_log
+  46: oak_planks
+  47: cobblestone
+  48: oak_door
+  49: stone
+  50: gravel
+  51: sand
+  52: tree
+  53: oak_log
+  54: lava
+  55: rain
+  56: obsidian
+  57: chest
+  58: flower
+  59: stone_pressure_plate
+  60: iron_trapdoor
+  61: inventory
+  62: hay_block
+  63: redstone_lamp
+  64: iron_door
+  65: trapdoor
+  66: enderman
+  67: gross
+  68: apple
+  69: glass
+  70: screen
+  71: sun
+  72: sign
+  73: cloud
+  74: magma_block
+  75: duck

@@ -12,12 +12,19 @@ import collections
 
 import config
 
+try:
+    from memory.position_kf import PositionKF
+    _KF_AVAILABLE = True
+except ImportError:
+    _KF_AVAILABLE = False
+
 MEMORY_FILE = 'data/world_memory.json'
 MAX_RECENT  = 20   # keep last N observations in memory
 
 # Fall detection: an F3 Y read that dropped more than this since the
 # previous F3 read means we just fell into a hole/shaft/lava pocket.
 FALL_Y_DROP_THRESHOLD = 3
+Y_JUMP_REJECT_LIMIT   = 50   # blocks per F3 update — OCR misread if exceeded (surface Y=65 → Y=3 = 62 blocks, caught here)
 
 
 class WorldMemory:
@@ -73,6 +80,18 @@ class WorldMemory:
         self.day_count     = None       # vanilla day counter, from F3
         self.mob_spawn_risk = False     # True once light_level is known and < 8
         self.last_scan_direction = None # 'left_to_right' | 'right_to_left' — EXPLORE sweep
+        # ── Position Kalman Filter (v1.5) ────────────────────────────
+        # Smooths noisy F3 OCR position between reads using dead-reckoning
+        # from key presses + facing direction (see memory/position_kf.py).
+        self._pos_kf: 'PositionKF | None' = (
+            PositionKF(x0=self.spawn_x, y0=self.spawn_y, z0=self.spawn_z)
+            if _KF_AVAILABLE else None
+        )
+        # Smoothed position — updated each tick via KF, falls back to raw OCR
+        self.kf_x: float | None = None
+        self.kf_y: float | None = None
+        self.kf_z: float | None = None
+        self.kf_sigma: float | None = None   # mean position uncertainty (blocks)
         # ── HUD pixel read (v1.3) — see memory/hud_reader.py ───────
         self.health_pct    = 1.0
         self.hunger_pct    = 1.0
@@ -208,6 +227,19 @@ class WorldMemory:
         self._ticks_since_f3 += 1
         self._update_depth(observation)
 
+        # KF predict step — dead-reckon position from action + facing
+        if self._pos_kf is not None:
+            try:
+                self._pos_kf.predict(action=action, facing=self.facing)
+                kx, ky, kz = self._pos_kf.position
+                sx, sy, sz = self._pos_kf.uncertainty
+                self.kf_x = round(kx, 2)
+                self.kf_y = round(ky, 2)
+                self.kf_z = round(kz, 2)
+                self.kf_sigma = round((sx + sy + sz) / 3, 2)
+            except Exception:
+                pass
+
         # Auto-save every 50 ticks
         if self.total_ticks % 50 == 0:
             self.save()
@@ -225,7 +257,15 @@ class WorldMemory:
         # (2026-07-21: an OCR misread put y_level at 27824942).
         if _new_y is not None and -128 <= _new_y <= 512:
             prev_y = self.y_level
-            self.y_level = _new_y
+            # Reject implausible single-tick jumps as OCR noise.
+            # A real teleport/respawn sets y_level via a different path;
+            # legitimate F3 reads can't jump >50 blocks per cycle.
+            # Bootstrap exception: prev_y == 0 means we haven't read Y yet.
+            if prev_y and abs(_new_y - prev_y) > Y_JUMP_REJECT_LIMIT:
+                print(f'[F3] Y={_new_y} rejected: jump |{_new_y}-{prev_y}|'
+                      f'>{Y_JUMP_REJECT_LIMIT} — likely OCR noise')
+            else:
+                self.y_level = _new_y
             self.depth_estimate = self.y_level
             if prev_y - self.y_level > FALL_Y_DROP_THRESHOLD:
                 self.fall_detected = True
@@ -254,6 +294,16 @@ class WorldMemory:
         if f3_data.get('day_count') is not None:
             self.day_count = f3_data['day_count']
         self._ticks_since_f3 = 0
+        # KF measurement update from F3 OCR
+        if self._pos_kf is not None and f3_data.get('x') is not None:
+            try:
+                self._pos_kf.update_from_f3(
+                    x=f3_data['x'],
+                    y=float(f3_data.get('y_level') or self.y_level),
+                    z=f3_data['z'],
+                )
+            except Exception:
+                pass
         print(f"[F3] pos=({getattr(self,'pos_x','?')},{self.y_level},{getattr(self,'pos_z','?')}) "
               f"facing={getattr(self,'facing','?')} biome={self.biome} "
               f"chunk=({getattr(self,'chunk_x','?')},{getattr(self,'chunk_z','?')}) "
