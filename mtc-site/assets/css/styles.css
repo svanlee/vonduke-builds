@@ -309,6 +309,12 @@ body.menu-open .nav__toggle span::after  { transform: translateY(-8px) rotate(-4
 .store-cta__actions { display:flex; flex-wrap:wrap; gap:.8rem; justify-content:center; }
 .store-total { margin:.9rem 0 0; color: var(--muted); font-size:.95rem; }
 .store-total strong { color: var(--gold-deep); }
+/* Location toggle (segmented control) */
+.store-locations { display:inline-flex; gap:.25rem; margin-top:1.3rem; padding:.25rem; background: var(--cream-2); border:1px solid var(--line); border-radius: 999px; }
+.store-loc { appearance:none; cursor:pointer; border:0; background:transparent; color: var(--ink-soft); font-family: var(--sans); font-weight:600; font-size:.9rem; letter-spacing:.02em; padding:.55rem 1.3rem; border-radius:999px; transition: background .2s var(--ease), color .2s var(--ease); }
+.store-loc:hover { color: var(--ink); }
+.store-loc.is-active { background: var(--gold); color:#1a1206; box-shadow: var(--shadow-sm); }
+.store-empty { text-align:center; color: var(--muted); padding: 2rem 1rem; }
 
 /* Live product grid */
 .store-items { margin-top: clamp(1.6rem,4vw,2.4rem); }
