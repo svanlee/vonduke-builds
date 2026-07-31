@@ -87,7 +87,7 @@
     "armor_bar_diamond_ore_emeral_72d3e5": 1.409224021840962,
     "gold_ore_xp_bar_c9dc94": 0.44387126691336315,
     "animal_mob_4cc096": 2.3359978887141613,
-    "mine_redstone_ore": 3.467738142910461,
+    "mine_redstone_ore": 0.23664815533813727,
     "mine_diamond_ore": 3.0957432714320343
   },
   "armor_bar,coal_ore,emerald_ore": {
@@ -838,7 +838,7 @@
     "animal_9dd959": 1.850658465242773,
     "animal_b3bd5a": 1.802312693923642,
     "animal_fa8b29": 3.9730919823647195,
-    "animal_birch_log_diamond_ore_5e5458": 4.773647009993051,
+    "animal_birch_log_diamond_ore_5e5458": 4.835410539893121,
     "mob_74c483": 0.2520086654304243,
     "mine_redstone_ore": 2.904577950409238,
     "animal_mob_4cc096": 4.263946389036333,
@@ -848,7 +848,7 @@
   "chicken,diamond_ore,emerald_ore": {
     "animal_birch_log_diamond_ore_5e5458": 2.4802378845870163,
     "animal_mob_86ba67": 1.79300536600661,
-    "animal_fa8b29": 4.544699947098681,
+    "animal_fa8b29": 4.559252947627694,
     "mine_diamond_ore": 0.4170109676483269,
     "animal_mob_4cc096": 4.4504101242712295
   },
@@ -902,8 +902,8 @@
     "mine_redstone_ore": 4.457545694772283
   },
   "birch_log,chicken,leaves": {
-    "animal_mob_4cc096": 2.322972569833687,
-    "animal_fa8b29": 0.11606001915614353
+    "animal_mob_4cc096": 3.2980616186111615,
+    "animal_fa8b29": 0.3858842902584809
   },
   "leaves,log,pig": {
     "animal_mob_4cc096": 3.747227071772246,
@@ -1417,7 +1417,8 @@
     "animal_fa8b29": 3.8230688469825695
   },
   "chicken,emerald_ore,leaves": {
-    "animal_fa8b29": 1.5904338132153502
+    "animal_fa8b29": 1.8026356344923133,
+    "animal_mob_4cc096": 0.39959199483683444
   },
   "chicken,leaves,log": {
     "animal_mob_4cc096": 3.653273699603037,
@@ -1516,8 +1517,8 @@
     "mine_redstone_ore": 3.7498555289547864
   },
   "chicken,emerald_ore,gold_ore": {
-    "animal_mob_4cc096": 3.2466662611328645,
-    "animal_fa8b29": 2.3559624261819234
+    "animal_mob_4cc096": 3.531577528044349,
+    "animal_fa8b29": 2.481182817792
   },
   "chicken,gold_ore,spider": {},
   "diamond_ore,spider": {
@@ -1816,7 +1817,9 @@
   },
   "birch_log,chicken,coal ore block": {},
   "chicken,coal ore block,cow": {},
-  "chicken,leaves": {},
+  "chicken,leaves": {
+    "animal_mob_4cc096": 0.37688084581192205
+  },
   "chicken,diamond_ore,enderman": {},
   "chicken,leaves,redstone_ore": {
     "animal_fa8b29": 0.7591593153386612,
@@ -1828,7 +1831,8 @@
     "animal_fa8b29": 0.21958729915081449
   },
   "chicken,emerald_ore": {
-    "animal_mob_4cc096": 1.186249870996181
+    "animal_mob_4cc096": 0.3096632115703902,
+    "animal_fa8b29": 0.33644126780542666
   },
   "emerald_ore,leaves": {}
 }

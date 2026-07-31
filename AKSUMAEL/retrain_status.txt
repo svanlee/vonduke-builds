@@ -1,0 +1,7 @@
+25063 venv/bin/python3 tools/yolo_finetune.py
+-rw-rw-r-- 1 ros ros 5239 Jul 31 10:49 /tmp/yolo_retrain.log
+[WARN] survey_1785499866364_16695.jpg: bad JSON from model: Expecting ',' delimiter: line 1 column 75 (char 74)
+[399/399] survey_1785499866364_16695: none
+
+[DONE] 1/399 frames had animals/villagers
+[DONE] class breakdown: {'chicken': 1, 'cow': 1}

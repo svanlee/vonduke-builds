@@ -324,17 +324,22 @@ class CraftingBehavior:
     COOLDOWN_SEC        = 20.0   # min seconds between crafting attempts
     TABLE_APPROACH_DIST = 3      # forward steps to approach table
 
-    def __init__(self, executor, inventory_reader=None):
+    def __init__(self, executor, inventory_reader=None, inventory_tracker=None):
         """
         Args:
-            executor:         action executor
-            inventory_reader: InventoryReader instance (optional; falls back to
-                              assuming materials are present if None)
+            executor:          action executor
+            inventory_reader:  InventoryReader instance (optional; falls back to
+                               assuming materials are present if None)
+            inventory_tracker: InventoryTracker instance (optional; used as
+                               fallback when inv_reader cache is empty so
+                               log-to-plank 2x2 crafting triggers correctly
+                               without requiring a forced screen read first)
         """
-        self.executor    = executor
-        self.inv_reader  = inventory_reader
-        self._last_craft  = 0.0
-        self._last_recipe = None
+        self.executor         = executor
+        self.inv_reader       = inventory_reader
+        self._inv_tracker     = inventory_tracker
+        self._last_craft      = 0.0
+        self._last_recipe     = None
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -420,6 +425,12 @@ class CraftingBehavior:
 
     def _run_2x2(self, recipe_name: str, inv: dict, inv_slots: dict) -> bool:
         self._open_inventory()
+        # If inv_slots is empty (tracker fallback was used, or reader disabled),
+        # read the already-open inventory screen to get real slot positions.
+        if not inv_slots and self.inv_reader is not None:
+            raw = self.inv_reader.read_open_screen()
+            inv_slots = {k: v.get('slot', -1) for k, v in raw.items()
+                         if isinstance(v, dict) and 'slot' in v}
         recipe = _normalize_recipe(RECIPES_2x2[recipe_name], inv)
         placed = self._place_recipe_2x2(recipe, inv_slots)
         self._collect(RESULT_SLOT_2x2)
@@ -549,7 +560,14 @@ class CraftingBehavior:
 
     def _read_inventory(self, force: bool = False) -> dict:
         if self.inv_reader is not None:
-            return self.inv_reader.read(force=force)
+            result = self.inv_reader.read(force=force)
+            if result:
+                return result
+            # Screen-reader cache empty — fall through to tracker fallback
+        if self._inv_tracker is not None:
+            # InventoryTracker knows counts from inference; use as fallback
+            # so 2x2 crafting (logs→planks) triggers without a forced screen read
+            return dict(self._inv_tracker.items)
         print('[CRAFT] no inventory reader — assuming stone pickaxe materials')
         return {'cobblestone': 99, 'stick': 99}
 

@@ -1,0 +1,10 @@
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)

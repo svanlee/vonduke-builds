@@ -1,0 +1,20 @@
+[DISPLAY] DisplayThread stopped
+[CAPTURE] CaptureThread stopped
+[YOLO] YOLOThread stopped
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 1, in <module>
+    from core.runtime import run
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 95, in <module>
+    from core.lerobot_recorder   import LeRobotRecorder
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/lerobot_recorder.py", line 19, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
+[WRAPPER] AKSUMAEL exited (PID 13161). Auto-restart disabled — restart manually.
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 1, in <module>
+    from core.runtime import run
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 95, in <module>
+    from core.lerobot_recorder   import LeRobotRecorder
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/lerobot_recorder.py", line 19, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'

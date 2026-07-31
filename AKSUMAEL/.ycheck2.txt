@@ -1,0 +1,5 @@
+[YOLO] YOLOThread started (GPU, no throttle)[YOLO] low VRAM headroom (19MB free) — skipping this tick
+[YOLO] YOLOThread stopped[DISPLAY] DisplayThread stopped
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)
+[YOLO] YOLOThread started (GPU, no throttle)[YOLO] YOLOThread started (GPU, no throttle)

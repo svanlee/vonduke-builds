@@ -1,0 +1,8 @@
+[0459] 1.06s 🔇 | yolo: 1[leaves] | FSM:MINE           | fsm:MINE    | conf:0.50 | r:+0.450 | avg:+0.492 | Mining — ore undetected (1/8), holding aim
+[Overseer] tick 460 fired
+[0460] 1.06s 🔇 | yolo: 2[leaves,log] | FSM:MINE           | fsm:MINE    | conf:0.75 | r:+0.575 | avg:+0.492 | Aiming log (57/60) dx=7,dy=8
+[0461] 1.06s 🔇 | yolo: 2[leaves,log] | FSM:MINE           | fsm:MINE    | conf:0.72 | r:+0.558 | avg:+0.492 | Aiming log (58/60) dx=6,dy=7
+[0462] 1.06s 🔇 | yolo: 1[leaves] | FSM:MINE           | fsm:MINE    | conf:0.50 | r:+0.450 | avg:+0.492 | Mining — ore undetected (1/8), holding aim
+[FSM] MINE: 3 timeouts on log, blacklisting for 60 ticks (strike 1) → EXPLORE
+[FSM] MINE → EXPLORE
+[SCAN] === environment scan starting (360) ===

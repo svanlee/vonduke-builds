@@ -325,7 +325,7 @@ def run():
     torch_behavior  = TorchBehavior(executor)
     inv_reader     = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
     hotbar_reader  = HotbarReader()
-    crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader)
+    crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader, inventory_tracker=inventory)
     junk_dropper = JunkDropper(executor, inventory_reader=inv_reader)
     chest_mgr = ChestManager()
     goal_interp = GoalInterpreter(goals, crafting_behavior)
@@ -2063,13 +2063,18 @@ def run():
             if (_craft_condition
                     and not replayer.is_active()
                     and crafting_behavior.should_trigger(objects)):
+                print(f'[CRAFT-TRIGGER] branch=3x3 goal_active={_craft_goal_active} pickaxe={world_mem.pickaxe_uses}')
                 _crafted = crafting_behavior.run(objects=objects)
                 if _crafted:
                     inventory.on_craft_success(_crafted)
             # 2x2: trigger proactively (no table needed) — e.g. turn logs→planks
             # or planks→sticks so we're ready when a table appears.
-            elif (not replayer.is_active()
+            # Gated on INVENTORY_READER_ENABLED: without it, slot positions
+            # are unknown and every attempt opens/closes inventory uselessly.
+            elif (config.INVENTORY_READER_ENABLED
+                    and not replayer.is_active()
                     and crafting_behavior.should_trigger_2x2()):
+                print(f'[CRAFT-TRIGGER] branch=2x2 inv_reader_enabled=True')
                 _crafted = crafting_behavior.run(objects=objects)
                 if _crafted:
                     inventory.on_craft_success(_crafted)
@@ -2519,7 +2524,7 @@ def _is_mining_skill(name: str) -> bool:
 # core.fsm's label sets — this only needs to catch that class of mismatch,
 # not do full label classification.
 _GOAL_CATEGORY_KEYWORDS = {
-    'tree': ('tree', 'chop', 'wood', 'log', 'axe', 'lumber', 'plank'),
+    'tree': ('tree', 'chop', 'wood', 'log', 'axe', 'lumber'),
     'ore':  ('ore', 'mine', 'diamond', 'coal', 'iron', 'gold',
              'redstone', 'lapis', 'copper', 'emerald', 'stone'),
 }

@@ -97,6 +97,31 @@ class InventoryReader:
         """Force next read() to re-query."""
         self._cache_ts = 0.0
 
+    def read_open_screen(self) -> dict:
+        """Read the inventory that is *already open* on screen.
+
+        Unlike read(force=True), this does NOT press E — it just captures
+        the current frame and asks the LLM. Used by crafting code that has
+        already opened the inventory and needs slot positions. Bypasses the
+        INVENTORY_READER_ENABLED gate since the menu is already visible.
+        Returns {item: {'count': N, 'slot': S}}.
+        """
+        if self._reading:
+            return dict(self._cache)
+        self._reading = True
+        try:
+            frame = self.capture()
+            if frame is None:
+                return {}
+            items, was_open = self._ask_llm(frame)
+            print(f'[INV] open-screen read: {items}')
+            if not items.get('parse_error') and was_open:
+                self._cache = items
+                self._cache_ts = time.time()
+            return dict(self._cache)
+        finally:
+            self._reading = False
+
     def _read_raw(self, force: bool = False) -> dict:
         """Return raw {item: {count, slot}} dict, refreshing cache if needed."""
         if not config.INVENTORY_READER_ENABLED:

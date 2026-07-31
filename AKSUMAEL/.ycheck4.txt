@@ -1,0 +1,10 @@
+[YOLO] YOLOThread stopped[DISPLAY] DisplayThread stopped
+[YOLO] loaded data/models/aksumael_mc.pt → NVIDIA GeForce RTX 4050 Laptop GPU
+[YOLO] loaded data/models/aksumael_mc.pt → NVIDIA GeForce RTX 4050 Laptop GPU
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)
+[YOLO] loaded 1 user labels
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=66)
+[YOLO] loaded 1 user labels
+[YOLO] YOLOThread started (GPU, no throttle)[YOLO] YOLOThread started (GPU, no throttle)
+[FSM] EXPLORE → APPROACH
+[FSM] APPROACH → MINE

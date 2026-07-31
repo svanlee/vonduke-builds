@@ -155,9 +155,14 @@ class GoalStack:
         # crafting chains must not interrupt ore mining.
         _ore_mining = (self.current == 'mine_ore' or 'mine_ore' in self.stack)
         if not self.has_craft_goal() and not _ore_mining and hasattr(inventory, 'wood_subgoal'):
-            _wood_goal = inventory.wood_subgoal()
-            if _wood_goal:
-                self.push(_wood_goal)
+            import config as _cfg
+            # Only push wood-craft goals when the inventory reader is enabled;
+            # without slot positions crafting will always fail and the goal
+            # loops forever blocking other craft goals.
+            if getattr(_cfg, 'INVENTORY_READER_ENABLED', False):
+                _wood_goal = inventory.wood_subgoal()
+                if _wood_goal:
+                    self.push(_wood_goal)
 
         # Base rebuild — enough planks banked and standing near the
         # remembered base point. core/fsm.py's rebuild_fort handler does
