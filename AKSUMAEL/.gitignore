@@ -52,3 +52,4 @@ live_frame_latest.jpg
 burst_*.jpg
 current_view.jpg
 *.tmp
+weights/
