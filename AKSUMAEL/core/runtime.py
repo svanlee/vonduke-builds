@@ -24,7 +24,10 @@ VALID_RESTORED_GOALS = {
     'find_and_chop_tree', 'mine_stone', 'mine_iron', 'mine_diamonds',
     'craft_wood_pickaxe', 'craft_stone_pickaxe', 'craft_iron_pickaxe',
     'explore', 'rebuild_fort', 'return_to_base', 'dig_up', 'escape_underground',
-} | ore_progression.ALL_MINE_GOALS
+} | {
+    'mine_coal_ore', 'mine_iron_ore', 'mine_copper_ore', 'mine_lapis_ore',
+    'mine_gold_ore', 'mine_redstone_ore', 'mine_emerald_ore', 'mine_diamond_ore',
+}
 
 
 def _train_lock_owner_alive() -> bool:
