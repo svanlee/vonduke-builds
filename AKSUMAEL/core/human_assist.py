@@ -202,6 +202,10 @@ class HumanAssist:
 
     def _norm_trigger(self, code, raw) -> int:
         lo, hi = self._axis_range.get(code, (0, 255))
+        # Some controllers (Xbox BT) report triggers as signed (-32768..32767)
+        # where raw=0 is fully released, not lo. Treat 0 as the release floor.
+        if lo < 0:
+            lo = 0
         if hi == lo:
             return 0
         return max(0, min(255, int((raw - lo) / (hi - lo) * 255)))
