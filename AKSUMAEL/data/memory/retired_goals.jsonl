@@ -379,3 +379,4 @@
 {"goal": "craft_diamond_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 37002, "ts": 1785575313.7135186}
 {"goal": "craft_diamond_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 37302, "ts": 1785575774.598147}
 {"goal": "craft_diamond_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 37602, "ts": 1785576437.6168933}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785578086.3725126}

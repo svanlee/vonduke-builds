@@ -34,9 +34,10 @@ LOCAL_LLM_TIMEOUT = 40      # seconds — live 2026-07-19 measurement shows this
                             # came back, and 20s turned out to do the same thing.
 LOCAL_LLM_ENABLED = True
 
-# Inventory reads now route to Anthropic (claude-haiku) via call_anthropic().
-# The local Qwen model outputs bounding-box JSON regardless of prompting, so
-# it was disabled. Haiku correctly returns structured inventory JSON.
+# Inventory reader uses local-only per-slot crop classification (see
+# behaviors/inventory_reader.py). Each slot is extracted as a 32×32 crop
+# and composed into a small grid image for a single local Qwen call,
+# avoiding the full-GUI screenshot that triggers bounding-box detection mode.
 INVENTORY_READER_ENABLED = True
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey

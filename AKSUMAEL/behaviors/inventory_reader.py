@@ -1,15 +1,17 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  AKSUMAEL v1.0.0 — Inventory Reader                   ║
-# ║  Opens inventory, asks the local LLM to read it,      ║
-# ║  returns a structured {item: count} dict for crafting.║
+# ║  Opens inventory, crops each slot, asks local LLM     ║
+# ║  to classify items; returns {item: count} for craft.  ║
 # ╚══════════════════════════════════════════════════════╝
 
 import json
 import re
 import time
 
+import numpy as np
+
 import config
-from core.llm_router import route_llm_call, call_anthropic, frame_to_b64
+from core.llm_router import route_llm_call, frame_to_b64
 
 
 # Cache TTL — don't re-open inventory more often than this
@@ -38,22 +40,86 @@ def _parse_json_response(raw) -> dict | list | None:
         return None
 
 
-_INVENTORY_PROMPT = """This is a Minecraft Java Edition screenshot showing the inventory screen.
+# ── Inventory screen slot layout (vanilla Java 1920×1080 GUI scale 2) ──────
+# Panel origin derived from CRAFT_GRID_2x2 calibration in crafting.py:
+#   (0,0) = (51.0%, 38.0%) = (979px, 410px), which is gui(98,18) from panel.
+#   → panel_x = 979 - 98*2 = 783,  panel_y = 410 - 18*2 = 374
+_PANEL_X      = 783    # inventory panel left edge (pixels)
+_PANEL_Y      = 374    # inventory panel top edge (pixels)
+_GUI_SCALE    = 2      # Minecraft GUI scale multiplier
+_SLOT_GUI     = 18     # slot pitch in gui units (= 36 pixels at scale 2)
+_ICON_GUI     = 16     # icon size in gui units  (= 32 pixels at scale 2)
+_ICON_PX      = _ICON_GUI * _GUI_SCALE   # 32px — crop half-width = 16
+_CELL_PX      = 64     # upscale each crop to 64×64 for the composite
 
-First check: do you see a dark inventory panel with item slots? If not (just game world visible), return exactly: {"inventory_closed": true}
+# Main inventory grid: 3 rows × 9 cols, starting at gui (8, 84) from panel
+_MAIN_GX0, _MAIN_GY0 = 8, 84
+# Hotbar: 1 row × 9 cols, starting at gui (8, 142) from panel
+_HBAR_GY0 = 142
 
-If inventory IS open, list every non-empty slot as a JSON object. Use this format:
-{"item_name": {"count": N, "slot": S}, ...}
+# Slot variance threshold — empty slots show nearly uniform gray background
+_EMPTY_STD_THRESHOLD = 12.0
 
-Rules:
-- item_name: Minecraft snake_case (oak_log, iron_pickaxe, cobblestone, torch, etc.)
-- count: the number shown in the corner of the slot (integer; use 1 if no number)
-- slot: position 0-35 (main grid 0-26 top-left, hotbar 27-35)
-- If the same item is in multiple slots, sum counts and use the lowest slot number
-- Ignore armour slots and the 2x2 crafting grid
+_SLOT_CLASSIFY_PROMPT = (
+    "These are Minecraft inventory slot icon images arranged left-to-right, "
+    "top-to-bottom in a {cols}-column grid (each cell is {cell}×{cell}px). "
+    "The slot indices in order are: [{indices}]. "
+    "Identify the Minecraft item in each cell using its snake_case ID "
+    "(e.g. oak_log, cobblestone, iron_pickaxe, oak_planks, stick, torch). "
+    "Reply ONLY as compact JSON: {{\"slot_index\": \"item_name\", ...}}. "
+    "Omit slots that appear empty. No explanation, no markdown."
+)
 
-Return ONLY valid JSON, no markdown, no explanation.
-Example: {"cobblestone": {"count": 23, "slot": 5}, "oak_log": {"count": 4, "slot": 0}, "iron_pickaxe": {"count": 1, "slot": 27}}"""
+_SLOT_CLASSIFY_SYSTEM = (
+    "You are a Minecraft item classifier. "
+    "Given a grid of item sprite images, output a JSON dict mapping "
+    "slot index strings to snake_case item names. JSON only."
+)
+
+
+def _slot_center_px(slot_idx: int) -> tuple[int, int]:
+    """Return the pixel (cx, cy) of the centre of inventory slot 0-35."""
+    if slot_idx >= 27:          # hotbar
+        col = slot_idx - 27
+        gx = _MAIN_GX0 + col * _SLOT_GUI + _SLOT_GUI // 2
+        gy = _HBAR_GY0 + _SLOT_GUI // 2
+    else:                       # main inventory
+        row, col = divmod(slot_idx, 9)
+        gx = _MAIN_GX0 + col * _SLOT_GUI + _SLOT_GUI // 2
+        gy = _MAIN_GY0 + row * _SLOT_GUI + _SLOT_GUI // 2
+    return _PANEL_X + gx * _GUI_SCALE, _PANEL_Y + gy * _GUI_SCALE
+
+
+def _crop_slot(frame, slot_idx: int):
+    """Extract a 32×32 crop centred on the slot icon, or None if out-of-bounds."""
+    import cv2
+    cx, cy = _slot_center_px(slot_idx)
+    half = _ICON_PX // 2   # 16
+    h, w = frame.shape[:2]
+    if cy - half < 0 or cy + half > h or cx - half < 0 or cx + half > w:
+        return None
+    return frame[cy - half : cy + half, cx - half : cx + half].copy()
+
+
+def _is_empty(crop) -> bool:
+    """True when the slot crop is nearly uniform — i.e., empty air background."""
+    if crop is None or crop.size == 0:
+        return True
+    return float(np.std(crop.astype(np.float32))) < _EMPTY_STD_THRESHOLD
+
+
+def _build_composite(crops_64: list) -> 'np.ndarray':
+    """Stack 64×64 BGR crops into a grid (4 columns max) for a single LLM call."""
+    import cv2
+    COLS = 4
+    rows = (len(crops_64) + COLS - 1) // COLS
+    composite = np.zeros((rows * _CELL_PX, COLS * _CELL_PX, 3), dtype=np.uint8)
+    for i, crop in enumerate(crops_64):
+        r, c = divmod(i, COLS)
+        scaled = cv2.resize(crop, (_CELL_PX, _CELL_PX), interpolation=cv2.INTER_NEAREST)
+        composite[r * _CELL_PX:(r + 1) * _CELL_PX,
+                  c * _CELL_PX:(c + 1) * _CELL_PX] = scaled
+    return composite
 
 
 class InventoryReader:
@@ -183,54 +249,80 @@ class InventoryReader:
         return items
 
     def _ask_llm(self, frame) -> tuple[dict, bool]:
-        """Returns (items, was_open) — was_open is False when the inventory
-        was confirmed closed (or the read failed), so callers know not to
-        press a close key.
-        Routes to Anthropic (claude-haiku) for reliable JSON parsing —
-        the local Qwen model returns bounding-box detection output instead."""
-        raw = call_anthropic(
-            _INVENTORY_PROMPT, max_tokens=600, images=[frame_to_b64(frame)],
-            timeout=30,
-            system='You are a Minecraft inventory assistant. Always respond with valid JSON only. Never output bounding boxes or labels.')
-        if raw is None:
-            # Anthropic failed — fall back to local as last resort
-            print('[INV] Anthropic call failed — trying local fallback')
-            raw, _provider = route_llm_call(
-                _INVENTORY_PROMPT, max_tokens=600, images=[frame_to_b64(frame)],
-                timeout=30, local_retries=1,
-                system='You are a Minecraft inventory assistant. Always respond with valid JSON only. Never output bounding boxes or labels.')
-        if raw is None:
-            print('[INV] all LLM tiers failed')
-            return {'items': [], 'parse_error': True}, False
+        """Classify inventory slots locally using per-slot crops.
 
-        items = _parse_json_response(raw)
-        if items is None:
-            print(f'[INV] error parsing response: not valid JSON — raw={raw[:200]!r}')
-            return {'items': [], 'parse_error': True}, False
-        if not isinstance(items, dict):
-            print(f'[INV] response parsed but was not a JSON object ({type(items).__name__})')
-            return {'items': [], 'parse_error': True}, False
+        Extracts a 32×32 crop for each of the 36 inventory slots (0-26 main,
+        27-35 hotbar) at calibrated pixel positions, skips slots whose pixel
+        variance indicates an empty air background, composes the remaining crops
+        into a single small grid image, and asks the local mesh-llm model to
+        identify all items in one call.
 
-        # Inventory wasn't open — return empty rather than crash
-        if items.get('inventory_closed'):
-            print('[INV] LLM says inventory was not open')
+        This avoids sending the full inventory GUI screenshot, which causes
+        Qwen3.5-Vision to return GUI bounding-box output instead of item names.
+        Returns (items_dict, was_open).
+        """
+        # ── 1. Collect non-empty slot crops ─────────────────────────────
+        non_empty: list[tuple[int, 'np.ndarray']] = []
+        for slot_idx in range(36):
+            crop = _crop_slot(frame, slot_idx)
+            if not _is_empty(crop):
+                non_empty.append((slot_idx, crop))
+
+        # If every slot looks empty, the inventory is probably not open —
+        # when the game world is visible at those coordinates, variance is
+        # high and slots appear "full". Low total non-empty count on a live
+        # frame usually means the screen IS showing the inventory (most slots
+        # really are empty). But ALL 36 looking empty is suspicious.
+        if not non_empty:
+            print('[INV] all 36 slot crops appear empty — inventory not open?')
             return {}, False
-        # Support both old {item: count} and new {item: {count, slot}} formats
-        result = {}
-        for k, v in items.items():
-            if not isinstance(k, str) or k == 'inventory_closed':
+
+        print(f'[INV] {len(non_empty)} non-empty slots → local classification')
+
+        # ── 2. Build composite image ──────────────────────────────────────
+        crops_64 = [c for _, c in non_empty]
+        composite = _build_composite(crops_64)
+
+        COLS = 4
+        slot_indices = ', '.join(str(s) for s, _ in non_empty)
+        prompt = _SLOT_CLASSIFY_PROMPT.format(
+            cols=COLS, cell=_CELL_PX, indices=slot_indices)
+
+        # ── 3. Single local LLM call ──────────────────────────────────────
+        raw, _ = route_llm_call(
+            prompt, max_tokens=300, images=[frame_to_b64(composite)],
+            timeout=config.LOCAL_LLM_TIMEOUT, local_retries=1,
+            system=_SLOT_CLASSIFY_SYSTEM)
+
+        if raw is None:
+            print('[INV] local LLM call failed')
+            return {'items': [], 'parse_error': True}, False
+
+        # ── 4. Parse JSON response ────────────────────────────────────────
+        parsed = _parse_json_response(raw)
+        if not isinstance(parsed, dict):
+            print(f'[INV] unexpected response ({type(parsed).__name__}) — raw={raw[:200]!r}')
+            return {'items': [], 'parse_error': True}, False
+
+        # Build {item_name: {count, slot}} — multiple slots of same item → sum
+        result: dict[str, dict] = {}
+        for slot_key, item_name in parsed.items():
+            if not isinstance(item_name, str):
                 continue
-            key = k.lower().replace(' ', '_')
-            if isinstance(v, dict):
-                count = max(0, int(v.get('count', 1)))
-                slot  = int(v.get('slot', -1))
-            elif isinstance(v, (int, float)):
-                count = max(0, int(v))
-                slot  = -1
+            item_name = item_name.lower().replace(' ', '_').strip('.')
+            if not item_name or len(item_name) > 50:
+                continue
+            try:
+                slot_idx = int(slot_key)
+            except (ValueError, TypeError):
+                continue
+            if item_name in result:
+                result[item_name]['count'] += 1
             else:
-                continue
-            result[key] = {'count': count, 'slot': slot}
-        return result, True
+                result[item_name] = {'count': 1, 'slot': slot_idx}
+
+        print(f'[INV] local classified: {list(result.keys())}')
+        return result, bool(result)
 
     def _tap(self, key: str, wait_ms: int):
         self.executor.execute({

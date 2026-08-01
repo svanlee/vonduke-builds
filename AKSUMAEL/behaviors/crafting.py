@@ -25,6 +25,31 @@ CRAFT_GRID_2x2 = {
 }
 RESULT_SLOT_2x2 = (56.9, 39.8)
 
+# ── Recipe-book UI coordinates (inventory screen, GUI scale 2, 1920×1080) ──
+# When inventory is open (E key), press F to toggle the recipe book.
+# The recipe book panel opens on the LEFT; the inventory panel shifts RIGHT
+# by 137 px (137 gui units × 2 scale).  Coordinates derived from vanilla
+# Java container geometry (guiLeft = (1920-313*2)/2 = 647 with recipe book).
+#
+# To avoid dealing with shifted result-slot coordinates we: open recipe book
+# (F), click recipe → grid fills, press F again to close recipe book, then
+# shift-click result at RESULT_SLOT_2x2 which is now back at its original pos.
+RECIPE_BOOK_TOGGLE   = (48.9, 42.8)   # book icon (no book open yet)
+RECIPE_BOOK_SEARCH   = (36.3, 40.0)   # search text box (book open)
+RECIPE_BOOK_RECIPE_0 = (34.8, 47.5)   # top-left recipe in the grid (book open)
+
+# Maps 2x2 recipe name → search string typed into recipe book
+_RECIPE_SEARCH_TERMS: dict[str, str] = {
+    'oak_planks':      'oak planks',
+    'spruce_planks':   'spruce planks',
+    'birch_planks':    'birch planks',
+    'jungle_planks':   'jungle planks',
+    'acacia_planks':   'acacia planks',
+    'dark_oak_planks': 'dark oak planks',
+    'stick':           'stick',
+    'crafting_table':  'crafting table',
+}
+
 # ── Inventory grid slot → screen % (crafting table UI) ─────────
 # Slots 0-26: 3×9 main inventory.  Slots 27-35: hotbar.
 # Row/col spacing: ~4.5% x, ~8% y.  Origin at top-left of main grid.
@@ -425,17 +450,60 @@ class CraftingBehavior:
 
     def _run_2x2(self, recipe_name: str, inv: dict, inv_slots: dict) -> bool:
         self._open_inventory()
-        # If inv_slots is empty (tracker fallback was used, or reader disabled),
-        # read the already-open inventory screen to get real slot positions.
-        if not inv_slots and self.inv_reader is not None:
-            raw = self.inv_reader.read_open_screen()
-            inv_slots = {k: v.get('slot', -1) for k, v in raw.items()
-                         if isinstance(v, dict) and 'slot' in v}
-        recipe = _normalize_recipe(RECIPES_2x2[recipe_name], inv)
-        placed = self._place_recipe_2x2(recipe, inv_slots)
+        # Recipe-book approach: no VLM needed.  F toggles the book → click
+        # the recipe → Minecraft auto-fills the grid → F closes book → collect.
+        return self._run_2x2_recipe_book(recipe_name)
+
+    def _run_2x2_recipe_book(self, recipe_name: str) -> bool:
+        """Craft a 2×2 recipe via the in-game recipe book.
+
+        Minecraft's recipe book auto-fills the crafting grid from whatever
+        materials are in the inventory — no slot-position detection needed.
+
+        Flow:
+          1. F key  → open recipe book (inventory shifts left; book appears)
+          2. Click search box, type recipe name
+          3. Click first matching recipe  → grid fills automatically
+          4. F key  → close recipe book  (inventory shifts back to original)
+          5. Shift-click result slot at its original coordinate
+          6. E key  → close inventory
+        """
+        search = _RECIPE_SEARCH_TERMS.get(recipe_name,
+                                          recipe_name.replace('_', ' '))
+        print(f'[CRAFT] recipe-book: searching "{search}"')
+
+        # 1. Open recipe book
+        self._tap('f', 500)
+
+        # 2. Focus search box and type
+        self._click(*RECIPE_BOOK_SEARCH, wait=0.3)
+        # Clear any leftover search text (Ctrl+A → Delete)
+        self._tap_key_combo('ctrl', 'a', wait_ms=100)
+        self._tap('delete', 100)
+        for ch in search:
+            self._tap(ch, 40)
+        time.sleep(0.3)
+
+        # 3. Click first recipe in the list
+        self._click(*RECIPE_BOOK_RECIPE_0, wait=0.5)
+
+        # 4. Close recipe book (coordinates shift back)
+        self._tap('f', 400)
+
+        # 5. Collect result from its original position
         self._collect(RESULT_SLOT_2x2)
+
+        # 6. Close inventory
         self._close_ui()
-        return placed
+        return True
+
+    def _tap_key_combo(self, modifier: str, key: str, wait_ms: int = 150):
+        """Press modifier+key together (e.g. Ctrl+A to select all)."""
+        self.executor.execute({
+            'key': f'{modifier}+{key}', 'click': None,
+            'gamepad': None, 'source': 'crafting',
+        })
+        time.sleep(wait_ms / 1000.0)
 
     def _approach_table(self):
         print('[CRAFT] approaching crafting table')
