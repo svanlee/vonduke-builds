@@ -24,7 +24,7 @@ VALID_RESTORED_GOALS = {
     'find_and_chop_tree', 'mine_stone', 'mine_iron', 'mine_diamonds',
     'craft_wood_pickaxe', 'craft_stone_pickaxe', 'craft_iron_pickaxe',
     'explore', 'rebuild_fort', 'return_to_base', 'dig_up', 'escape_underground',
-}
+} | ore_progression.ALL_MINE_GOALS
 
 
 def _train_lock_owner_alive() -> bool:
@@ -112,6 +112,7 @@ from memory.progression      import ProgressionTracker
 from memory.minecraft_kb     import MinecraftKB
 from memory.rl_policy        import RLPolicy
 from memory                  import chest_memory
+from behaviors               import ore_progression
 from memory                  import EpisodicMemory, SemanticMemory, ProceduralMemory, MemoryContext
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
@@ -858,6 +859,21 @@ def run():
                     and goals.current != 'mine_ore'
                     and 'mine_ore' not in goals.stack):
                 goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
+
+            # ── Ore progression — mine one stack of each ore in tier order ─
+            # Runs every 60 ticks alongside suggest_craft_goal. Skips when a
+            # craft goal or ore-mine goal is already queued to avoid stomping
+            # on in-progress work.
+            if (tick % 60 == 0
+                    and not goals.has_craft_goal()
+                    and goals.current_goal() not in ore_progression.ALL_MINE_GOALS
+                    and not any(g in ore_progression.ALL_MINE_GOALS for g in goals.stack)):
+                _ore_goal, _ore_reason = ore_progression.next_goal(inventory)
+                if _ore_goal and _ore_goal not in (goals.current_goal(),):
+                    print(f'[ORE_PROG] pushing {_ore_goal} ({_ore_reason})')
+                    goals.push(_ore_goal)
+                elif _ore_goal is None:
+                    print(f'[ORE_PROG] {_ore_reason}')
 
             # ── Auto-return to base when inventory is full ───────────────
             # InventoryTracker.should_drop_junk() fires when total tracked
@@ -2079,6 +2095,13 @@ def run():
                 _crafted = crafting_behavior.run(objects=objects)
                 if _crafted:
                     inventory.on_craft_success(_crafted)
+                    # Record pickaxe tier for ore progression gating
+                    for _tier, _cgoal in (('wood','craft_wood_pickaxe'),
+                                          ('stone','craft_stone_pickaxe'),
+                                          ('iron','craft_iron_pickaxe'),
+                                          ('diamond','craft_diamond_pickaxe')):
+                        if _crafted == _cgoal:
+                            ore_progression.mark_pickaxe_crafted(_tier)
             # 2x2: trigger proactively (no table needed) — e.g. turn logs→planks
             # or planks→sticks so we're ready when a table appears.
             # Gated on INVENTORY_READER_ENABLED: without it, slot positions
