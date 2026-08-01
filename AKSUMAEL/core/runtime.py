@@ -859,6 +859,18 @@ def run():
                     and 'mine_ore' not in goals.stack):
                 goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
 
+            # ── Auto-return to base when inventory is full ───────────────
+            # InventoryTracker.should_drop_junk() fires when total tracked
+            # item count exceeds 27 slots. When that's true and the bot
+            # isn't near base yet, nudge it home so the chest interaction
+            # block below can stash the overflow.
+            if (inventory.should_drop_junk() and not _near_base
+                    and goals.current_goal() not in ('return_to_base',)
+                    and 'return_to_base' not in goals.stack
+                    and tick % 120 == 0):   # check every ~60s, not every tick
+                print('[GOALS] inventory full — pushing return_to_base to stash overflow')
+                goals.push('return_to_base')
+
             if tick % 50 == 0:
                 inventory.save()
                 goals.save()
@@ -2096,10 +2108,41 @@ def run():
                 if chest_items:
                     world_mem.chest_inv = {**world_mem.chest_inv, **chest_items}
                     print(f'[CHEST] merged contents: {chest_items}')
+
+                # ── Stash overflow into chest ─────────────────────────
+                # When the tracker says we're carrying too much, shift-click
+                # all 27 main inventory slots (chest-UI slots 27-53) into the
+                # chest. Hotbar (54-62) is left alone — tools live there.
+                # Only stash when the chest is confirmed open (chest_items
+                # non-empty or at least the chest UI opened — use _was_open).
+                if inventory.should_drop_junk() and chest_mgr._was_open:
+                    print('[CHEST] inventory full — stashing main inv (slots 27-53)')
+                    for _slot in range(27, 54):   # 3×9 main grid in chest UI
+                        chest_mgr.store_item(executor, 'overflow', _slot)
+                    # Zero out non-tool tracker counts; they're in the chest now
+                    _TOOL_ITEMS = {
+                        'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe',
+                        'diamond_pickaxe', 'bow', 'shield', 'torch',
+                        'bread', 'apple', 'cooked_beef', 'raw_beef',
+                    }
+                    for _item in list(inventory.items.keys()):
+                        if _item not in _TOOL_ITEMS:
+                            inventory.items[_item] = 0
+                    inventory.save()
+                    print('[CHEST] stash complete — tracker reset')
+                    # Re-read chest to capture updated contents
+                    import time as _t; _t.sleep(0.6)
+                    _post_frame = pipeline.latest_raw_frame
+                    if _post_frame is not None:
+                        _post_items = chest_mgr.read_contents(_post_frame, force=True)
+                        if _post_items:
+                            world_mem.chest_inv = _post_items
+                            print(f'[CHEST] post-stash contents: {list(_post_items.keys())[:8]}')
+
                 if world_mem.pos_x is not None and world_mem.pos_z is not None:
                     chest_memory.record_chest(
                         world_mem.pos_x, world_mem.y_level, world_mem.pos_z,
-                        chest_items or None)
+                        world_mem.chest_inv or None)
                 chest_mgr.close(executor)
                 _last_chest_tick = tick
 
