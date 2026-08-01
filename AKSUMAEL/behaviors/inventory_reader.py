@@ -9,7 +9,7 @@ import re
 import time
 
 import config
-from core.llm_router import route_llm_call, frame_to_b64
+from core.llm_router import route_llm_call, call_anthropic, frame_to_b64
 
 
 # Cache TTL — don't re-open inventory more often than this
@@ -185,13 +185,20 @@ class InventoryReader:
     def _ask_llm(self, frame) -> tuple[dict, bool]:
         """Returns (items, was_open) — was_open is False when the inventory
         was confirmed closed (or the read failed), so callers know not to
-        press a close key."""
-        # Generous budget — the model 'thinks' before answering, which can
-        # burn several hundred tokens before the actual JSON reply.
-        raw, _provider = route_llm_call(
+        press a close key.
+        Routes to Anthropic (claude-haiku) for reliable JSON parsing —
+        the local Qwen model returns bounding-box detection output instead."""
+        raw = call_anthropic(
             _INVENTORY_PROMPT, max_tokens=600, images=[frame_to_b64(frame)],
-            timeout=30, local_retries=2,
+            timeout=30,
             system='You are a Minecraft inventory assistant. Always respond with valid JSON only. Never output bounding boxes or labels.')
+        if raw is None:
+            # Anthropic failed — fall back to local as last resort
+            print('[INV] Anthropic call failed — trying local fallback')
+            raw, _provider = route_llm_call(
+                _INVENTORY_PROMPT, max_tokens=600, images=[frame_to_b64(frame)],
+                timeout=30, local_retries=1,
+                system='You are a Minecraft inventory assistant. Always respond with valid JSON only. Never output bounding boxes or labels.')
         if raw is None:
             print('[INV] all LLM tiers failed')
             return {'items': [], 'parse_error': True}, False

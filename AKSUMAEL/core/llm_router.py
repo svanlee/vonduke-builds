@@ -14,6 +14,7 @@
 
 import base64
 import json
+import os
 import threading
 import time
 import urllib.error
@@ -145,9 +146,53 @@ def _record(provider: str):
     _last_provider = provider
 
 
+def call_anthropic(prompt: str, max_tokens: int = 800, images: list = None,
+                   timeout: float = 30.0, system: str = None,
+                   model: str = 'claude-haiku-4-5-20251001') -> str | None:
+    """Call Anthropic API directly for tasks the local model can't handle
+    (e.g. inventory screen parsing). Uses the API key at ~/.config/anthropic/key.
+    Returns the raw text response, or None on failure."""
+    key_path = os.path.expanduser('~/.config/anthropic/key')
+    try:
+        with open(key_path) as f:
+            api_key = f.read().strip()
+    except OSError:
+        print('[LLM_ROUTER] Anthropic key not found at ~/.config/anthropic/key')
+        return None
+
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        print('[LLM_ROUTER] anthropic package not installed — run: pip install anthropic')
+        return None
+
+    content = []
+    if images:
+        for b64 in images:
+            content.append({
+                'type': 'image',
+                'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': b64},
+            })
+    content.append({'type': 'text', 'text': prompt})
+
+    kwargs = dict(model=model, max_tokens=max_tokens, messages=[{'role': 'user', 'content': content}])
+    if system:
+        kwargs['system'] = system
+
+    try:
+        client = _anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(**kwargs)
+        text = resp.content[0].text.strip()
+        _record('claude')
+        return text
+    except Exception as e:
+        print(f'[LLM_ROUTER] Anthropic call failed: {e}')
+        return None
+
+
 def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
-                    timeout: float = 45.0, local_retries: int = 1,
-                    use_cloud: bool = False, system: str = None):
+                   timeout: float = 45.0, local_retries: int = 1,
+                   use_cloud: bool = False, system: str = None):
     """
     Route a single-turn LLM prompt to the local mesh-llm server.
 

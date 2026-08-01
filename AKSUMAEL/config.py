@@ -34,11 +34,10 @@ LOCAL_LLM_TIMEOUT = 40      # seconds — live 2026-07-19 measurement shows this
                             # came back, and 20s turned out to do the same thing.
 LOCAL_LLM_ENABLED = True
 
-# Inventory reads ask the local vision model to return structured JSON, but
-# Disabled: Qwen3.5-4B-Vision is locked in GUI detection mode for any
-# UI screenshot and outputs bounding-box JSON regardless of prompt/system.
-# Inventory knowledge is maintained via InventoryTracker inference instead.
-INVENTORY_READER_ENABLED = False
+# Inventory reads now route to Anthropic (claude-haiku) via call_anthropic().
+# The local Qwen model outputs bounding-box JSON regardless of prompting, so
+# it was disabled. Haiku correctly returns structured inventory JSON.
+INVENTORY_READER_ENABLED = True
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.0-flash"   # current free-tier model
