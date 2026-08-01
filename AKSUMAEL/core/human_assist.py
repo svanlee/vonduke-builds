@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS human_episodes (
 );
 """
 
+LOOK_SENSITIVITY   = 25    # max mouse pixels per tick at full right-stick deflection
+
 POLL_HZ            = 60    # was 20 — 2026-07-19 latency pass. evdev event
                             # capture itself is interrupt-driven (near-zero
                             # added delay, see _event_loop's blocking
@@ -133,10 +135,12 @@ class HumanAssist:
         self._event_thread = None
 
         # Edge-detect bookkeeping (dispatch thread only).
-        self._prev_buttons = 0
-        self._prev_lt_held = False
-        self._prev_rt_held = False
-        self._hotbar_idx   = 0
+        self._prev_buttons     = 0
+        self._prev_sneak_held  = False   # LT + B + RB → lshift
+        self._prev_sprint_held = False   # RT + LS    → lctrl
+        self._prev_x_held      = False   # X → right-click hold
+        self._prev_y_held      = False   # Y → left-click hold
+        self._hotbar_idx       = 0
 
         # Context supplied by core/runtime.py each main-loop tick so
         # imitation rows carry real screen/FSM state regardless of which
@@ -387,16 +391,20 @@ class HumanAssist:
                 # presses in quick succession, which is exactly what
                 # trips Windows Sticky Keys. This was the actual source
                 # of the flood, not a retap loop.
-                self._prev_lt_held = lt > TRIGGER_THRESHOLD
-                self._prev_rt_held = rt > TRIGGER_THRESHOLD
+                # Resync edge-detect baseline to physical state right now
+                # so a trigger already held doesn't phantom-fire on entry.
+                self._prev_sneak_held  = (lt > TRIGGER_THRESHOLD) or bool(buttons & (0x0002 | 0x0020))
+                self._prev_sprint_held = (rt > TRIGGER_THRESHOLD) or bool(buttons & 0x0400)
+                self._prev_x_held      = bool(buttons & 0x0004)
+                self._prev_y_held      = bool(buttons & 0x0008)
             else:
                 print('[HumanAssist] Switched to AI mode')
-                # Don't leave a key/mouse button or gamepad button
-                # physically down from the instant control was handed
-                # back to the FSM.
+                # Don't leave a key/mouse button physically down.
                 self.executor.release_all()
-                self._prev_lt_held = False
-                self._prev_rt_held = False
+                self._prev_sneak_held  = False
+                self._prev_sprint_held = False
+                self._prev_x_held      = False
+                self._prev_y_held      = False
             return
 
         if not self.human_mode:
@@ -404,62 +412,123 @@ class HumanAssist:
 
         action_parts = []
 
-        # Sticks + buttons -> one native gamepad HID report per tick
-        # (see rp2040/code.py's handle_gamepad() / rp2040/boot.py's
-        # GAMEPAD_REPORT_DESCRIPTOR: 4 signed axes + 16 buttons). Sent as
-        # live held state, not discrete taps — Minecraft's own controller
-        # bindings (Options > Controls > Controller) decide what A/X/Y and
-        # the sticks do, the same way they would for a real Xbox pad.
-        # bit7 (Start, 0x0080) is masked out: it's AKSUMAEL's own
-        # HUMAN/AI toggle above and must never reach the game.
-        gp_lx = lx if abs(lx) > MOVE_DEADZONE else 0
-        gp_ly = ly if abs(ly) > MOVE_DEADZONE else 0
-        gp_rx = rx if abs(rx) > STICK_DEADZONE else 0
-        gp_ry = ry if abs(ry) > STICK_DEADZONE else 0
-        gp_buttons = buttons & ~0x0080
-        self.executor.execute({
-            'gamepad': {'lx': gp_lx, 'ly': gp_ly, 'rx': gp_rx, 'ry': gp_ry,
-                       'buttons': gp_buttons},
-            'delay_ms': 0, 'source': 'human',
-        })
-        if gp_lx or gp_ly or gp_rx or gp_ry or gp_buttons:
-            action_parts.append(
-                f'gp(lx={gp_lx},ly={gp_ly},rx={gp_rx},ry={gp_ry},btn={gp_buttons:04x})')
+        # ── Left stick → WASD (retap each tick while deflected) ──────────
+        # No raw-key-hold primitive for non-modifiers; retapping at 60Hz
+        # is functionally equivalent to holding for Minecraft's input poll.
+        lx_n = lx / 127.0
+        ly_n = ly / 127.0
+        _mv  = MOVE_DEADZONE / 127.0
+        if ly_n < -_mv:
+            self.executor.execute({'key': 'W', 'delay_ms': 0, 'source': 'human'})
+            action_parts.append('W')
+        if ly_n >  _mv:
+            self.executor.execute({'key': 'S', 'delay_ms': 0, 'source': 'human'})
+            action_parts.append('S')
+        if lx_n < -_mv:
+            self.executor.execute({'key': 'A', 'delay_ms': 0, 'source': 'human'})
+            action_parts.append('A')
+        if lx_n >  _mv:
+            self.executor.execute({'key': 'D', 'delay_ms': 0, 'source': 'human'})
+            action_parts.append('D')
 
-        # D-pad -> hotbar scroll (edge-queued in _handle_dpad)
+        # ── Right stick → mouse look ─────────────────────────────────────
+        rx_n = rx / 127.0
+        ry_n = ry / 127.0
+        _lk  = STICK_DEADZONE / 127.0
+        rx_d = rx_n if abs(rx_n) > _lk else 0.0
+        ry_d = ry_n if abs(ry_n) > _lk else 0.0
+        if rx_d or ry_d:
+            dx = int(rx_d * LOOK_SENSITIVITY)
+            dy = int(ry_d * LOOK_SENSITIVITY)
+            if dx or dy:
+                self.executor.execute({'look': {'dx': dx, 'dy': dy},
+                                       'delay_ms': 0, 'source': 'human'})
+                action_parts.append(f'look({dx},{dy})')
+
+        # ── Face buttons ─────────────────────────────────────────────────
+        # A (0x0001) → Jump (SPACE tap on rising edge)
+        if rising & 0x0001:
+            self.executor.execute({'key': 'space', 'delay_ms': 0, 'source': 'human'})
+            action_parts.append('jump')
+
+        # Y (0x0008) → Attack/mine (left-click hold)
+        y_held = bool(buttons & 0x0008)
+        if y_held and not self._prev_y_held:
+            self.executor.execute({'mouse_hold': 'down', 'mouse_button_name': 'left',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('attack_start')
+        elif not y_held and self._prev_y_held:
+            self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'left',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('attack_stop')
+        elif y_held:
+            action_parts.append('attack')
+        self._prev_y_held = y_held
+
+        # X (0x0004) → Use/place (right-click hold)
+        x_held = bool(buttons & 0x0004)
+        if x_held and not self._prev_x_held:
+            self.executor.execute({'mouse_hold': 'down', 'mouse_button_name': 'right',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('place_start')
+        elif not x_held and self._prev_x_held:
+            self.executor.execute({'mouse_hold': 'up', 'mouse_button_name': 'right',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('place_stop')
+        elif x_held:
+            action_parts.append('place')
+        self._prev_x_held = x_held
+
+        # LB (0x0010) → Drop item (Q tap)
+        if rising & 0x0010:
+            self.executor.execute({'key': 'Q', 'delay_ms': HID_TAP_MS, 'source': 'human'})
+            action_parts.append('drop')
+
+        # BACK (0x0100) → Inventory (E tap)
+        if rising & 0x0100:
+            self.executor.execute({'key': 'E', 'delay_ms': HID_TAP_MS, 'source': 'human'})
+            action_parts.append('inv')
+
+        # RS (0x0800) → Change perspective (F5 tap)
+        if rising & 0x0800:
+            self.executor.execute({'key': 'F5', 'delay_ms': HID_TAP_MS, 'source': 'human'})
+            action_parts.append('persp')
+
+        # ── Sneak: LT + B (0x0002) + RB (0x0020) → LSHIFT hold ──────────
+        # All three map to the same modifier; combine so releasing one
+        # doesn't clear lshift while another is still pressed.
+        sneak_held = (lt > TRIGGER_THRESHOLD) or bool(buttons & (0x0002 | 0x0020))
+        if sneak_held and not self._prev_sneak_held:
+            self.executor.execute({'key_hold': 'down', 'key': 'lshift',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('sneak_start')
+        elif not sneak_held and self._prev_sneak_held:
+            self.executor.execute({'key_hold': 'up', 'key': 'lshift',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('sneak_stop')
+        elif sneak_held:
+            action_parts.append('sneak')
+        self._prev_sneak_held = sneak_held
+
+        # ── Sprint: RT + LS (0x0400) → LCTRL hold ────────────────────────
+        sprint_held = (rt > TRIGGER_THRESHOLD) or bool(buttons & 0x0400)
+        if sprint_held and not self._prev_sprint_held:
+            self.executor.execute({'key_hold': 'down', 'key': 'lctrl',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('sprint_start')
+        elif not sprint_held and self._prev_sprint_held:
+            self.executor.execute({'key_hold': 'up', 'key': 'lctrl',
+                                   'delay_ms': 0, 'source': 'human'})
+            action_parts.append('sprint_stop')
+        elif sprint_held:
+            action_parts.append('sprint')
+        self._prev_sprint_held = sprint_held
+
+        # ── D-pad → hotbar scroll (edge-queued in _handle_dpad) ──────────
         if hotbar_pending:
             slot = HOTBAR_SLOTS[self._hotbar_idx]
             self.executor.execute({'key': slot, 'delay_ms': HID_TAP_MS, 'source': 'human'})
             action_parts.append(f'hotbar_{slot}')
-
-        # LT -> crouch/sneak, true hold: press shift once on the LT-down
-        # edge, release it once on the LT-up edge (key_hold in
-        # uart/kb2040_packer.py). Retapping shift every poll tick used to
-        # send a full press+release pair at 20Hz for as long as LT was
-        # held — a rapid-fire SHIFT loop that trips Windows Sticky Keys
-        # (2026-07-19).
-        lt_held = lt > TRIGGER_THRESHOLD
-        if lt_held and not self._prev_lt_held:
-            self.executor.execute({'key_hold': 'down', 'key': 'lshift', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('crouch_start')
-        elif not lt_held and self._prev_lt_held:
-            self.executor.execute({'key_hold': 'up', 'key': 'lshift', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('crouch_stop')
-        elif lt_held:
-            action_parts.append('crouch')
-        self._prev_lt_held = lt_held
-
-        # RT -> sprint, same true-hold mechanism as LT.
-        rt_held = rt > TRIGGER_THRESHOLD
-        if rt_held and not self._prev_rt_held:
-            self.executor.execute({'key_hold': 'down', 'key': 'lctrl', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('sprint_start')
-        elif not rt_held and self._prev_rt_held:
-            self.executor.execute({'key_hold': 'up', 'key': 'lctrl', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('sprint_stop')
-        elif rt_held:
-            action_parts.append('sprint')
-        self._prev_rt_held = rt_held
 
         action_taken = '+'.join(action_parts) if action_parts else 'idle'
         self._record_episode(action_taken)
