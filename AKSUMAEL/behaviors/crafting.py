@@ -303,10 +303,15 @@ def decide_what_to_craft(inv: dict) -> tuple[str | None, str]:
     if _can_craft(inv, stick_recipe):
         return 'stick', '2x2'
 
-    # Planks from logs — pick whichever log we have
-    for log, plank in _LOG_TO_PLANK.items():
-        if inv.get(log, 0) >= 1:
-            return plank, '2x2'
+    # Planks from logs — only if we're genuinely low on planks already.
+    # InventoryTracker counts are cumulative (total ever collected), so a
+    # large plank count just means we've made many — don't keep making more
+    # unless there's an obvious need (< 32 planks logged total, or we have
+    # the ingredients to do something more useful next tick anyway).
+    if _total_planks(inv) < 32:
+        for log, plank in _LOG_TO_PLANK.items():
+            if inv.get(log, 0) >= 1:
+                return plank, '2x2'
 
     return None, ''
 
@@ -346,7 +351,7 @@ class CraftingBehavior:
     Uses InventoryReader to know what materials are available.
     """
 
-    COOLDOWN_SEC        = 20.0   # min seconds between crafting attempts
+    COOLDOWN_SEC        = 120.0  # min seconds between crafting attempts
     TABLE_APPROACH_DIST = 3      # forward steps to approach table
 
     def __init__(self, executor, inventory_reader=None, inventory_tracker=None):
