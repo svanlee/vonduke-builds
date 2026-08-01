@@ -195,6 +195,22 @@ def action_dict_to_packets(action_dict: dict,
     if key_hold in ('down', 'up'):
         packets.append(pack_keyboard(keys=[], modifiers=held_modifiers))
 
+    # Held key state report — send a full keyboard report with the given
+    # keys physically held, NO auto-release. Used by human_assist for WASD
+    # movement: the caller sends this every tick while the stick is pushed,
+    # and sends an empty list when the stick returns to center. The firmware
+    # (handle_keyboard) does release_all()+repress on each report, so keys
+    # stay held as long as the caller keeps sending them each tick.
+    elif 'keyboard_state' in action_dict:
+        kb_keys = action_dict['keyboard_state'] or []
+        hids = []; mods = held_modifiers
+        for k in kb_keys:
+            h, m = key_to_hid(str(k))
+            if h: hids.append(h)
+            mods |= m
+        packets.append(pack_keyboard(keys=hids[:6], modifiers=mods))
+        # No release packet — next tick's report replaces this state
+
     # Keyboard tap (press+release) — carries forward any currently-held
     # modifier (e.g. a hotbar tap while LT/sneak is held) instead of
     # clobbering it with 0, same reasoning as held_buttons for mouse-look

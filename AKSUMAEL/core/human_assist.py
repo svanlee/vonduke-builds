@@ -140,6 +140,7 @@ class HumanAssist:
         self._prev_sprint_held = False   # RT + LS    → lctrl
         self._prev_x_held      = False   # X → right-click hold
         self._prev_y_held      = False   # Y → left-click hold
+        self._prev_move_keys   = []      # WASD held state
         self._hotbar_idx       = 0
 
         # Context supplied by core/runtime.py each main-loop tick so
@@ -397,6 +398,7 @@ class HumanAssist:
                 self._prev_sprint_held = (rt > TRIGGER_THRESHOLD) or bool(buttons & 0x0400)
                 self._prev_x_held      = bool(buttons & 0x0004)
                 self._prev_y_held      = bool(buttons & 0x0008)
+                self._prev_move_keys   = []
             else:
                 print('[HumanAssist] Switched to AI mode')
                 # Don't leave a key/mouse button physically down.
@@ -405,6 +407,7 @@ class HumanAssist:
                 self._prev_sprint_held = False
                 self._prev_x_held      = False
                 self._prev_y_held      = False
+                self._prev_move_keys   = []
             return
 
         if not self.human_mode:
@@ -412,24 +415,26 @@ class HumanAssist:
 
         action_parts = []
 
-        # ── Left stick → WASD (retap each tick while deflected) ──────────
-        # No raw-key-hold primitive for non-modifiers; retapping at 60Hz
-        # is functionally equivalent to holding for Minecraft's input poll.
+        # ── Left stick → WASD (true hold via keyboard_state) ─────────────
+        # keyboard_state sends a full HID report with keys held and NO
+        # auto-release. The firmware keeps those keys physically down until
+        # the next report. We send every tick while moving AND once more
+        # when we stop (empty list) so the firmware sees the release.
         lx_n = lx / 127.0
         ly_n = ly / 127.0
         _mv  = MOVE_DEADZONE / 127.0
-        if ly_n < -_mv:
-            self.executor.execute({'key': 'W', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('W')
-        if ly_n >  _mv:
-            self.executor.execute({'key': 'S', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('S')
-        if lx_n < -_mv:
-            self.executor.execute({'key': 'A', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('A')
-        if lx_n >  _mv:
-            self.executor.execute({'key': 'D', 'delay_ms': 0, 'source': 'human'})
-            action_parts.append('D')
+        move_keys = []
+        if ly_n < -_mv: move_keys.append('W')
+        if ly_n >  _mv: move_keys.append('S')
+        if lx_n < -_mv: move_keys.append('A')
+        if lx_n >  _mv: move_keys.append('D')
+
+        if move_keys or self._prev_move_keys:
+            self.executor.execute({'keyboard_state': move_keys,
+                                   'delay_ms': 0, 'source': 'human'})
+            if move_keys:
+                action_parts.extend(move_keys)
+        self._prev_move_keys = move_keys
 
         # ── Right stick → mouse look ─────────────────────────────────────
         rx_n = rx / 127.0
