@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS human_episodes (
 );
 """
 
-LOOK_SENSITIVITY   = 25    # max mouse pixels per tick at full right-stick deflection
+LOOK_SENSITIVITY   = 30    # max mouse pixels per tick at full right-stick deflection
 
 POLL_HZ            = 60    # was 20 — 2026-07-19 latency pass. evdev event
                             # capture itself is interrupt-driven (near-zero
@@ -87,11 +87,9 @@ HID_TAP_MS         = 15
 # deflection, converted to this module's -127..127 scale, to filter out
 # analog drift/noise near center regardless of the controller's actual
 # raw axis range (2026-07-19).
-STICK_DEADZONE     = 31
-MOVE_DEADZONE      = 40     # coarser deadzone for movement so light drift
+STICK_DEADZONE     = 20
+MOVE_DEADZONE      = 15     # coarser deadzone for movement so light drift
                              # on the right stick doesn't walk the player
-                             # (already stricter than STICK_DEADZONE, so no
-                             # change needed here for the same drift-noise ask)
 TRIGGER_THRESHOLD  = 40     # 0-255 trigger value that counts as "pressed"
 
 HOTBAR_SLOTS = [str(n) for n in range(1, 10)]
@@ -133,6 +131,9 @@ class HumanAssist:
         self._buttons = 0
         self._state_lock = threading.Lock()
         self._event_thread = None
+
+        # Debug rate-limiter (print stick state every ~2s in HUMAN mode)
+        self._debug_tick       = 0
 
         # Edge-detect bookkeeping (dispatch thread only).
         self._prev_buttons     = 0
@@ -414,6 +415,13 @@ class HumanAssist:
             return
 
         action_parts = []
+
+        # ── Debug print every ~2s (120 ticks @ 60Hz) ─────────────────────
+        self._debug_tick = (self._debug_tick + 1) % 120
+        if self._debug_tick == 0:
+            print(f'[HumanAssist] lx={lx:+4d} ly={ly:+4d}  '
+                  f'rx={rx:+4d} ry={ry:+4d}  '
+                  f'lt={lt:3d} rt={rt:3d}  btns=0x{buttons:04x}')
 
         # ── Left stick → WASD (true hold via keyboard_state) ─────────────
         # keyboard_state sends a full HID report with keys held and NO
