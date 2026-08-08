@@ -849,14 +849,37 @@ class _VADSegmenter:
                 if spoken < min_speech:
                     continue   # a cough or a door — not worth waking whisper
 
+                import numpy as np
+
+                # Anything that runs all the way to VOICE_VAD_MAX_UTTERANCE_SEC
+                # without ever going VOICE_VAD_SILENCE_SEC quiet is not a person
+                # talking to the bot — nobody says a 15-second sentence with no
+                # 0.8s pause in it. It is game audio holding the gate open, so
+                # drop it here rather than pay whisper to caption it.
+                if duration >= 0.95 * max_utter:
+                    capped = self._to_float32(frames)
+                    rms = (float(np.sqrt(np.mean(capped ** 2)))
+                           if capped.size else 0.0)
+                    print(f'[VOICE] dropping max-cap utterance ({duration:.1f}s) '
+                          f'— likely game audio, not speech '
+                          f'(rms={rms:.4f} vs threshold '
+                          f'{self._energy_threshold:.4f})')
+                    continue
+
                 # Hand whisper only a short tail. It captions silence as
                 # plausible-sounding text ("Thanks for watching!"), and a
                 # full VOICE_VAD_SILENCE_SEC of it is enough to invite that.
                 keep = len(frames) - int(max(0.0, trailing - 0.3) * 1000 / VAD_FRAME_MS)
                 frames = frames[:max(1, keep)]
 
-                print(f'[VOICE] utterance captured ({spoken:.1f}s speech)')
-                return self._to_float32(frames)
+                audio = self._to_float32(frames)
+                # Log the RMS that actually got through the gate. Tuning
+                # VOICE_VAD_ENERGY_THRESHOLD blind takes a restart per guess;
+                # this says how far over the line the source really was.
+                rms = float(np.sqrt(np.mean(audio ** 2))) if audio.size else 0.0
+                print(f'[VOICE] utterance captured ({spoken:.1f}s speech, '
+                      f'rms={rms:.4f} vs threshold {self._energy_threshold:.4f})')
+                return audio
 
     def capture_window(self, seconds: float):
         """Collect a fixed window from the already-open stream, for the
