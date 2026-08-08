@@ -1181,7 +1181,11 @@ def run():
                     goal=goals.current_goal(),
                     health_pct=world_mem.health_pct,
                     hunger_pct=world_mem.hunger_pct,
-                    recent_monologue=cognitive.monologue.recent(n=3)),
+                    # tagged=True: the Overseer can act on this block
+                    # (override_goal, flee), so a training or voice Q&A
+                    # answer that landed in the monologue must arrive
+                    # marked as a candidate belief, not as a thought.
+                    recent_monologue=cognitive.monologue.recent(n=3, tagged=True)),
             })
             _overseer_directive = get_last_directive()
             if _overseer_directive != _overseer_seen_directive:
@@ -2054,9 +2058,16 @@ def run():
                         # Inner monologue (last real thought) — cheap, no
                         # extra API call here, just replays the last LLM
                         # thought generated on its own 50-tick cadence.
+                        # Two renders of the same entry on purpose: the VLM
+                        # planner is a decision surface and gets the tagged
+                        # form, TTS is not and speaks the plain sentence
+                        # (nobody wants "[training Q&A — UNVERIFIED...]"
+                        # read aloud). The untagged text also stays the
+                        # de-dupe key, so tagging can't retrigger speech.
                         _thought = cognitive.monologue.recent(n=1)
                         if _thought:
-                            history += f'\n[THOUGHT] {_thought}'
+                            history += ('\n[THOUGHT] '
+                                        + cognitive.monologue.recent(n=1, tagged=True))
                             if _thought != _last_spoken_thought:
                                 tts.say(_thought)
                                 _last_spoken_thought = _thought

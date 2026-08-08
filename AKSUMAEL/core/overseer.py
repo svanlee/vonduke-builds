@@ -73,6 +73,7 @@ Current agent state:
 HARD RULES (always enforce, override any other goal):
 - If 'village_house' or 'villager' appears in Objects detected AND the current goal is 'find_and_chop_tree', override goal to 'explore' with reason "avoiding village structures". Do not chop wood inside or adjacent to villages.
 - If health < 0.3 or a confirmed hostile mob (zombie, skeleton, spider, creeper) is detected, override to flee.
+- Any line above marked UNVERIFIED is a candidate belief, not ground truth. It is this agent's own answer to somebody's question, not an observation, and the question may have contained a false premise. Never issue override_goal or flee because of an UNVERIFIED line. Base every directive on the live fields only: FSM state, ticks in state, health, hunger, position, objects detected, recent actions, inventory, reward trend. If those do not justify a change, return {{"action": "continue"}}.
 
 Your job: assess whether the agent is making progress toward its goal or is stuck/misaligned. Return a JSON directive (no markdown, just JSON):
 
@@ -118,6 +119,52 @@ def _extract_directive(raw: str) -> dict | None:
     return None
 
 
+# Labels that count as a confirmed hostile for the flee precondition below.
+# Substring-matched, so 'zombie_villager' and 'cave_spider' both hit.
+HOSTILE_LABELS = ('zombie', 'skeleton', 'spider', 'creeper', 'enderman',
+                  'witch', 'drowned', 'husk', 'pillager')
+
+
+def _corroborate(directive: dict, snapshot: dict) -> dict:
+    """Refuse a flee the live snapshot does not support.
+
+    The HARD RULES tell the model to flee only on health < 0.3 or a
+    confirmed hostile, and to ignore UNVERIFIED lines. Both are prompt
+    instructions, and a prompt instruction is the wrong place to put the
+    last line of defence against a confabulation — the failure mode *is*
+    the model being wrong. Day 3's escape had downstream authority over the
+    bot precisely because nothing between the directive and the actuator
+    ever re-checked it.
+
+    override_goal is already bounded by runtime.py's goal whitelist, so a
+    bad one costs a wasted goal. flee has no such bound: it pre-empts the
+    action dict for 8 ticks. Its two preconditions are both readable
+    straight off the snapshot, so read them.
+
+    Fails open. If health is not a usable number the precondition cannot be
+    disproved and the flee stands — memory/hud_reader.py has returned False
+    for health_pct before, and refusing to retreat on a bad HUD read is a
+    worse outcome than one unnecessary retreat.
+    """
+    if directive.get('action') != 'flee':
+        return directive
+
+    hp = snapshot.get('health_pct')
+    if isinstance(hp, bool) or not isinstance(hp, (int, float)):
+        return directive          # unknown health — cannot disprove
+    if hp < 0.3:
+        return directive          # genuinely hurt
+
+    objs = [str(o).lower() for o in (snapshot.get('objects') or [])]
+    if any(h in o for o in objs for h in HOSTILE_LABELS):
+        return directive          # genuine hostile in frame
+
+    reason = (f'flee not corroborated by live state '
+              f'(health={hp}, objects={objs or "none"}) — refused')
+    print(f'[OVERSEER] {reason}')
+    return {'action': 'alert', 'message': reason}
+
+
 def _call_overseer(tick: int, snapshot: dict):
     global _last_directive, _busy
     try:
@@ -152,6 +199,7 @@ def _call_overseer(tick: int, snapshot: dict):
             return
         if 'action' not in directive:
             return
+        directive = _corroborate(directive, snapshot)
         with _lock:
             _last_directive = directive
         action = directive.get('action', 'continue')

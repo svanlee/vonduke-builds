@@ -36,7 +36,7 @@ from axon.command_parser import parse, parse_deterministic
 from axon.speaker import Speaker
 from audio.device_probe import select_devices, alsa_card
 from core.llm_router import route_llm_call
-from core.cognitive import InnerMonologue
+from core.cognitive import InnerMonologue, SOURCE_VOICE
 from envs.attention import AttentionManager
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -663,7 +663,10 @@ class AxonHub:
         # instead write straight to the same file InnerMonologue persists
         # to; its recent() reloads from disk each call, so this shows up in
         # the overlay on the main process's next tick.
-        InnerMonologue().push_external(answer)
+        # Tagged SOURCE_VOICE: this is an answer to a spoken question, so it
+        # carries the same confabulation risk as a training answer and must
+        # not read back to the Overseer as an observation.
+        InnerMonologue().push_external(answer, source=SOURCE_VOICE)
 
     def run(self):
         if not self.enabled:

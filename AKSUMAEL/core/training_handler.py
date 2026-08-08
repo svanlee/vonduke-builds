@@ -45,6 +45,7 @@ import threading
 import time
 
 import config
+from core.cognitive import SOURCE_TRAINING
 from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import route_llm_call
 
@@ -524,7 +525,13 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
             print(f'[TRAIN] answered {goal}: {answer}')
             if monologue is not None:
                 try:
-                    monologue.push_external(answer)
+                    # Tagged SOURCE_TRAINING, not pushed bare. This answer is
+                    # the model's reply to an operator's question; it is not
+                    # an observation and it is not the result of executing a
+                    # task. Day 3's escape was exactly this line writing an
+                    # untagged entry that the Overseer then read out of
+                    # "[RECENT THOUGHTS]" as if it were perception.
+                    monologue.push_external(answer, source=SOURCE_TRAINING)
                 except Exception as e:
                     print(f'[TRAIN] monologue push error: {e}')
         else:
