@@ -411,8 +411,17 @@ def run():
         _attention_envs['robocar'] = RobocarEnv()
     except Exception as e:
         print(f'[ATTENTION] robocar env unavailable: {e}')
+    try:
+        from envs.training_env import TrainingEnv
+        _attention_envs['training'] = TrainingEnv()
+        print('[ATTENTION] training env loaded')
+    except Exception as e:
+        print(f'[ATTENTION] training env unavailable: {e}')
 
-    attention_manager = AttentionManager(_attention_envs, default='minecraft')
+    _default_env = config.ACTIVE_ENV if config.ACTIVE_ENV in _attention_envs else 'minecraft'
+    if _default_env != 'minecraft':
+        print(f'[ATTENTION] default focus: {_default_env} (ACTIVE_ENV override)')
+    attention_manager = AttentionManager(_attention_envs, default=_default_env)
     attention_manager.start()
 
     # ── Voice (core/voice.py) ───────────────────────────────────
