@@ -550,7 +550,7 @@ VOICE_VAD_PREROLL_SEC = 0.3
 # instead, because an RMS gate can't tell a voice from a fan and game audio on
 # the same speakers would trip it continuously. Raise if the room floor keeps
 # triggering it; lower if quiet speech is missed.
-VOICE_VAD_ENERGY_THRESHOLD = 0.035
+VOICE_VAD_ENERGY_THRESHOLD = 0.045
 
 # Seconds to suppress mic input after the bot finishes speaking. sd.wait()
 # returns once playback ends but room acoustics keep the mic hot for ~1s;
