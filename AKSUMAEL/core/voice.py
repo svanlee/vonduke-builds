@@ -623,17 +623,13 @@ class _StreamRecorder:
 
 
 def vad_backend_available() -> bool:
-    """Whether a real speech classifier is installed for always-on mode.
+    """Whether always-on VAD is available.
 
-    Only webrtcvad is checked. silero-vad is the other credible option, but
-    it's a torch model — heavier to load and to run per frame than a 30 ms
-    webrtcvad call, on a box already sharing a 6GB GPU with YOLO and mesh-llm.
-    Add a branch here if webrtcvad ever proves too noisy in practice."""
-    try:
-        import webrtcvad  # noqa: F401
-        return True
-    except Exception:
-        return False
+    Returns True because _VADSegmenter now uses an energy threshold that
+    doesn't require any C extension. webrtcvad was disabled due to a
+    double-free crash on Python 3.12 — restore it here once a compatible
+    build exists."""
+    return True
 
 
 class _VADSegmenter:
@@ -675,14 +671,13 @@ class _VADSegmenter:
         self._preroll = collections.deque(
             maxlen=max(1, int(preroll_sec * 1000 / VAD_FRAME_MS)))
 
-        try:
-            import webrtcvad
-            self._vad = webrtcvad.Vad(int(getattr(config, 'VOICE_VAD_AGGRESSIVENESS', 2)))
-            print('[VOICE] VAD: webrtcvad '
-                  f'(aggressiveness {getattr(config, "VOICE_VAD_AGGRESSIVENESS", 2)})')
-        except Exception as e:
-            print(f'[VOICE] VAD: webrtcvad unavailable ({e}) — '
-                  f'using energy threshold {self._energy_threshold}')
+        # webrtcvad causes `double free or corruption (out)` on Python 3.12
+        # after the first TTS speak — skip it and use energy threshold instead.
+        # Re-enable once a py312-compatible VAD (silero-vad or a patched
+        # webrtcvad build) is available.
+        self._vad = None
+        print(f'[VOICE] VAD: energy threshold {self._energy_threshold:.4f} '
+              f'(webrtcvad disabled — py312 crash workaround)')
 
     # ── stream lifecycle ───────────────────────────────────────────────────
     def start(self):

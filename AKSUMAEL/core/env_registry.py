@@ -19,12 +19,14 @@ def _load_registry():
         return _REGISTRY
 
     from environments.minecraft_env import MinecraftEnv
+    from envs.training_env import TrainingEnv
     from environments.fallout76_env import Fallout76Env
     from environments.driving_env import DrivingEnv
     from environments.robocar_env import RobocarEnv
 
     _REGISTRY.update({
         MinecraftEnv.ENV_NAME: MinecraftEnv,
+        "training": TrainingEnv,
         Fallout76Env.ENV_NAME: Fallout76Env,
         DrivingEnv.ENV_NAME: DrivingEnv,
         RobocarEnv.ENV_NAME: RobocarEnv,
