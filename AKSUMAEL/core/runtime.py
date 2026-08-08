@@ -10,6 +10,7 @@ import re
 import signal
 import time
 import cv2
+import numpy as np
 import config
 
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
@@ -138,6 +139,15 @@ BANNER = """
 """
 
 
+# Stand-in frame handed to the tick loop when there is no camera at all, so
+# the dozens of downstream call sites that take a BGR array keep working
+# unchanged. Nothing is allowed to *interpret* it — see the `vision_ok` gates
+# in the loop — it exists purely so vision-less mode doesn't mean threading
+# None through half the runtime. 640×360 matches CaptureThread's `small`
+# geometry for a 16:9 source.
+_BLIND_FRAME = np.zeros((360, 640, 3), dtype=np.uint8)
+
+
 def run():
     if TRAIN_LOCK.exists():
         waited = 0
@@ -193,6 +203,17 @@ def run():
     mc_kb       = MinecraftKB()
     cognitive   = CognitiveArchitecture()
     reward    = RewardSystem()
+
+    # Sweep and log the attached hardware before anything binds to it, so
+    # the boot log distinguishes "device missing" from "device present but
+    # we couldn't open it" — the executor and HumanAssist below both fall
+    # back silently otherwise (print-mode HID, no controller).
+    from core.hardware_detector import report as _hw_report
+    try:
+        _hw_report()
+    except Exception as e:
+        print(f'[HW] hardware sweep failed: {e}')
+
     executor  = ActionExecutor()
 
     recorder = LeRobotRecorder() if config.ENABLE_LEROBOT_RECORDING else None
@@ -389,6 +410,30 @@ def run():
 
     attention_manager = AttentionManager(_attention_envs, default='minecraft')
     attention_manager.start()
+
+    # ── Voice (core/voice.py) ───────────────────────────────────
+    # Whisper STT + piper TTS + F9 push-to-talk, as one more daemon thread
+    # alongside CaptureThread/YOLOThread/DisplayThread. This was its own
+    # process (axon.service) until 2026-08-08 — two processes on one box
+    # fought over the mic and speaker with audio/game_ear.py and
+    # audio/tts.py, and ALSA gives those to whoever opened them first.
+    #
+    # Started here rather than in main.py because everything it improves on
+    # over the old cross-process design needs live objects: the real
+    # GoalStack (status queries answer from memory, not a stale
+    # data/goals.json), the real InnerMonologue (spoken answers reach the
+    # overlay strip through core.capture's in-process queue), the real
+    # AttentionManager ("switch to robocar" takes effect immediately), and
+    # the real MemoryContext. core.voice.start() never raises and returns
+    # None if whisper/piper/sounddevice or a mic is missing, so a box
+    # without audio boots exactly as before.
+    from core import voice as voice_mod
+    voice_thread = voice_mod.start(goals=goals,
+                                   monologue=cognitive.monologue,
+                                   attention_manager=attention_manager,
+                                   memory_context=mem_context)
+    if voice_thread is None:
+        print('[VOICE] not running — bot continues without voice')
 
     tts.say_line('startup')
 
@@ -601,13 +646,31 @@ def run():
             _handle_joystick(h, ui, router, reward, tts)
 
             # ── Capture frame (from CaptureThread) ────────────
-            # CaptureThread continuously reads /dev/video2; we take the
-            # freshest 640-wide frame without blocking.
+            # CaptureThread continuously reads whichever camera it found; we
+            # take the freshest 640-wide frame without blocking.
+            #
+            # vision_available is False when no camera could be opened at all
+            # (2026-08-08: the capture card disappeared after a power outage).
+            # Rather than stalling the loop — which used to announce 'no
+            # frame' over TTS once a second, forever, and never tick the FSM —
+            # run blind: the FSM, GoalStack and inner monologue all keep
+            # going, driven by goals and memory instead of pixels, and every
+            # pixel- or detection-derived heuristic below is gated on
+            # `vision_ok`. CaptureThread re-probes in the background, so this
+            # flips back to True on its own if a camera reappears.
+            vision_ok = pipeline.vision_available
             frame = pipeline.latest_small_frame
             if frame is None:
-                tts.say_line('no_frame', priority=True)
-                time.sleep(1)
-                continue
+                if vision_ok:
+                    # Camera is there but hasn't handed over its first frame
+                    # yet (or is between devices) — a genuinely transient wait.
+                    tts.say_line('no_frame', priority=True)
+                    time.sleep(1)
+                    continue
+                # Blind tick (vision_ok is already False here): hand downstream
+                # code a real (black) array so nothing has to special-case
+                # None, and skip anything that would read meaning into it.
+                frame = _BLIND_FRAME.copy()
 
             # ── On-demand debug snapshot (2026-07-17) ──────────
             # /dev/video2 only supports one exclusive open, so an outside
@@ -665,7 +728,11 @@ def run():
             # behaviors/night_survival.py. There's no danger on peaceful,
             # so skip the override entirely while the flag is off.
             avg_brightness = frame.mean()
-            if not config.NIGHT_SURVIVAL_ENABLED:
+            if not vision_ok:
+                # A blind tick's frame is black by construction — reading it
+                # as darkness would push return_to_base and pin it there.
+                pass
+            elif not config.NIGHT_SURVIVAL_ENABLED:
                 pass
             elif (avg_brightness < config.NIGHT_BRIGHTNESS_DARK and not _night_triggered
                     and goals.current_goal() not in ('find_shelter', 'return_to_base')):
@@ -730,7 +797,7 @@ def run():
             # Skipped entirely while a menu/chest/inventory GUI is open — the
             # color detector has no notion of GUI state and otherwise keeps
             # firing the same mob/ore blobs against the static UI background.
-            if not _menu_open:
+            if vision_ok and not _menu_open:
                 _color_dets = detect_ores_by_color(frame)
                 if _color_dets:
                     _new = [d for d in _color_dets if d['label'] not in {o.get('label') for o in objects}]
@@ -741,7 +808,7 @@ def run():
                     maybe_save_tree_frame(frame, _color_dets, objects)
 
             # ── Adaptive self-labeling queue (opt-in — see config.LABEL_QUEUE_ENABLED) ──
-            if label_queue_obj is not None:
+            if vision_ok and label_queue_obj is not None:
                 label_queue_obj.maybe_queue(frame, objects, env_profile_obj.env_id)
                 if tick % config.LABEL_QUEUE_EVERY_N_TICKS == 0:
                     label_queue_obj.label_pending(env_profile_obj.env_id)
@@ -766,7 +833,10 @@ def run():
             # Grace period: skip launch checks for the first 30 ticks so
             # YOLO and capture have time to warm up (otherwise HUD detection
             # fails on every restart and triggers a spurious launch).
-            if tick >= 30 and launcher.should_trigger(objects, tick):
+            # Gated on vision_ok: the trigger is "no HUD in the detections",
+            # and with no camera there are never any detections — it would
+            # fire a full game-launch sequence every tick forever.
+            if vision_ok and tick >= 30 and launcher.should_trigger(objects, tick):
                 print(f'[LAUNCH] HUD not detected at tick {tick} — triggering launch sequence')
                 launcher.run(tick)
                 continue
@@ -774,7 +844,11 @@ def run():
             # ── HUD pixel read (health/hunger) ─────────────────
             # Independent of YOLO's health_bar/hunger_bar boxes — samples
             # fixed HUD-row pixel colors directly (see memory/hud_reader.py).
-            world_mem.health_pct, world_mem.hunger_pct = hud_reader.update(frame)
+            # Skipped blind — the reader samples fixed pixel ROIs, and a black
+            # frame reads as health/hunger 0, which would trigger the eat and
+            # respawn pushes below on a bot that is perfectly healthy.
+            if vision_ok:
+                world_mem.health_pct, world_mem.hunger_pct = hud_reader.update(frame)
             _hunger_val = world_mem.hunger_pct
             _escape_active = goals.current_goal() in (
                 'dig_up', 'mine_up', 'escape_underground')
@@ -931,7 +1005,8 @@ def run():
             #     self._pending_trigger — checked via has_pending()
             #  2. YOLO low-conf detection — forwarded via trigger_from_yolo()
             _safe_for_learning = (
-                fsm_state in (State.EXPLORE, None)
+                vision_ok                       # nothing to look at while blind
+                and fsm_state in (State.EXPLORE, None)
                 and not replayer.is_active()
                 and not _menu_open
             )
@@ -1275,7 +1350,8 @@ def run():
                 )
                 _pitch_reset_ticks_left -= 1
 
-            if (not replayer.is_active()
+            if (vision_ok                     # a sweep with nothing to see is pure camera-yanking
+                    and not replayer.is_active()
                     and not _menu_open
                     and not _f3_open
                     and fsm_state == State.EXPLORE
@@ -1895,6 +1971,18 @@ def run():
                 # _last_llm_tick above). Still lets a genuinely new situation
                 # through immediately via the state-changed / empty-stack
                 # checks, instead of always waiting the full gap.
+                # Vision-less mode: there is no image to reason about, so the
+                # vision LLM has nothing to contribute — it would be handed a
+                # black frame, and the frame-diff gate below (every blind
+                # frame is identical to the last) would then pin last_action
+                # in place for the rest of the session. Let the FSM keep
+                # driving off the GoalStack instead. The inner monologue is
+                # unaffected: it runs on its own cadence from goals and
+                # memory, not from pixels.
+                elif not vision_ok:
+                    action_dict = fsm_action
+                    src_tag = 'FSM-blind'
+
                 elif (tick % _llm_interval == 0) or (force_llm_reconsider and (
                         fsm_state != _last_llm_fsm_state
                         or len(goals.stack) == 0
@@ -2067,9 +2155,13 @@ def run():
                         src_tag = 'CARRY'
 
             # ── Death/respawn detection ─────────────────────────
-            if respawner.update(objects, last_observation=last_action.get('observation', ''),
-                                 suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up')),
-                                 health_pct=world_mem.health_pct):
+            # Its primary signal is a blank HUD (no hotbar/health/hunger boxes),
+            # which is exactly what vision-less mode looks like every tick —
+            # so it can only run when there's a camera to see the HUD with.
+            if vision_ok and respawner.update(
+                    objects, last_observation=last_action.get('observation', ''),
+                    suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up')),
+                    health_pct=world_mem.health_pct):
                 world_mem.record_death()
                 continue
 
@@ -2183,7 +2275,9 @@ def run():
             # there's no reason to keep spending torches on a shaft that's
             # about to be abandoned once the climb reaches daylight
             # (2026-07-21).
-            if (fsm_state == State.EXPLORE and not replayer.is_active()
+            # vision_ok: should_trigger() reads avg_brightness, which is 0 on
+            # every blind tick — it would place torches nonstop.
+            if (vision_ok and fsm_state == State.EXPLORE and not replayer.is_active()
                     and not _menu_open and not night_survival.is_active()
                     and goals.current_goal() not in ('dig_up', 'mine_up')
                     and torch_behavior.should_trigger(world_mem, avg_brightness)):
@@ -2191,7 +2285,8 @@ def run():
 
             # ── Curiosity survey ────────────────────────────────
             # Only survey in EXPLORE/EAT — never interrupt MINE, COMBAT, FISH, etc.
-            if surveyor and fsm_state in (State.EXPLORE, State.EAT, None):
+            # Blind ticks have no frame worth collecting as training data.
+            if vision_ok and surveyor and fsm_state in (State.EXPLORE, State.EAT, None):
                 llm_conf = last_action.get('confidence', 1.0)
                 if surveyor.should_trigger(objects, llm_conf):
                     surveyor.run(frame, objects)
@@ -2204,7 +2299,8 @@ def run():
             # in the architecture doc. Never fires during MINE/COMBAT/FISH/etc.
             import time as _time
             _ORBIT_INTERVAL_SEC = 120.0
-            if (config.ENABLE_LEARN
+            if (vision_ok
+                    and config.ENABLE_LEARN
                     and orbiter
                     and fsm_state in (State.EXPLORE, None)
                     and not replayer.is_active()
@@ -2488,7 +2584,8 @@ def run():
             # Cheap unattended-monitoring file so Scott can check status
             # without tailing raw logs — see _write_health_log() below.
             if tick % 60 == 0:
-                _write_health_log(tick, goals.current_goal(), r, cognitive)
+                _write_health_log(tick, goals.current_goal(), r, cognitive,
+                                   camera_index=pipeline.camera_index)
 
             # ── Pace ──────────────────────────────────────────
             time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
@@ -2528,6 +2625,8 @@ def run():
         router.stop()
         attention_manager.stop()
         human_assist.stop()
+        if voice_thread is not None:
+            voice_thread.stop()   # releases the PTT key hook and the mic
         if ear.enabled:
             ear.stop()
         tts.stop()
@@ -2544,9 +2643,13 @@ def _idle() -> dict:
 HEALTH_LOG_PATH = '/tmp/aksumael_health.txt'
 
 
-def _write_health_log(tick: int, goal: str, last_reward: float, cognitive) -> None:
-    """Plain-text status snapshot for unattended checks (no log tailing needed)."""
-    video_present = os.path.exists(f'/dev/video{config.CAMERA_INDEX}')
+def _write_health_log(tick: int, goal: str, last_reward: float, cognitive,
+                       camera_index=None) -> None:
+    """Plain-text status snapshot for unattended checks (no log tailing needed).
+
+    camera_index is the device CaptureThread actually settled on, or None in
+    vision-less mode — reporting the *configured* index instead would have
+    said "video2: ABSENT" while the bot was happily running off video0."""
     tty_present   = os.path.exists('/dev/ttyUSB0')
     vision_calls  = get_call_counts()
     claude_calls  = vision_calls['claude'] + cognitive.monologue.claude_call_count
@@ -2555,7 +2658,7 @@ def _write_health_log(tick: int, goal: str, last_reward: float, cognitive) -> No
         f'tick:         {tick}',
         f'goal:         {goal or "none"}',
         f'last_reward:  {last_reward:+.3f}',
-        f'video2:       {"present" if video_present else "ABSENT"}',
+        f'camera:       {f"/dev/video{camera_index}" if camera_index is not None else "NONE (vision-less)"}',
         f'ttyUSB0:      {"present" if tty_present else "ABSENT"}',
         f'vision_route: {get_last_provider() or "none"} (last tick)',
         f'local_calls:  {vision_calls["local"]}',

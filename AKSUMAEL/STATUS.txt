@@ -1,0 +1,30 @@
+AKSUMAEL STATUS — 2026-08-08 (updated)
+=======================================
+
+DISPATCH RENDERING BUG ACTIVE — check this file or Code tab for updates.
+
+QUESTION FOR YOU (to wire Axon):
+  Was the T7 Axon setup:
+  A) A Python voice server running from the T7 drive?
+  B) The ESP32-S3 Xiaozhi hardware device?
+  Is the T7 currently plugged in?
+
+ACTION NEEDED (physical):
+  1. Reseat KB2040 USB (/dev/ttyUSB0 missing)
+  2. Reseat capture card USB (/dev/video2 missing)
+
+SERVICES:
+  + mesh-llm (9337) — up
+  + embed server (9338) — up, CPU-only
+  + Postgres (5432) — up
+  + main.py (PID 4437) — up, blind/deaf until USB reseated
+  - Honcho (8000) — DOWN, needs rebuild
+
+TODAY'S WORK:
+  f522010 — Skill Registry (46 tests pass)
+  dd99e40 — Telegram channel + Honcho context (84 tests pass)
+  docs/STATE_2026-08-08.md + docs/HONCHO_SPIKE.md written
+
+RESTART BOT: systemctl --user restart aksumael
+
+Claude bridge: curl http://localhost:7683/state | python3 -m json.tool

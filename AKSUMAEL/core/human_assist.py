@@ -117,6 +117,8 @@ class HumanAssist:
         self._device     = None
         self._available  = False
         self._evdev_missing = False   # true once we know evdev itself isn't installed
+        self._last_probe_note = None  # last "why no controller" reason, to
+                                      # de-dup the quiet re-probe log
         self._axis_range = {}
         self._thread     = None
         self._running    = False
@@ -160,21 +162,34 @@ class HumanAssist:
     PROBE_INTERVAL_SEC = 5
 
     def _find_device(self, quiet: bool = False) -> bool:
+        # Device selection lives in core/hardware_detector.find_gamepad():
+        # it enumerates /dev/input/event* directly (evdev's own
+        # list_devices() hides nodes we lack permission on, which reads as
+        # "no controller attached" — see that module's notes) and matches on
+        # gamepad buttons rather than "has EV_ABS + EV_KEY", which also
+        # matched this laptop's ELAN touchpad.
+        from core.hardware_detector import find_gamepad
         try:
-            from evdev import list_devices, InputDevice, ecodes
-            for path in list_devices():
-                dev = InputDevice(path)
-                caps = dev.capabilities()
-                if ecodes.EV_ABS in caps and ecodes.EV_KEY in caps:
-                    self._device = dev
-                    self._available = True
-                    self._read_axis_ranges()
-                    print(f'[HumanAssist] found controller: {dev.name} ({path})')
-                    return True
-            if not quiet:
-                print(f'[HumanAssist] no Xbox controller found on /dev/input — '
-                      f'will keep checking every {self.PROBE_INTERVAL_SEC}s')
-            return False
+            path, info = find_gamepad(verbose=not quiet)
+            if path is None:
+                if not quiet:
+                    print(f'[HumanAssist] no controller: {info} — '
+                          f'will keep checking every {self.PROBE_INTERVAL_SEC}s')
+                elif info != self._last_probe_note:
+                    # Quiet re-probes still report a *change* in why we
+                    # can't find a pad (e.g. permissions fixed, or a pad
+                    # appeared but as the wrong device class).
+                    print(f'[HumanAssist] controller probe: {info}')
+                self._last_probe_note = info
+                return False
+
+            from evdev import InputDevice
+            self._device = InputDevice(path)
+            self._available = True
+            self._last_probe_note = None
+            self._read_axis_ranges()
+            print(f'[HumanAssist] found controller: {info} ({path})')
+            return True
         except ImportError:
             print('[HumanAssist] python-evdev not installed — human-assist disabled')
             self._evdev_missing = True

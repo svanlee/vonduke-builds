@@ -19,6 +19,91 @@ import config
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Camera probing — find *a* working device, or report that there is none.
+#
+# AKSUMAEL's vision source used to be assumed present: CaptureThread opened
+# config.CAMERA_INDEX and, if that failed, retried the same index for five
+# minutes and then gave up, leaving the decision loop blind forever with no
+# way back. After the 2026-08-08 outage took /dev/video2 (the capture card)
+# away entirely, that meant a bot that never ticked again.
+#
+# Now: try CAMERA_INDEX first, then each of config.CAMERA_FALLBACK_INDICES,
+# and accept the first device that both opens AND hands back a real frame.
+# If none do, the caller runs vision-less and re-probes on a timer.
+
+def _candidate_indices() -> list:
+    """CAMERA_INDEX first, then the configured fallbacks, de-duplicated."""
+    order = [config.CAMERA_INDEX]
+    order.extend(getattr(config, 'CAMERA_FALLBACK_INDICES', []) or [])
+    seen, out = set(), []
+    for idx in order:
+        if idx is None or idx < 0 or idx in seen:
+            continue
+        seen.add(idx)
+        out.append(idx)
+    return out
+
+
+def _frame_is_real(frame) -> bool:
+    """True if a frame looks like actual video rather than a black/empty one.
+
+    A device with no source attached (capture card, HDMI unplugged) still
+    opens and still read()s successfully — it just returns black. Accepting
+    it would look exactly like working vision to everything downstream, so
+    require some actual luminance before calling the probe a success."""
+    if frame is None or frame.size == 0:
+        return False
+    return float(frame.mean()) >= getattr(config, 'CAMERA_MIN_FRAME_MEAN', 8.0)
+
+
+def probe_camera(index: int, warmup_frames: int = 8):
+    """Try to open /dev/video<index> and pull a real frame off it.
+
+    Returns the opened cv2.VideoCapture on success (caller owns it), or None.
+    The first frames off a freshly-opened V4L2 device are routinely black
+    while it settles, so read a few before judging."""
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        cap.release()
+        return None
+    for _ in range(warmup_frames):
+        ret, frame = cap.read()
+        if ret and _frame_is_real(frame):
+            return cap
+        time.sleep(0.05)
+    cap.release()
+    return None
+
+
+def probe_cameras(quiet: bool = False):
+    """Sweep every candidate index; return (index, cap) or (None, None).
+
+    OpenCV logs two WARN lines per failed open straight from C++; silence
+    them for the duration of the sweep so a routine 5-minute re-probe of a
+    device that is simply gone doesn't fill the log."""
+    try:
+        _prev_log = cv2.utils.logging.getLogLevel()
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+    except Exception:
+        _prev_log = None
+    try:
+        for idx in _candidate_indices():
+            cap = probe_camera(idx)
+            if cap is not None:
+                if not quiet:
+                    tag = 'configured' if idx == config.CAMERA_INDEX else 'fallback'
+                    print(f'[CAMERA] using /dev/video{idx} ({tag})')
+                return idx, cap
+    finally:
+        if _prev_log is not None:
+            try:
+                cv2.utils.logging.setLogLevel(_prev_log)
+            except Exception:
+                pass
+    return None, None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Inner-monologue strip — thread-safe queue + rolling buffer + typewriter.
 #
 # Monologue text is generated on background threads (cognitive.py's LLM
@@ -88,15 +173,22 @@ def _monologue_render_lines() -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 class CaptureThread(threading.Thread):
     """
-    Continuously reads frames from the capture card using the V4L2 backend
-    with MJPEG codec for fastest decode.  Only the latest frame is kept —
-    old frames are discarded immediately so consumers always get the freshest
-    image.
+    Continuously reads frames from whichever camera probe_cameras() found,
+    using the V4L2 backend with MJPEG codec for fastest decode.  Only the
+    latest frame is kept — old frames are discarded immediately so consumers
+    always get the freshest image.
 
     Key settings applied to the capture device:
       • CAP_PROP_BUFFERSIZE = 1    → minimise kernel buffer lag
       • FOURCC = MJPG              → hardware JPEG decode, much faster than YUYV
       • 1920×1080                  → full HDMI resolution from the HP machine
+
+    The thread never exits on a missing camera. If no device can be opened it
+    sets ``vision_available = False`` and keeps sweeping every
+    config.CAMERA_REPROBE_SEC; if the active device disappears mid-session it
+    drops back to the same sweep. Either way vision comes back on its own the
+    moment a camera does, with no restart — and the decision loop keeps
+    ticking blind in the meantime (see core/runtime.py's `vision_ok`).
     """
 
     def __init__(self, device_index: int = 2):
@@ -105,7 +197,14 @@ class CaptureThread(threading.Thread):
         self._lock  = threading.Lock()
         self._raw   = None    # latest full-res (1920×1080) BGR frame
         self._small = None    # latest 640-wide BGR frame (for YOLO / LLM)
-        self._stop  = threading.Event()
+        self._stop_evt  = threading.Event()
+        # Plain bools, GIL-protected — same convention as YOLOThread._track_mode
+        # and the pipeline's _human_mode. Read every tick by the decision loop
+        # (core/runtime.py) to decide whether to run the vision-derived
+        # heuristics at all; written only here.
+        self.vision_available = False
+        self.active_index     = None   # index actually in use, or None
+        self._last_nocam_log  = 0.0    # monotonic ts of the last "no camera" line
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -120,68 +219,118 @@ class CaptureThread(threading.Thread):
             return self._small
 
     def stop(self):
-        self._stop.set()
+        self._stop_evt.set()
 
     # ── Thread body ───────────────────────────────────────────────────────
 
-    # How long to keep retrying the initial device open before giving up.
-    # The capture card may not be plugged in yet (or still enumerating) when
-    # AKSUMAEL starts — waiting here means an unattended restart recovers on
-    # its own instead of running blind for the rest of the session.
-    OPEN_RETRY_INTERVAL_SEC = 30
-    OPEN_RETRY_TIMEOUT_SEC  = 300
+    # Consecutive failed read()s tolerated before concluding the device went
+    # away mid-session (unplugged, or the USB bus reset) and dropping back to
+    # a full probe sweep. ~1s at the 5ms retry interval below.
+    READ_FAIL_LIMIT = 200
 
-    def _open(self):
-        """Try to open the capture device, retrying every OPEN_RETRY_INTERVAL_SEC
-        for up to OPEN_RETRY_TIMEOUT_SEC. Returns an opened cv2.VideoCapture, or
-        None if it never appeared and the caller should give up."""
-        waited = 0
-        while not self._stop.is_set():
-            cap = cv2.VideoCapture(self._dev, cv2.CAP_V4L2)
-            if cap.isOpened():
-                return cap
-            cap.release()
-            if waited >= self.OPEN_RETRY_TIMEOUT_SEC:
-                print(f'[CAPTURE] ⚠ CaptureThread: /dev/video{self._dev} still not '
-                      f'available after {waited}s — giving up (will retry on next restart)')
-                return None
-            print(f'[CAPTURE] /dev/video{self._dev} not available yet — '
-                  f'retrying in {self.OPEN_RETRY_INTERVAL_SEC}s ({waited}s / {self.OPEN_RETRY_TIMEOUT_SEC}s)')
-            self._stop.wait(self.OPEN_RETRY_INTERVAL_SEC)
-            waited += self.OPEN_RETRY_INTERVAL_SEC
-        return None
+    def _log_no_camera(self):
+        """Report vision-less mode, at most once per CAMERA_LOG_THROTTLE_SEC.
 
-    def run(self):
-        cap = self._open()
-        if cap is None:
-            return
+        The probe loop wakes far more often than it should speak — without
+        this throttle a missing camera produced a log line every retry (and,
+        before that, a TTS 'no frame' announcement every single tick)."""
+        now = time.monotonic()
+        throttle = getattr(config, 'CAMERA_LOG_THROTTLE_SEC', 60)
+        if now - self._last_nocam_log >= throttle:
+            self._last_nocam_log = now
+            print('[CAMERA] No camera available — running in vision-less mode')
 
+    def _configure(self, cap, index: int):
+        """Apply the low-latency capture settings and announce the geometry.
+
+        The 1920×1080 request is what the capture card delivers; a webcam
+        fallback simply reports back whatever it actually supports (typically
+        640×480), which is fine — everything downstream works off the 640-wide
+        `small` frame computed in run()."""
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                              # min lag
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))   # fast decode
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f'[CAPTURE] CaptureThread @ {w}×{h} MJPG /dev/video{self._dev}')
+        print(f'[CAPTURE] CaptureThread @ {w}×{h} MJPG /dev/video{index}')
 
-        while not self._stop.is_set():
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(0.005)
-                continue
+    def _acquire(self):
+        """Block until a working camera is found or stop() is called.
 
-            # Pre-compute the small frame here so YOLO thread pays no resize cost
-            fh, fw = frame.shape[:2]
-            scale  = 640 / fw
-            small  = cv2.resize(frame, (640, int(fh * scale)),
-                                interpolation=cv2.INTER_AREA)
+        Returns (index, cap), or (None, None) if the thread was asked to
+        stop. Between sweeps the thread sleeps in short slices so stop() is
+        still responsive and so the throttled log stays on its own cadence
+        rather than the (much slower) probe cadence."""
+        first_sweep = True
+        while not self._stop_evt.is_set():
+            idx, cap = probe_cameras(quiet=False)
+            if cap is not None:
+                return idx, cap
 
+            if first_sweep:
+                print(f'[CAMERA] no working device among '
+                      f'{_candidate_indices()} — entering vision-less mode; '
+                      f're-probing every '
+                      f'{getattr(config, "CAMERA_REPROBE_SEC", 300)}s')
+                self._last_nocam_log = time.monotonic()
+                first_sweep = False
+            else:
+                self._log_no_camera()
+
+            deadline = time.monotonic() + getattr(config, 'CAMERA_REPROBE_SEC', 300)
+            while not self._stop_evt.is_set() and time.monotonic() < deadline:
+                self._stop_evt.wait(5)
+                self._log_no_camera()
+        return None, None
+
+    def run(self):
+        # Outer loop: acquire a camera, stream from it, and — if it ever goes
+        # away — fall straight back to acquiring instead of dying. This is the
+        # background re-probe: vision is restored automatically whenever a
+        # device reappears, with no restart needed.
+        while not self._stop_evt.is_set():
+            index, cap = self._acquire()
+            if cap is None:
+                break   # stop() was called while probing
+
+            self._configure(cap, index)
+            self.active_index     = index
+            self.vision_available = True
+
+            read_fails = 0
+            while not self._stop_evt.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    read_fails += 1
+                    if read_fails >= self.READ_FAIL_LIMIT:
+                        print(f'[CAMERA] /dev/video{index} stopped delivering '
+                              f'frames — re-probing')
+                        break
+                    time.sleep(0.005)
+                    continue
+                read_fails = 0
+
+                # Pre-compute the small frame here so YOLO thread pays no resize cost
+                fh, fw = frame.shape[:2]
+                scale  = 640 / fw
+                small  = cv2.resize(frame, (640, int(fh * scale)),
+                                    interpolation=cv2.INTER_AREA)
+
+                with self._lock:
+                    self._raw   = frame
+                    self._small = small
+
+            cap.release()
+            # Drop the stale frames along with the device — a consumer that
+            # keeps polling must see "no vision", not the last image from a
+            # camera that has been gone for minutes.
+            self.vision_available = False
+            self.active_index     = None
             with self._lock:
-                self._raw   = frame
-                self._small = small
+                self._raw   = None
+                self._small = None
 
-        cap.release()
         print('[CAPTURE] CaptureThread stopped')
 
 
@@ -206,7 +355,7 @@ class YOLOThread(threading.Thread):
         self._lock    = threading.Lock()
         self._frame   = None
         self._objects = []
-        self._stop    = threading.Event()
+        self._stop_evt    = threading.Event()
         # Plain bool, not lock-guarded — same convention as pipeline's
         # _ctrl_connected/_human_mode flags. Set by set_track_mode() from
         # the main decision loop when the FSM enters/leaves HUNT (see
@@ -225,15 +374,26 @@ class YOLOThread(threading.Thread):
             return self._frame, list(self._objects)
 
     def stop(self):
-        self._stop.set()
+        self._stop_evt.set()
 
     # ── Thread body ───────────────────────────────────────────────────────
 
     def run(self):
         print('[YOLO] YOLOThread started (GPU, no throttle)')
         _consecutive_errors = 0
-        while not self._stop.is_set():
+        while not self._stop_evt.is_set():
             try:
+                # No camera → no inference at all. Running YOLO on nothing
+                # (or on a stale frame from a device that has since gone
+                # away) would burn GPU and feed the decision loop detections
+                # that no longer describe anything real.
+                if not self._cap.vision_available:
+                    with self._lock:
+                        self._frame   = None
+                        self._objects = []
+                    time.sleep(0.5)
+                    continue
+
                 frame = self._cap.get_latest_small()
                 if frame is None:
                     time.sleep(0.01)
@@ -296,21 +456,21 @@ class DisplayThread(threading.Thread):
         super().__init__(name='DisplayThread', daemon=True)
         self._dq         = display_queue
         self._ui         = labeling_ui
-        self._stop       = threading.Event()
+        self._stop_evt       = threading.Event()
         self._lock       = threading.Lock()
         self._last_frame = None
         self._last_objs  = []
         self.quit        = False   # set by poll_display() when user presses 'q'
 
     def stop(self):
-        self._stop.set()
+        self._stop_evt.set()
 
     def run(self):
         # DisplayThread no longer calls cv2.imshow() — Qt requires imshow to
         # run on the main thread.  This thread now only drains the display queue
         # and caches the latest (frame, objects) pair for poll_display() to use.
         print('[DISPLAY] DisplayThread started (frame buffer only — imshow on main thread)')
-        while not self._stop.is_set():
+        while not self._stop_evt.is_set():
             try:
                 frame, objs = self._dq.get(timeout=0.05)
                 with self._lock:
@@ -376,6 +536,23 @@ class VideoCapturePipeline:
         """List of YOLO detection dicts from the most recent inference."""
         _, o = self.yolo_t.get_latest()
         return o
+
+    @property
+    def vision_available(self) -> bool:
+        """False when no camera could be opened (or the active one vanished).
+
+        The decision loop keeps ticking in that state — FSM, GoalStack and the
+        inner monologue all run — but every heuristic that reads pixels or
+        YOLO detections has to be skipped, because "black frame / zero
+        detections" is indistinguishable from "night", "dead", "not in game"
+        and "menu closed" to code that assumes vision works. CaptureThread
+        re-probes in the background, so this can flip back to True mid-run."""
+        return self.capture.vision_available
+
+    @property
+    def camera_index(self):
+        """Index of the device actually in use, or None in vision-less mode."""
+        return self.capture.active_index
 
     @property
     def quit(self):

@@ -16,6 +16,7 @@
 #   0x05  Reset                                       0 bytes  -> microcontroller.reset() (forces USB HID re-enumeration)
 #   0xFF  Release all                                 0 bytes
 
+import os
 import time
 import threading
 import config
@@ -309,10 +310,41 @@ class KB2040Serial:
         self._held_modifiers = 0
         self._connect()
 
+    def _resolve_port(self, quiet=False):
+        """Pick the serial port to open.
+
+        Uses self.port when it exists, otherwise asks
+        core.hardware_detector.find_kb2040_port() to write-probe whatever
+        USB serial nodes are present. The adapter does not always come back
+        as the same node — an FTDI that was /dev/ttyUSB0 can renumber to
+        ttyUSB1 after a replug, and a KB2040 attached over its own USB CDC
+        port shows up as /dev/ttyACM* instead. Hardcoding ttyUSB0 turned
+        both cases into a silent fall-through to print-mode.
+        """
+        if self.port and os.path.exists(self.port):
+            return self.port
+        if not getattr(config, 'UART_AUTODETECT', True):
+            return self.port
+        try:
+            from core.hardware_detector import find_kb2040_port
+            found = find_kb2040_port(preferred=self.port, verbose=not quiet)
+        except Exception as e:
+            if not quiet:
+                print(f'[KB2040] port auto-detect failed: {e}')
+            return self.port
+        if found and found != self.port:
+            if not quiet:
+                print(f'[KB2040] {self.port} absent — using {found} instead')
+            self.port = found
+        return found or self.port
+
     def _connect(self, quiet=False):
         try:
             import serial as pyserial
-            self._ser = pyserial.Serial(self.port, self.baud, timeout=0.1,
+            port = self._resolve_port(quiet=quiet)
+            if not port:
+                raise FileNotFoundError('no USB serial port available')
+            self._ser = pyserial.Serial(port, self.baud, timeout=0.1,
                                         write_timeout=0.5)
             time.sleep(0.15)
             # Send release-all to clear any stale HID state

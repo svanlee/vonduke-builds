@@ -380,3 +380,10 @@
 {"goal": "craft_diamond_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 37302, "ts": 1785575774.598147}
 {"goal": "craft_diamond_pickaxe", "reason": "timeout: materials still missing", "ticks_active": 101, "position": null, "tick": 37602, "ts": 1785576437.6168933}
 {"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785578086.3725126}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785578682.8545353}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785579824.974969}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785580557.4105108}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 222, "ts": 1785582914.5940545}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 239, "ts": 1785588180.4976976}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 207, "ts": 1785592412.4310405}
+{"goal": "craft_crafting_table", "reason": "timeout: max age exceeded", "ticks_active": 201, "position": null, "tick": 13779, "ts": 1785608598.946524}

@@ -21,27 +21,67 @@ CTL_FILE="$AKSUMAEL_DIR/.aksumael_ctl"
 LOG_FILE="/tmp/aksumael_live.log"
 
 AKSUMAEL_PID=""
-CAPTURE_DEVICE="${CAPTURE_DEVICE:-/dev/video2}"
-STARTUP_WAIT_SEC=120   # max seconds to wait for hardware before giving up
+# Any of these being present counts as "a camera is here" — main.py probes
+# config.CAMERA_INDEX then config.CAMERA_FALLBACK_INDICES and uses whichever
+# works, so pinning the wrapper to the capture card alone made it wait out
+# the full timeout on every start once that card disappeared (2026-08-08).
+# CAPTURE_DEVICE (single path) still overrides, for pinning to one device.
+CAPTURE_DEVICE="${CAPTURE_DEVICE:-}"
+# The point of this wait is the boot-time race where USB devices enumerate a
+# few seconds after the service starts — 30s covers that generously. It is
+# NOT a way to wait out genuinely absent hardware: main.py now starts fine
+# without a camera (vision-less mode) and re-probes in the background, so
+# stalling longer just delays the bot for no benefit.
+STARTUP_WAIT_SEC=30
 CRASH_RESTART_SEC=30   # seconds to wait after a crash before restarting
 
 # Clear stale control file on startup
 rm -f "$CTL_FILE"
 
+# Camera device nodes main.py is willing to use, in preference order.
+camera_candidates() {
+    if [[ -n "$CAPTURE_DEVICE" ]]; then
+        echo "$CAPTURE_DEVICE"
+        return
+    fi
+    python3 -c "
+import sys; sys.path.insert(0, '$AKSUMAEL_DIR')
+import config
+seen = []
+for i in [config.CAMERA_INDEX] + list(getattr(config, 'CAMERA_FALLBACK_INDICES', []) or []):
+    if i is not None and i >= 0 and i not in seen:
+        seen.append(i)
+print(' '.join(f'/dev/video{i}' for i in seen))
+" 2>/dev/null || echo "/dev/video2"
+}
+
+# First candidate that exists, or empty.
+present_camera() {
+    local dev
+    for dev in $(camera_candidates); do
+        [[ -e "$dev" ]] && { echo "$dev"; return; }
+    done
+}
+
 wait_for_hardware() {
     local uart_port; uart_port=$(python3 -c "import sys; sys.path.insert(0,'$AKSUMAEL_DIR'); import config; print(config.UART_PORT)" 2>/dev/null || echo "/dev/ttyUSB0")
-    echo "[WRAPPER] Waiting for capture card ($CAPTURE_DEVICE) and serial port ($uart_port)..."
+    local cams; cams=$(camera_candidates)
+    echo "[WRAPPER] Waiting for a camera (any of: $cams) and serial port ($uart_port)..."
     local waited=0
     while true; do
         local missing=()
-        [[ ! -e "$CAPTURE_DEVICE" ]] && missing+=("$CAPTURE_DEVICE")
-        [[ ! -e "$uart_port" ]]      && missing+=("$uart_port")
+        local cam; cam=$(present_camera)
+        [[ -z "$cam" ]]          && missing+=("camera[$cams]")
+        [[ ! -e "$uart_port" ]]  && missing+=("$uart_port")
         if [[ ${#missing[@]} -eq 0 ]]; then
-            echo "[WRAPPER] Hardware ready — capture card and serial port detected."
+            echo "[WRAPPER] Hardware ready — camera $cam and serial port detected."
             return 0
         fi
         if (( waited >= STARTUP_WAIT_SEC )); then
-            echo "[WRAPPER] WARNING: timed out waiting for: ${missing[*]}. Starting anyway."
+            # Not fatal for either device: main.py runs vision-less without a
+            # camera and falls back to print-mode actions without the UART,
+            # and both are re-probed once it's up.
+            echo "[WRAPPER] timed out waiting for: ${missing[*]} — starting anyway (AKSUMAEL degrades gracefully)."
             return 1
         fi
         echo "[WRAPPER] Still waiting for: ${missing[*]}  (${waited}s / ${STARTUP_WAIT_SEC}s)"

@@ -2,6 +2,34 @@
 # ║  AKSUMAEL v1.0.0 — Configuration                      ║
 # ╚══════════════════════════════════════════════════════╝
 
+# ── Deployment identity ───────────────────────────────────────
+# Which physical box this checkout is running on. Static by design: the
+# point is for an operator (or core/claude_bridge.py's /state, which
+# returns this) to confirm they're talking to the instance they think
+# they are, so it has to be a value someone deliberately set rather than
+# something probed at runtime and therefore always "correct".
+#
+# victus-t7 = HP Victus laptop booted off the Samsung T7 external SSD
+# (the T7 *is* the boot drive — / is /dev/sda2 on "PSSD T7", it is not a
+# secondary data disk). Clone this repo onto a different machine and this
+# value should change with it.
+NODE_NAME = "victus-t7"
+
+# Expected hardware for NODE_NAME, for display/confirmation only — nothing
+# below is enforced, and the runtime is free to land somewhere else (the
+# capture card in particular falls back to /dev/video0 when video2 is
+# absent, see CAMERA_FALLBACK_INDICES). Compare against the live values in
+# /state's hardware_status to spot a mis-seated or missing device.
+# GPU string verified against nvidia-smi 2026-08-08 — this is a 6GB RTX
+# 4050 Laptop GPU, not the RTX 2060S it's occasionally called.
+NODE_HARDWARE = {
+    "machine":      "HP Victus laptop",
+    "boot_drive":   "Samsung T7 external SSD (/dev/sda2)",
+    "gpu":          "NVIDIA GeForce RTX 4050 Laptop GPU (6GB)",
+    "capture_card": "/dev/video2",   # mirrors CAMERA_INDEX below
+    "uart":         "/dev/ttyUSB0",  # mirrors UART_PORT below (KB2040 via FT232RL)
+}
+
 # ── Vision Provider ───────────────────────────────────────────
 # Platform: HP Victus (RTX 4050 Laptop GPU) + Samsung T7 SSD, robocar-hub @ 192.168.1.156
 # All LLM calls in the codebase go through core/llm_router.route_llm_call()
@@ -228,6 +256,27 @@ CAMERA_INDEX = 2     # -1 = auto-detect, or set 0/1/2 explicitly
                      # Run: v4l2-ctl --list-devices
                      # /dev/video2 = "USB3.0 Video" capture node (video3 is metadata-only)
 
+# Tried in order after CAMERA_INDEX itself fails to open or delivers no real
+# frame. The capture card can vanish entirely (unplugged, or renumbered after
+# a power outage — 2026-08-08), and a laptop webcam on /dev/video0 is a far
+# better vision source than none at all: YOLO/the FSM keep running, they just
+# see the room instead of the game. Set to [] to disable fallback and keep
+# CAMERA_INDEX as the only acceptable device.
+CAMERA_FALLBACK_INDICES = [0, 1]
+
+# A candidate device must open AND hand back a frame whose mean pixel value
+# clears this before it's accepted. Guards against a device that opens fine
+# but only ever produces black (capture card with no HDMI source attached) —
+# taking it would look like working vision while feeding the FSM nothing.
+# vision/color_detector.py uses the same 20.0 floor for no-signal frames.
+CAMERA_MIN_FRAME_MEAN = 8.0
+
+# Re-probe cadence once AKSUMAEL has fallen back to vision-less mode, and how
+# often it's allowed to say so in the log (the probe itself is quiet in
+# between). Vision is restored automatically the moment a device comes back.
+CAMERA_REPROBE_SEC   = 300   # 5 min between probe sweeps
+CAMERA_LOG_THROTTLE_SEC = 60 # at most one "no camera" line per minute
+
 # ── Action Output ─────────────────────────────────────────────
 # "kb2040" = UART → KB2040 → USB HID keyboard+mouse+gamepad (primary)
 # "ch9329" = UART → CH9329 → USB HID keyboard+mouse (backup, PC only)
@@ -235,8 +284,23 @@ CAMERA_INDEX = 2     # -1 = auto-detect, or set 0/1/2 explicitly
 ACTION_OUTPUT = "kb2040"   # ← change to "kb2040" once wired
 
 # ── UART ──────────────────────────────────────────────────────
+# Preferred port, not a hard requirement: when this node doesn't exist,
+# uart/kb2040_packer.py asks core/hardware_detector.find_kb2040_port() to
+# write-probe every /dev/ttyUSB*/ttyACM* and binds to the first that takes
+# a frame (FTDI/CP210x/CH340/RP2040 VIDs preferred). The adapter renumbers
+# to ttyUSB1 after some replugs, and a KB2040 driven over its own USB CDC
+# port enumerates as /dev/ttyACM* — both used to dead-end in print-mode.
+# Set UART_AUTODETECT = False to bind to UART_PORT only.
 UART_PORT = "/dev/ttyUSB0"   # FTDI FT232RL USB-TTL adapter (GND/TX/RX to KB2040)
 UART_BAUD = 115200
+UART_AUTODETECT = True
+
+# The probe is a *write* probe, not a handshake: the link is one-way
+# (host → FTDI → KB2040 RX) and rp2040/code.py never writes back, so
+# "responds" can only mean "opened and accepted a release-all frame".
+# A second serial gadget plugged in while the KB2040 is absent can
+# therefore be selected — pin UART_AUTODETECT = False if that rig ever
+# has one.
 
 # ── Platform Target ───────────────────────────────────────────
 # "pc"    = desktop/laptop via USB HID
@@ -385,25 +449,45 @@ SKILLS_DIR = "data/skills"
 REWARD_LOG = "data/reward_log.json"
 MEMORY_DIR = "data/memory"   # episodes, retired_goals, skill_evolution logs
 
-# ── Axon Voice Hub ────────────────────────────────────────────
-# Local, offline voice control (axon/hub.py) — runs as its own process
-# (tools/start_axon.sh), not inside the main runtime loop. Whisper runs
-# on-device (no cloud STT); the only network call is the Claude Haiku
-# fallback in axon/command_parser.py for free-form commands the
-# rule-based fast path doesn't recognize. Delivers commands into the
-# same data/injected_goals.json queue the mastermind hive uses (see
-# memory.goals.GoalStack.check_injected_goals), so no separate polling
-# path is needed in core/runtime.py.
-AXON_WHISPER_MODEL = "base"     # tiny/base/small — bigger is slower but more accurate
-# No wake word — axon/hub.py is always-listening (see MIN_COMMAND_WORDS
-# there for the false-trigger filter).
+# ── Voice (core/voice.py) ─────────────────────────────────────
+# Local, offline voice control — Whisper STT + piper TTS + F9 push-to-talk,
+# running as a daemon thread of the *main* process (started from
+# core/runtime.py). This was axon.service until 2026-08-08; it was folded in
+# because two processes on one box were fighting over the mic and speaker
+# (Axon's Whisper/piper vs the runtime's audio/game_ear.py and audio/tts.py)
+# and ALSA hands those out first-come-first-served. See core/voice.py's
+# module docstring.
+#
+# Whisper runs on-device (no cloud STT); the only network call is the routed
+# LLM fallback for free-form commands the rule-based fast path doesn't
+# recognize. Commands land in the same data/injected_goals.json queue the
+# mastermind hive uses (see memory.goals.GoalStack.check_injected_goals), so
+# no separate polling path is needed in the tick loop.
+VOICE_ENABLED       = True   # False disables the thread entirely
+VOICE_WHISPER_MODEL = "base"  # tiny/base/small — bigger is slower but more accurate
 
-# axon/speaker.py tries piper (offline neural TTS) first for a JARVIS-like
-# confident British voice, falling back to pyttsx3/espeak if piper or its
-# voice model isn't available. Re-fetch a missing model with:
+# piper (offline neural TTS) is tried first for a JARVIS-like confident
+# British voice, falling back to pyttsx3/espeak if piper or its voice model
+# isn't available. Re-fetch a missing model with:
 #   venv/bin/python3 -m piper.download_voices <name> --data-dir data/piper_voices
-AXON_PIPER_VOICE_DIR = "data/piper_voices"
-AXON_PIPER_VOICE     = "en_GB-alan-medium"   # alt: en_GB-northern_english_male-medium
+VOICE_PIPER_VOICE_DIR = "data/piper_voices"
+VOICE_PIPER_VOICE     = "en_GB-alan-medium"   # alt: en_GB-northern_english_male-medium
+
+# Output level for spoken replies, 0.0-1.0. piper normalizes each utterance to
+# full scale first (SynthesisConfig.normalize_audio defaults True), so this is
+# an absolute amplitude, not a multiplier on whatever the voice model happened
+# to emit — 0.4 means "40% of full scale" every time. Raised from the
+# barely-audible level Scott was hearing on 2026-08-08. This is independent of
+# the PipeWire sink level (`wpctl get-volume @DEFAULT_AUDIO_SINK@`), which
+# still applies on top.
+VOICE_TTS_VOLUME = 0.4
+
+# Legacy aliases — axon/ is still on disk (hub.py, speaker.py, command_parser.py)
+# but no longer runs as a service. Kept pointing at the VOICE_* values so the
+# two can't drift while it's being retired; delete with the axon/ directory.
+AXON_WHISPER_MODEL   = VOICE_WHISPER_MODEL
+AXON_PIPER_VOICE_DIR = VOICE_PIPER_VOICE_DIR
+AXON_PIPER_VOICE     = VOICE_PIPER_VOICE
 
 # ── Audio device selection (audio/device_probe.py) ─────────────
 # None = auto-detect at startup by name keyword priority (Victus > USB

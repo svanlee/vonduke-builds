@@ -1,490 +1,146 @@
 {
-  "session_num": 4,
-  "last_saved": 1785520853.3254907,
+  "session_num": 12,
+  "last_saved": 1785609923.2181973,
   "history": [
     {
-      "tick": 18,
-      "session": 3,
-      "ts": 1785520525.5565128,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 822,
+      "session": 12,
+      "ts": 1785609881.5062008,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 19,
-      "session": 3,
-      "ts": 1785520531.5694942,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 823,
+      "session": 12,
+      "ts": 1785609882.0468354,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 20,
-      "session": 3,
-      "ts": 1785520537.585435,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 824,
+      "session": 12,
+      "ts": 1785609882.5863473,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 21,
-      "session": 3,
-      "ts": 1785520543.5953016,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 825,
+      "session": 12,
+      "ts": 1785609885.729528,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 22,
-      "session": 3,
-      "ts": 1785520549.6064475,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 826,
+      "session": 12,
+      "ts": 1785609889.7764354,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 23,
-      "session": 3,
-      "ts": 1785520555.6195028,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 827,
+      "session": 12,
+      "ts": 1785609890.314491,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 1,
-      "session": 4,
-      "ts": 1785520585.6107059,
-      "objects": [
-        {
-          "label": "diamond_ore",
-          "conf": 0.75
-        },
-        {
-          "label": "log",
-          "conf": 0.75
-        },
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 828,
+      "session": 12,
+      "ts": 1785609890.8537178,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 2,
-      "session": 4,
-      "ts": 1785520606.054216,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 829,
+      "session": 12,
+      "ts": 1785609891.395076,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 3,
-      "session": 4,
-      "ts": 1785520625.9142463,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 830,
+      "session": 12,
+      "ts": 1785609891.929752,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 4,
-      "session": 4,
-      "ts": 1785520645.8291972,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 831,
+      "session": 12,
+      "ts": 1785609892.4671962,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 5,
-      "session": 4,
-      "ts": 1785520665.7342935,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 832,
+      "session": 12,
+      "ts": 1785609893.003293,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 6,
-      "session": 4,
-      "ts": 1785520685.7160408,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 833,
+      "session": 12,
+      "ts": 1785609893.5393474,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 7,
-      "session": 4,
-      "ts": 1785520705.206687,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 834,
+      "session": 12,
+      "ts": 1785609894.0778625,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 8,
-      "session": 4,
-      "ts": 1785520727.3954926,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "approach:birch_log"
+      "tick": 835,
+      "session": 12,
+      "ts": 1785609898.1260958,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 9,
-      "session": 4,
-      "ts": 1785520746.8584092,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aim:birch_log"
+      "tick": 836,
+      "session": 12,
+      "ts": 1785609898.663892,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 10,
-      "session": 4,
-      "ts": 1785520766.295368,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 837,
+      "session": 12,
+      "ts": 1785609899.2020693,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 11,
-      "session": 4,
-      "ts": 1785520785.7492852,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 838,
+      "session": 12,
+      "ts": 1785609899.7390885,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 12,
-      "session": 4,
-      "ts": 1785520806.6902878,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 839,
+      "session": 12,
+      "ts": 1785609900.2753625,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 13,
-      "session": 4,
-      "ts": 1785520827.6981196,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 840,
+      "session": 12,
+      "ts": 1785609907.305269,
+      "objects": [],
+      "action": "wait"
     },
     {
-      "tick": 14,
-      "session": 4,
-      "ts": 1785520848.7295501,
-      "objects": [
-        {
-          "label": "leaves",
-          "conf": 0.75
-        },
-        {
-          "label": "birch_log",
-          "conf": 0.75
-        },
-        {
-          "label": "sheep",
-          "conf": 0.75
-        },
-        {
-          "label": "chicken",
-          "conf": 0.75
-        }
-      ],
-      "action": "aiming:birch_log"
+      "tick": 841,
+      "session": 12,
+      "ts": 1785609921.037829,
+      "objects": [],
+      "action": "wait"
     }
   ],
   "chunks": {},

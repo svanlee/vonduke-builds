@@ -221,6 +221,14 @@ class InventoryReader:
     # ── Internals ────────────────────────────────────────────────
 
     def _do_read(self) -> dict:
+        # Reading the inventory means opening it and looking at it. With no
+        # camera (vision-less mode — see core/capture.py) the look step can
+        # never succeed, so opening it just costs two keypresses and ~1.6s of
+        # the tick before bailing out below. Probe first and skip the whole
+        # sequence instead.
+        if self.capture() is None:
+            return {}
+
         print('[INV] opening inventory')
         self._tap('e', 700)          # open inventory — longer wait for slow frames
 
