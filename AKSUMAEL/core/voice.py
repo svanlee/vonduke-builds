@@ -660,6 +660,7 @@ class _VADSegmenter:
         self._q = queue.Queue(maxsize=VAD_QUEUE_FRAMES)
         self._vad = None
         self._energy_threshold = float(getattr(config, 'VOICE_VAD_ENERGY_THRESHOLD', 0.012))
+        self._suppress_until = 0.0   # monotonic ts; frames before this are dropped
         self._reset()
 
         import collections
@@ -739,6 +740,12 @@ class _VADSegmenter:
         self._preroll.clear()
         self._reset()
 
+    def suppress_until(self, monotonic_ts: float):
+        """Suppress audio capture until `monotonic_ts`. Called after speaking
+        to absorb echo/reverb that persists after sd.wait() returns — the mic
+        hears room reflections for ~0.5-1.5s even after playback ends."""
+        self._suppress_until = monotonic_ts
+
     # ── classification ─────────────────────────────────────────────────────
     def _is_speech(self, frame: bytes) -> bool:
         if self._vad is not None:
@@ -782,6 +789,14 @@ class _VADSegmenter:
                 continue
 
             if gate is not None and gate():
+                if self._triggered:
+                    self._reset()
+                continue
+
+            # Post-speak echo suppression: drop frames for a short window after
+            # the bot finishes talking, so room reflections don't trigger a
+            # new utterance and loop back into another TTS speak.
+            if time.monotonic() < self._suppress_until:
                 if self._triggered:
                     self._reset()
                 continue
@@ -1110,6 +1125,10 @@ class VoiceThread:
                 # Drop what the mic picked up while the speaker was playing;
                 # the gate only covers frames read during the call.
                 self._segmenter.flush()
+                # Suppress for an extra window after playback ends — mic hears
+                # room reflections for ~1s even after sd.wait() returns.
+                post_suppress = float(getattr(config, 'VOICE_POST_SPEAK_SUPPRESS_SEC', 1.5))
+                self._segmenter.suppress_until(time.monotonic() + post_suppress)
 
     # ── goal / state plumbing ──────────────────────────────────────────────
     def _enqueue_goal(self, goal: str, reason: str) -> bool:
