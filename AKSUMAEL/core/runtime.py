@@ -165,7 +165,10 @@ def run():
 
     print(BANNER)
     print(f'  vision   : {config.VISION_PROVIDER} / capture card')
-    print(f'  actions  : {config.ACTION_OUTPUT} → {config.PLATFORM_TARGET}')
+    _kb_mode = getattr(config, 'KB2040_MODE', 'hid').lower()
+    print(f'  actions  : {config.ACTION_OUTPUT} → {config.PLATFORM_TARGET}'
+          + ('   [KB2040 flashed as hardware bridge — game actions log-only]'
+             if _kb_mode == 'bridge' else ''))
     print(f'  blend    : {config.BLEND_MODE}')
     print(f'  tts      : {"on" if config.ENABLE_TTS else "off"}  '
           f'game_ear : {"on" if config.ENABLE_GAME_EAR else "off"}  '

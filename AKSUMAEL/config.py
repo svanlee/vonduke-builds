@@ -283,6 +283,32 @@ CAMERA_LOG_THROTTLE_SEC = 60 # at most one "no camera" line per minute
 # "print"  = dry-run, prints actions to console
 ACTION_OUTPUT = "kb2040"   # ← change to "kb2040" once wired
 
+# ── KB2040 role ───────────────────────────────────────────────
+# What the KB2040 is flashed as right now. This is about the firmware on
+# the board, not about what AKSUMAEL would like it to be — get it wrong
+# and the host talks a protocol the board doesn't speak.
+#
+#   "hid"    = rp2040/code.py       — HID keyboard/mouse/gamepad, binary
+#              0xAA 0xBB packets. Minecraft and everything else that
+#              drives a game. Host side: uart/kb2040_packer.py.
+#   "bridge" = uart/kb2040_bridge.py — general hardware I/O (GPIO, PWM,
+#              ADC, UART, I2C, SPI), newline-delimited JSON. Host side:
+#              uart/bridge_client.py.
+#
+# In "bridge" mode ActionExecutor skips the HID packer entirely: there is
+# no game to drive, so game actions are logged rather than sent, and
+# executor.bridge holds a live BridgeClient for hardware work.
+# Set back to "hid" (and reflash rp2040/code.py) to play again.
+KB2040_MODE = "bridge"     # "hid" | "bridge"
+
+# Serial port for the bridge. None = auto-detect: every /dev/ttyACM*
+# and /dev/ttyUSB* is pinged and the one that answers "kb2040-bridge"
+# wins. Worth setting by hand only if two boards are attached — the
+# KB2040 presents two ACM nodes (REPL console + CDC data endpoint) and
+# only the data one answers.
+BRIDGE_PORT = None
+BRIDGE_BAUD = 115200
+
 # ── UART ──────────────────────────────────────────────────────
 # Preferred port, not a hard requirement: when this node doesn't exist,
 # uart/kb2040_packer.py asks core/hardware_detector.find_kb2040_port() to
