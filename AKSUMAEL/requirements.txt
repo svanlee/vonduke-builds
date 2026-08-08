@@ -28,12 +28,19 @@ sounddevice
 # Mastermind hive coordinator (optional, only used if MASTERMIND_ENABLED)
 paho-mqtt
 
-# Axon voice hub — local/offline speech-to-text (optional, only used if
-# running axon/hub.py; graceful no-op if missing)
+# Voice (core/voice.py) — local/offline speech-to-text. Optional: voice
+# disables itself and the bot boots normally if this is missing.
 openai-whisper
 
-# Axon push-to-talk key listener (optional; falls back to `keyboard` lib on
-# SCROLL_LOCK, then to "on" mode, if neither is installed)
+# Voice activity detection for always-on listening (the default mode).
+# Optional — core/voice.py falls back to an RMS energy gate
+# (VOICE_VAD_ENERGY_THRESHOLD), which is noticeably worse at telling speech
+# from game audio, so prefer having this installed.
+webrtcvad
+
+# Push-to-talk key listener, only for the non-default "ptt" mode (optional;
+# falls back to the `keyboard` lib on SCROLL_LOCK, then to "on", if neither
+# is installed)
 pynput
 
 # Telegram channel — Scott texts the bot, the inner monologue answers

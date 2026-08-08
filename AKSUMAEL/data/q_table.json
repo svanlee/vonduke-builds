@@ -514,7 +514,7 @@
     "animal_9dd959": 1.6104056240398081,
     "animal_dcc629": 0.9704948065651083,
     "animal_629353": 1.6188629933232568,
-    "animal_fa8b29": 0.26548624261060516,
+    "animal_fa8b29": 2.2342984384463014,
     "flee_creeper": 3.6185858241428583,
     "animal_a66627": 1.6637184248043093,
     "animal_b7ea39": 1.5972486308241725,
@@ -526,8 +526,8 @@
     "animal_37a0ef": 1.3643310110137334,
     "animal_76d87d": 0.3119803587223542,
     "animal_8a674b": 0.6226503754456334,
-    "animal_mob_4cc096": 0.44335301357481116,
-    "mine_redstone_ore": 3.5134395442457733,
+    "animal_mob_4cc096": 0.4630082524873311,
+    "mine_redstone_ore": 0.039305477461577816,
     "mob_74c483": 3.4685126899737297,
     "animal_c63f33": 0.32651660033286595,
     "animal_661b1c": 1.9884656342508946,
@@ -553,14 +553,14 @@
     "mob_d86c2b": 1.2087965197730446,
     "animal_944fd1": 3.1957179595428977,
     "mob_58e8c1": 1.5040607428075454,
-    "animal_birch_log_diamond_ore_5e5458": 3.6062445766295976,
-    "mine_diamond_ore": 3.731750458777595,
+    "animal_birch_log_diamond_ore_5e5458": 0.4061549008298284,
+    "mine_diamond_ore": 3.861027343344845,
     "animal_mob_86ba67": 4.668865072467522,
     "animal_mob_1b6485": 3.420911524256624,
     "animal_mob_7775cb": 4.105995040526409,
     "animal_6d3005": 0.462197856522077,
     "place_torch": 0.9303851100339127,
-    "mine_gold_ore": 0.30173845423507206
+    "mine_gold_ore": 0.34686711898039474
   },
   "armor_bar,cow,health_bar": {
     "hunt_cow": 1.8632920974382068,
@@ -821,8 +821,8 @@
     "animal_0b71ad": 0.1268117915683544,
     "animal_b7ea39": 1.340005768927288,
     "animal_d496b7": 0.3381259273143389,
-    "animal_fa8b29": 0.05392889591607936,
-    "animal_mob_4cc096": 0.3654872524150884,
+    "animal_fa8b29": 0.5608835140816947,
+    "animal_mob_4cc096": 0.19089987416680781,
     "animal_mob_86ba67": 0.17796101437596784
   },
   "birch_log,chicken,sheep": {
@@ -838,18 +838,18 @@
     "animal_d3463a": 1.8540998083993478,
     "animal_c9fae3": 1.8517157525973043,
     "animal_99fed5": 1.9318650108121072,
-    "mine_diamond_ore": 1.7985162813620803,
+    "mine_diamond_ore": 0.34989738936338,
     "animal_dcc629": 1.878681837661238,
     "animal_9dd959": 1.850658465242773,
     "animal_b3bd5a": 1.802312693923642,
-    "animal_fa8b29": 0.22301269905920226,
-    "animal_birch_log_diamond_ore_5e5458": 0.2195229273241484,
+    "animal_fa8b29": 3.8206085604282527,
+    "animal_birch_log_diamond_ore_5e5458": 1.1089180895260526,
     "mob_74c483": 0.2520086654304243,
-    "mine_redstone_ore": 2.4564187442496546,
-    "animal_mob_4cc096": 1.2768243450803503,
+    "mine_redstone_ore": 0.12085481614286157,
+    "animal_mob_4cc096": 1.1722674200684557,
     "animal_mob_86ba67": 0.7276743346990281,
     "animal_mob_1b6485": 0.29833568916902176,
-    "mine_gold_ore": 0.14396844328515096
+    "mine_gold_ore": 0.00082322110495852
   },
   "chicken,diamond_ore,emerald_ore": {
     "animal_birch_log_diamond_ore_5e5458": 2.4802378845870163,
@@ -1413,10 +1413,10 @@
   "birch_log,chicken,gold_ore": {
     "animal_mob_86ba67": 1.8532577676924213,
     "flee_creeper": 0.04905000000000001,
-    "animal_mob_4cc096": 0.240171814328959,
-    "animal_fa8b29": 1.6800207706619887,
-    "animal_birch_log_diamond_ore_5e5458": 1.0409835965105065,
-    "mine_gold_ore": 1.349425362796409
+    "animal_mob_4cc096": 0.2955849680180723,
+    "animal_fa8b29": 0.03208570595415439,
+    "animal_birch_log_diamond_ore_5e5458": 1.1970106519483923,
+    "mine_gold_ore": 3.399174888402665
   },
   "gold_ore,leaves,log": {
     "animal_mob_4cc096": 0.37264402985613376,

@@ -476,11 +476,53 @@ VOICE_PIPER_VOICE     = "en_GB-alan-medium"   # alt: en_GB-northern_english_male
 # Output level for spoken replies, 0.0-1.0. piper normalizes each utterance to
 # full scale first (SynthesisConfig.normalize_audio defaults True), so this is
 # an absolute amplitude, not a multiplier on whatever the voice model happened
-# to emit — 0.4 means "40% of full scale" every time. Raised from the
-# barely-audible level Scott was hearing on 2026-08-08. This is independent of
-# the PipeWire sink level (`wpctl get-volume @DEFAULT_AUDIO_SINK@`), which
-# still applies on top.
-VOICE_TTS_VOLUME = 0.4
+# to emit — 1.0 means "peak the full range" every time.
+#
+# 1.0 is what Axon effectively used (it never passed a volume, and piper's
+# default is 1.0), so this is not a regression from the axon.service era.
+# Measured 2026-08-08: piper at 1.0 → peak 1.000 / rms 0.202, at 0.4 → peak
+# 0.400 / rms 0.079. If speech is still too quiet, the knob that actually
+# helps is the PipeWire sink, which applies on top and was sitting at 0.60:
+#   wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0
+# Turn THIS down only if AKSUMAEL is too loud relative to game audio.
+VOICE_TTS_VOLUME = 1.0
+
+# ── Voice activity detection (always-on listening) ─────────────
+# Default mode is "on": the mic stays open and a VAD cuts it into utterances
+# at natural pauses, so talking to the bot needs no key press. Override per
+# box by writing "ptt" or "off" to data/voice_mode.txt (read live, no
+# restart). These knobs only apply to "on".
+#
+# webrtcvad aggressiveness, 0-3: how eagerly non-speech is filtered. 0 lets
+# through nearly anything; 3 is aggressive enough to drop quiet or distant
+# speech along with the noise. 2 holds up with game audio on the same
+# speakers. Ignored when webrtcvad isn't installed (energy fallback).
+VOICE_VAD_AGGRESSIVENESS = 2
+
+# Quiet needed to declare an utterance finished. Too low and a mid-sentence
+# breath cuts the sentence in two; too high and every command waits on it.
+VOICE_VAD_SILENCE_SEC = 0.8
+
+# Utterances shorter than this are discarded unheard — a cough, a chair, a
+# door. Below roughly 0.4s there isn't enough audio for whisper to do
+# anything but hallucinate a caption.
+VOICE_VAD_MIN_SPEECH_SEC = 0.4
+
+# Hard cap on one utterance, so continuous background speech (a video
+# playing, someone on a call) can't grow a buffer forever without whisper
+# ever being handed anything.
+VOICE_VAD_MAX_UTTERANCE_SEC = 15.0
+
+# Audio kept from just before the VAD triggers. It takes ~240ms of voiced
+# frames to decide speech started, and without this the first word is
+# already clipped by the time the buffer opens.
+VOICE_VAD_PREROLL_SEC = 0.3
+
+# Energy-threshold fallback (RMS, 0.0-1.0) used only when webrtcvad isn't
+# importable. Raise if the room floor keeps triggering it; lower if quiet
+# speech is missed. Install webrtcvad instead where possible — an RMS gate
+# can't tell a voice from a fan.
+VOICE_VAD_ENERGY_THRESHOLD = 0.012
 
 # Legacy aliases — axon/ is still on disk (hub.py, speaker.py, command_parser.py)
 # but no longer runs as a service. Kept pointing at the VOICE_* values so the

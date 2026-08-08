@@ -36,8 +36,18 @@
 #
 # Listening modes (data/voice_mode.txt, falling back to the older
 # data/axon_mode.txt so `python axon/set_mode.py ptt|on|off` keeps
-# working): "ptt" (default, F9 push-to-talk), "on" (always-listening
-# rolling chunks), "off" (no mic access at all).
+# working): "on" (default, always-listening, VAD-segmented), "ptt" (F9
+# push-to-talk), "off" (no mic access at all).
+#
+# "on" is the default and the intended way to use this: talking to the bot
+# should not require reaching for a keyboard it doesn't have focus on. The
+# mic is held open continuously and a voice-activity detector cuts it into
+# utterances at natural pauses, so a sentence is transcribed once, whole,
+# when the speaker stops — rather than the pre-2026-08-08 behavior of
+# transcribing a fixed 4-second window on a clock that had no idea where
+# speech started or ended (every utterance either truncated mid-word or
+# padded with silence, and whisper hallucinated captions on the silence).
+# PTT is kept only as a fallback for a noisy room.
 
 import json
 import os
@@ -50,19 +60,33 @@ import config
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-LISTEN_CHUNK_SEC  = 4.0    # rolling recording window in "on" mode
 MIN_COMMAND_WORDS = 3      # drop shorter transcripts as noise/false triggers
 SAMPLE_RATE       = 16000  # Whisper's native rate
 
+# ── Voice activity detection ───────────────────────────────────────────────
+# webrtcvad only accepts 10/20/30 ms frames of 16-bit mono PCM at 8/16/32/48
+# kHz. 30 ms is the coarsest, which is what we want: fewest callbacks, and
+# silence timeouts are measured in hundreds of ms anyway.
+VAD_FRAME_MS      = 30
+VAD_FRAME_SAMPLES = SAMPLE_RATE * VAD_FRAME_MS // 1000   # 480 @ 16 kHz
+
+# Fraction of the trigger window that must be voiced to open an utterance.
+# A single voiced frame is 30 ms and a door click clears that easily, so the
+# open/close decisions are both made over a window rather than per-frame.
+VAD_TRIGGER_RATIO  = 0.6
+VAD_TRIGGER_WINDOW = 8       # frames (~240 ms) the ratio is measured over
+
+# Bounded so a stuck consumer can't grow this without limit. ~30 s of audio;
+# on overflow the oldest frame is dropped, because during a long whisper
+# transcription the newest audio is the audio someone is speaking now.
+VAD_QUEUE_FRAMES = 1000
+
 # ── Listening modes ────────────────────────────────────────────────────────
-# "ptt" is the default when the mode file is missing/unreadable — push-to-talk
-# requires an explicit key press to capture audio, so it's safe even when no
-# one has opted into "on" (always-listening) mic capture.
 MODE_PTT     = "ptt"
 MODE_ON      = "on"
 MODE_OFF     = "off"
 VALID_MODES  = (MODE_PTT, MODE_ON, MODE_OFF)
-DEFAULT_MODE = MODE_PTT
+DEFAULT_MODE = MODE_ON
 
 MODE_FILE_PATH        = os.path.join(BASE_DIR, "data", "voice_mode.txt")
 LEGACY_MODE_FILE_PATH = os.path.join(BASE_DIR, "data", "axon_mode.txt")
@@ -594,11 +618,210 @@ class _StreamRecorder:
         return np.concatenate(self._frames, axis=0).flatten()
 
 
+class _VADSegmenter:
+    """Always-on mic, cut into utterances on silence rather than on a clock.
+
+    Holds one sounddevice InputStream open for as long as "on" mode lasts and
+    classifies every 30 ms frame as speech or not. Frames accumulate once the
+    trigger window goes voiced, and the utterance is emitted after
+    VOICE_VAD_SILENCE_SEC of quiet — so the caller gets whole sentences,
+    bounded by where the speaker actually paused.
+
+    Prefers webrtcvad (a real speech classifier, so a fan or a game explosion
+    doesn't read as speech). Falls back to an RMS energy threshold when it
+    isn't installed, which is cruder but keeps always-on listening working
+    rather than silently reverting to push-to-talk on a box that has no
+    keyboard hook either.
+
+    Everything that touches ALSA goes through this one stream. Nothing else
+    may open the mic while it runs — a second sd.rec() against a device this
+    stream already holds is exactly the contention the Axon fold removed.
+    """
+
+    def __init__(self, device_idx):
+        self._device_idx = device_idx
+        self._stream = None
+        self._q = queue.Queue(maxsize=VAD_QUEUE_FRAMES)
+        self._vad = None
+        self._energy_threshold = float(getattr(config, 'VOICE_VAD_ENERGY_THRESHOLD', 0.012))
+        self._reset()
+
+        import collections
+        self._window = collections.deque(maxlen=VAD_TRIGGER_WINDOW)
+        # Pre-roll: the frames just before the trigger fired. Without it the
+        # utterance starts mid-first-word, because it takes a voiced window to
+        # decide someone started talking.
+        preroll_sec = float(getattr(config, 'VOICE_VAD_PREROLL_SEC', 0.3))
+        self._preroll = collections.deque(
+            maxlen=max(1, int(preroll_sec * 1000 / VAD_FRAME_MS)))
+
+        try:
+            import webrtcvad
+            self._vad = webrtcvad.Vad(int(getattr(config, 'VOICE_VAD_AGGRESSIVENESS', 2)))
+            print('[VOICE] VAD: webrtcvad '
+                  f'(aggressiveness {getattr(config, "VOICE_VAD_AGGRESSIVENESS", 2)})')
+        except Exception as e:
+            print(f'[VOICE] VAD: webrtcvad unavailable ({e}) — '
+                  f'using energy threshold {self._energy_threshold}')
+
+    # ── stream lifecycle ───────────────────────────────────────────────────
+    def start(self):
+        import sounddevice as sd
+
+        def _callback(indata, frames, time_info, status):
+            # Runs on PortAudio's thread — must not block. On overflow drop
+            # the oldest frame rather than this one.
+            try:
+                self._q.put_nowait(bytes(indata))
+            except queue.Full:
+                try:
+                    self._q.get_nowait()
+                    self._q.put_nowait(bytes(indata))
+                except (queue.Empty, queue.Full):
+                    pass
+
+        self._stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+                                      dtype='int16', device=self._device_idx,
+                                      blocksize=VAD_FRAME_SAMPLES,
+                                      callback=_callback)
+        self._stream.start()
+        print('[VOICE] always-on listening: mic open, '
+              f'{getattr(config, "VOICE_VAD_SILENCE_SEC", 0.8)}s silence ends an utterance')
+
+    def stop(self):
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as e:
+                print(f'[VOICE] VAD stream close failed: {e}')
+            self._stream = None
+        self.flush()
+
+    @property
+    def active(self) -> bool:
+        return self._stream is not None
+
+    # ── state ──────────────────────────────────────────────────────────────
+    def _reset(self):
+        self._triggered = False
+        self._buf = []
+        self._silence_ms = 0
+
+    def flush(self):
+        """Drop everything captured so far. Called after the bot speaks: at
+        VOICE_TTS_VOLUME the mic hears the speaker, and without this the bot
+        transcribes its own answer and can talk itself into a loop."""
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                break
+        self._window.clear()
+        self._preroll.clear()
+        self._reset()
+
+    # ── classification ─────────────────────────────────────────────────────
+    def _is_speech(self, frame: bytes) -> bool:
+        if self._vad is not None:
+            try:
+                return self._vad.is_speech(frame, SAMPLE_RATE)
+            except Exception:
+                return False
+        import numpy as np
+        samples = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+        if samples.size == 0:
+            return False
+        return float(np.sqrt(np.mean(samples ** 2))) > self._energy_threshold
+
+    @staticmethod
+    def _to_float32(frames):
+        import numpy as np
+        return (np.frombuffer(b''.join(frames), dtype=np.int16)
+                .astype(np.float32) / 32768.0)
+
+    # ── consumption ────────────────────────────────────────────────────────
+    def read_utterance(self, poll_sec: float, gate=None):
+        """Return one utterance as a float32 array, or None once poll_sec has
+        elapsed without one completing — the caller needs to come up for air
+        to re-read the mode file and check for escalations.
+
+        `gate` is called per frame; while it returns True (the bot is
+        speaking) audio is discarded and any partial utterance is dropped.
+        """
+        silence_sec  = float(getattr(config, 'VOICE_VAD_SILENCE_SEC', 0.8))
+        min_speech   = float(getattr(config, 'VOICE_VAD_MIN_SPEECH_SEC', 0.4))
+        max_utter    = float(getattr(config, 'VOICE_VAD_MAX_UTTERANCE_SEC', 15.0))
+        deadline     = time.monotonic() + poll_sec
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            try:
+                frame = self._q.get(timeout=min(0.2, remaining))
+            except queue.Empty:
+                continue
+
+            if gate is not None and gate():
+                if self._triggered:
+                    self._reset()
+                continue
+
+            speech = self._is_speech(frame)
+
+            if not self._triggered:
+                self._preroll.append(frame)
+                self._window.append(speech)
+                voiced = sum(self._window)
+                if (len(self._window) == self._window.maxlen
+                        and voiced >= VAD_TRIGGER_RATIO * self._window.maxlen):
+                    self._triggered = True
+                    self._silence_ms = 0
+                    self._buf = list(self._preroll)
+                    self._window.clear()
+                    self._preroll.clear()
+                continue
+
+            self._buf.append(frame)
+            self._silence_ms = 0 if speech else self._silence_ms + VAD_FRAME_MS
+            duration = len(self._buf) * VAD_FRAME_MS / 1000.0
+
+            if self._silence_ms >= silence_sec * 1000 or duration >= max_utter:
+                frames, spoken = self._buf, duration
+                self._reset()
+                # Trailing silence is part of the buffer but isn't speech.
+                if spoken - self._silence_ms / 1000.0 < min_speech:
+                    continue   # a cough or a door — not worth waking whisper
+                print(f'[VOICE] utterance captured ({spoken:.1f}s)')
+                return self._to_float32(frames)
+
+    def capture_window(self, seconds: float):
+        """Collect a fixed window from the already-open stream, for the
+        escalation yes/no prompt. Exists so that path never opens a second
+        input stream while this one holds the device."""
+        self.flush()
+        end = time.monotonic() + seconds
+        frames = []
+        while True:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                frames.append(self._q.get(timeout=min(0.2, remaining)))
+            except queue.Empty:
+                continue
+        if not frames:
+            import numpy as np
+            return np.zeros(0, dtype='float32')
+        return self._to_float32(frames)
+
+
 def read_mode_file() -> str:
-    """Read the current listening mode, defaulting to MODE_PTT (safe default)
-    if no mode file is readable. data/voice_mode.txt wins; data/axon_mode.txt
-    is still honored so the pre-fold `python axon/set_mode.py` helper keeps
-    working until axon/ is deleted."""
+    """Read the current listening mode, defaulting to MODE_ON (always-on,
+    VAD-segmented) if no mode file is readable. data/voice_mode.txt wins;
+    data/axon_mode.txt is still honored so the pre-fold
+    `python axon/set_mode.py` helper keeps working until axon/ is deleted."""
     for path in (MODE_FILE_PATH, LEGACY_MODE_FILE_PATH):
         try:
             with open(path) as f:
@@ -646,6 +869,11 @@ class VoiceThread:
         self._ptt_recording = False
         self._ptt_recorder = _StreamRecorder()
         self._ptt_watcher = None
+        self._segmenter = None      # _VADSegmenter, only while mode == "on"
+        # Set while TTS is playing. The mic is open the whole time in "on"
+        # mode and it hears the speaker, so captured audio is discarded until
+        # the bot stops talking.
+        self._speaking = threading.Event()
         # PTT release hands its audio here rather than transcribing inline —
         # whisper takes seconds and the release callback runs on pynput's
         # listener thread, which must stay responsive to catch the next press.
@@ -719,6 +947,10 @@ class VoiceThread:
         self._running = False
         if self._ptt_watcher is not None:
             self._ptt_watcher.stop()
+        # Release the mic now rather than waiting for the loop to notice —
+        # shutdown can race the next process opening the device. Both this
+        # and the loop's exit path are guarded against a double close.
+        self._stop_segmenter()
 
     def _load_model(self):
         import whisper
@@ -738,6 +970,7 @@ class VoiceThread:
 
         if new_mode == MODE_PTT:
             if self._ptt_watcher.available:
+                self._stop_segmenter()
                 self._ptt_watcher.start()
                 print(f'[VOICE] PTT key listener active ({self._ptt_watcher.description})')
             else:
@@ -750,6 +983,32 @@ class VoiceThread:
             if self._ptt_recording:
                 self._ptt_recording = False
                 self._ptt_recorder.stop()
+
+        # Only "on" holds the mic open. Both branches above can land here with
+        # self.mode == MODE_ON (including the PTT-unavailable fallback), so
+        # the decision is made on self.mode, not on new_mode.
+        if self.mode == MODE_ON:
+            self._start_segmenter()
+        else:
+            self._stop_segmenter()
+
+    def _start_segmenter(self):
+        if self._segmenter is not None and self._segmenter.active:
+            return
+        try:
+            self._segmenter = _VADSegmenter(self._in_device_idx)
+            self._segmenter.start()
+        except Exception as e:
+            # No mic stream means no always-on listening, but PTT and the
+            # escalation prompt still work, so this isn't fatal to voice.
+            print(f'[VOICE] could not open always-on mic ({e}) — '
+                  'no voice commands until the mode changes')
+            self._segmenter = None
+
+    def _stop_segmenter(self):
+        if self._segmenter is not None:
+            self._segmenter.stop()
+            self._segmenter = None
 
     def _on_ptt_press(self):
         if self.mode != MODE_PTT or self._ptt_recording:
@@ -790,8 +1049,21 @@ class VoiceThread:
         return result.get('text', '').strip()
 
     def _say(self, text: str):
-        if self.speaker is not None:
+        """Speak, with the mic gated for the duration. In "on" mode the input
+        stream stays open while the speaker plays, so without the gate the bot
+        transcribes its own voice — and since its answers are English
+        sentences, they parse as commands."""
+        if self.speaker is None:
+            return
+        self._speaking.set()
+        try:
             self.speaker.say(text)
+        finally:
+            self._speaking.clear()
+            if self._segmenter is not None:
+                # Drop what the mic picked up while the speaker was playing;
+                # the gate only covers frames read during the call.
+                self._segmenter.flush()
 
     # ── goal / state plumbing ──────────────────────────────────────────────
     def _enqueue_goal(self, goal: str, reason: str) -> bool:
@@ -983,7 +1255,13 @@ class VoiceThread:
         approved = False
         if self._model is not None:
             try:
-                text = self._transcribe(self._record(8.0)).lower()
+                # Read the window off the always-on stream when there is one.
+                # sd.rec() here would be a second open of a device the
+                # segmenter already holds, which fails outright on ALSA.
+                audio = (self._segmenter.capture_window(8.0)
+                         if self._segmenter is not None and self._segmenter.active
+                         else self._record(8.0))
+                text = self._transcribe(audio).lower()
                 print(f"[VOICE] escalation heard: '{text}'")
                 approved = any(w in text for w in
                                ('proceed', 'yes', 'go', 'allow', 'override'))
@@ -1032,13 +1310,24 @@ class VoiceThread:
                 # of mode.
                 self._check_escalation()
 
-                if self.mode == MODE_ON:
+                if self.mode == MODE_ON and self._segmenter is not None:
                     # Anything PTT captured before the mode flipped still gets
-                    # handled, but never blocks the rolling recorder.
+                    # handled, but never blocks the listener.
                     self._drain_work(block=False)
-                    transcript = self._transcribe(self._record(LISTEN_CHUNK_SEC)).strip()
-                    if transcript and len(transcript.split()) >= MIN_COMMAND_WORDS:
-                        self._handle_command(transcript)
+                    # Returns as soon as someone stops talking; the timeout is
+                    # only so the mode file and escalations get checked while
+                    # the room is quiet.
+                    audio = self._segmenter.read_utterance(
+                        MODE_POLL_SEC, gate=self._speaking.is_set)
+                    if audio is not None:
+                        transcript = self._transcribe(audio).strip()
+                        if transcript and len(transcript.split()) >= MIN_COMMAND_WORDS:
+                            self._handle_command(transcript)
+                elif self.mode == MODE_ON:
+                    # "on" with no stream (mic open failed) — retry on the
+                    # next pass rather than spinning.
+                    self._drain_work(block=True)
+                    self._start_segmenter()
                 else:
                     # ptt is event-driven (PTTKeyWatcher callbacks) and off
                     # takes no mic access at all — both idle here. Blocking on
@@ -1053,6 +1342,7 @@ class VoiceThread:
                 time.sleep(1.0)
 
         self._ptt_watcher.stop()
+        self._stop_segmenter()
         print('[VOICE] thread stopped')
 
 
