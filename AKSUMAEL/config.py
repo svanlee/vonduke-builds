@@ -518,10 +518,12 @@ VOICE_VAD_MAX_UTTERANCE_SEC = 15.0
 # already clipped by the time the buffer opens.
 VOICE_VAD_PREROLL_SEC = 0.3
 
-# Energy-threshold fallback (RMS, 0.0-1.0) used only when webrtcvad isn't
-# importable. Raise if the room floor keeps triggering it; lower if quiet
-# speech is missed. Install webrtcvad instead where possible — an RMS gate
-# can't tell a voice from a fan.
+# Energy-threshold last resort (RMS, 0.0-1.0). Reached only on a box that has
+# neither webrtcvad nor a keyboard hook (pynput/keyboard) — with webrtcvad
+# missing but a hook present, core/voice.py picks push-to-talk over always-on
+# instead, because an RMS gate can't tell a voice from a fan and game audio on
+# the same speakers would trip it continuously. Raise if the room floor keeps
+# triggering it; lower if quiet speech is missed.
 VOICE_VAD_ENERGY_THRESHOLD = 0.012
 
 # Legacy aliases — axon/ is still on disk (hub.py, speaker.py, command_parser.py)

@@ -1,145 +1,733 @@
 {
-  "session_num": 13,
-  "last_saved": 1786197834.2688615,
+  "session_num": 14,
+  "last_saved": 1786199716.6217923,
   "history": [
     {
-      "tick": 1434,
-      "session": 13,
-      "ts": 1786197828.959963,
-      "objects": [],
+      "tick": 5239,
+      "session": 14,
+      "ts": 1786199711.4763412,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.456
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
+      "action": "aiming:log"
+    },
+    {
+      "tick": 5240,
+      "session": 14,
+      "ts": 1786199711.6996815,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.456
+        },
+        {
+          "label": "redstone_ore",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
+      "action": "aiming:log"
+    },
+    {
+      "tick": 5241,
+      "session": 14,
+      "ts": 1786199711.9476595,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.436
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
+      "action": "skill:mine_diamond_ore"
+    },
+    {
+      "tick": 5242,
+      "session": 14,
+      "ts": 1786199712.43809,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.436
+        },
+        {
+          "label": "redstone_ore",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1435,
-      "session": 13,
-      "ts": 1786197829.2116864,
-      "objects": [],
+      "tick": 5243,
+      "session": 14,
+      "ts": 1786199712.6864574,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.384
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1436,
-      "session": 13,
-      "ts": 1786197829.4623985,
-      "objects": [],
+      "tick": 5244,
+      "session": 14,
+      "ts": 1786199712.9324985,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.424
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1437,
-      "session": 13,
-      "ts": 1786197829.7097006,
-      "objects": [],
+      "tick": 5245,
+      "session": 14,
+      "ts": 1786199713.187913,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.448
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1438,
-      "session": 13,
-      "ts": 1786197829.9574754,
-      "objects": [],
+      "tick": 5246,
+      "session": 14,
+      "ts": 1786199713.43796,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.392
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1439,
-      "session": 13,
-      "ts": 1786197830.2076843,
-      "objects": [],
+      "tick": 5247,
+      "session": 14,
+      "ts": 1786199713.684937,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.396
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1440,
-      "session": 13,
-      "ts": 1786197830.4636507,
-      "objects": [],
+      "tick": 5248,
+      "session": 14,
+      "ts": 1786199713.931851,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.44
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1441,
-      "session": 13,
-      "ts": 1786197830.7094054,
-      "objects": [],
+      "tick": 5249,
+      "session": 14,
+      "ts": 1786199714.1865227,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.384
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1442,
-      "session": 13,
-      "ts": 1786197830.957533,
-      "objects": [],
+      "tick": 5250,
+      "session": 14,
+      "ts": 1786199714.4321134,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.364
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1443,
-      "session": 13,
-      "ts": 1786197831.2078922,
-      "objects": [],
+      "tick": 5251,
+      "session": 14,
+      "ts": 1786199714.7245834,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.42
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1444,
-      "session": 13,
-      "ts": 1786197831.9752421,
-      "objects": [],
+      "tick": 5252,
+      "session": 14,
+      "ts": 1786199714.9397168,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.384
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1445,
-      "session": 13,
-      "ts": 1786197832.008135,
-      "objects": [],
+      "tick": 5253,
+      "session": 14,
+      "ts": 1786199715.189131,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.4
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1446,
-      "session": 13,
-      "ts": 1786197832.2612307,
-      "objects": [],
+      "tick": 5254,
+      "session": 14,
+      "ts": 1786199715.439898,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.34
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1447,
-      "session": 13,
-      "ts": 1786197832.5075605,
-      "objects": [],
+      "tick": 5255,
+      "session": 14,
+      "ts": 1786199715.6893294,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.396
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1448,
-      "session": 13,
-      "ts": 1786197832.7623394,
-      "objects": [],
+      "tick": 5256,
+      "session": 14,
+      "ts": 1786199715.9395945,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.572
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1449,
-      "session": 13,
-      "ts": 1786197833.0117953,
-      "objects": [],
+      "tick": 5257,
+      "session": 14,
+      "ts": 1786199716.1893096,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.332
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     },
     {
-      "tick": 1450,
-      "session": 13,
-      "ts": 1786197833.2619286,
-      "objects": [],
-      "action": "wait"
-    },
-    {
-      "tick": 1451,
-      "session": 13,
-      "ts": 1786197833.5160317,
-      "objects": [],
-      "action": "wait"
-    },
-    {
-      "tick": 1452,
-      "session": 13,
-      "ts": 1786197833.7579994,
-      "objects": [],
-      "action": "wait"
-    },
-    {
-      "tick": 1453,
-      "session": 13,
-      "ts": 1786197834.0109205,
-      "objects": [],
+      "tick": 5258,
+      "session": 14,
+      "ts": 1786199716.441019,
+      "objects": [
+        {
+          "label": "diamond_ore",
+          "conf": 0.34
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "log",
+          "conf": 0.75
+        },
+        {
+          "label": "birch_log",
+          "conf": 0.75
+        },
+        {
+          "label": "cow",
+          "conf": 0.75
+        },
+        {
+          "label": "sheep",
+          "conf": 0.75
+        },
+        {
+          "label": "chicken",
+          "conf": 0.75
+        }
+      ],
       "action": "wait"
     }
   ],

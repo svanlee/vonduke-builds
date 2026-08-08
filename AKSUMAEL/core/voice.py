@@ -47,7 +47,11 @@
 # transcribing a fixed 4-second window on a clock that had no idea where
 # speech started or ended (every utterance either truncated mid-word or
 # padded with silence, and whisper hallucinated captions on the silence).
-# PTT is kept only as a fallback for a noisy room.
+#
+# PTT is the fallback: for a noisy room, and automatically whenever webrtcvad
+# isn't installed — see vad_backend_available(). Always-on without a real
+# speech classifier means an RMS energy gate, which game audio on the same
+# speakers trips continuously, so a key press is the better degradation.
 
 import json
 import os
@@ -618,6 +622,20 @@ class _StreamRecorder:
         return np.concatenate(self._frames, axis=0).flatten()
 
 
+def vad_backend_available() -> bool:
+    """Whether a real speech classifier is installed for always-on mode.
+
+    Only webrtcvad is checked. silero-vad is the other credible option, but
+    it's a torch model — heavier to load and to run per frame than a 30 ms
+    webrtcvad call, on a box already sharing a 6GB GPU with YOLO and mesh-llm.
+    Add a branch here if webrtcvad ever proves too noisy in practice."""
+    try:
+        import webrtcvad  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 class _VADSegmenter:
     """Always-on mic, cut into utterances on silence rather than on a clock.
 
@@ -627,11 +645,13 @@ class _VADSegmenter:
     VOICE_VAD_SILENCE_SEC of quiet — so the caller gets whole sentences,
     bounded by where the speaker actually paused.
 
-    Prefers webrtcvad (a real speech classifier, so a fan or a game explosion
-    doesn't read as speech). Falls back to an RMS energy threshold when it
-    isn't installed, which is cruder but keeps always-on listening working
-    rather than silently reverting to push-to-talk on a box that has no
-    keyboard hook either.
+    Uses webrtcvad — a real speech classifier, so a fan or a game explosion
+    doesn't read as speech. The RMS energy threshold below is a last resort,
+    not a peer: it fires on any sound above a level, which on a box with game
+    audio coming out of the speakers means it fires more or less continuously.
+    VoiceThread._apply_mode() therefore prefers push-to-talk over always-on
+    when webrtcvad is missing, and only lands here on a box that has no
+    keyboard hook either — where the alternative is no voice at all.
 
     Everything that touches ALSA goes through this one stream. Nothing else
     may open the mic while it runs — a second sd.rec() against a device this
@@ -707,6 +727,9 @@ class _VADSegmenter:
         self._triggered = False
         self._buf = []
         self._silence_ms = 0
+        # Voiced audio only — not the buffer length, which also holds the
+        # pre-roll and the trailing silence that closed the utterance.
+        self._voiced_ms = 0
 
     def flush(self):
         """Drop everything captured so far. Called after the bot speaks: at
@@ -778,22 +801,37 @@ class _VADSegmenter:
                         and voiced >= VAD_TRIGGER_RATIO * self._window.maxlen):
                     self._triggered = True
                     self._silence_ms = 0
+                    self._voiced_ms = voiced * VAD_FRAME_MS
                     self._buf = list(self._preroll)
                     self._window.clear()
                     self._preroll.clear()
                 continue
 
             self._buf.append(frame)
-            self._silence_ms = 0 if speech else self._silence_ms + VAD_FRAME_MS
+            if speech:
+                self._silence_ms = 0
+                self._voiced_ms += VAD_FRAME_MS
+            else:
+                self._silence_ms += VAD_FRAME_MS
             duration = len(self._buf) * VAD_FRAME_MS / 1000.0
 
             if self._silence_ms >= silence_sec * 1000 or duration >= max_utter:
-                frames, spoken = self._buf, duration
+                # Read these off before _reset() zeroes them.
+                trailing = self._silence_ms / 1000.0
+                spoken   = self._voiced_ms / 1000.0
+                frames   = self._buf
                 self._reset()
-                # Trailing silence is part of the buffer but isn't speech.
-                if spoken - self._silence_ms / 1000.0 < min_speech:
+
+                if spoken < min_speech:
                     continue   # a cough or a door — not worth waking whisper
-                print(f'[VOICE] utterance captured ({spoken:.1f}s)')
+
+                # Hand whisper only a short tail. It captions silence as
+                # plausible-sounding text ("Thanks for watching!"), and a
+                # full VOICE_VAD_SILENCE_SEC of it is enough to invite that.
+                keep = len(frames) - int(max(0.0, trailing - 0.3) * 1000 / VAD_FRAME_MS)
+                frames = frames[:max(1, keep)]
+
+                print(f'[VOICE] utterance captured ({spoken:.1f}s speech)')
                 return self._to_float32(frames)
 
     def capture_window(self, seconds: float):
@@ -968,7 +1006,20 @@ class VoiceThread:
         self.mode = new_mode
         print(f'[VOICE] mode: {new_mode}')
 
-        if new_mode == MODE_PTT:
+        # Always-on needs a real speech classifier. Without one _VADSegmenter
+        # degrades to a bare RMS energy threshold, which a speaker playing game
+        # audio trips more or less continuously — every false trigger costs a
+        # whisper transcription and invites a hallucinated caption. Prefer
+        # push-to-talk when the key hook exists; the energy threshold is only
+        # reached on a box with neither, where PTT would mean no voice at all.
+        if (self.mode == MODE_ON and not vad_backend_available()
+                and self._ptt_watcher.available):
+            print('[VOICE] no VAD backend installed (pip install webrtcvad) — '
+                  'using push-to-talk rather than an energy threshold')
+            self.mode = MODE_PTT
+            print(f'[VOICE] mode: {MODE_PTT}')
+
+        if self.mode == MODE_PTT:
             if self._ptt_watcher.available:
                 self._stop_segmenter()
                 self._ptt_watcher.start()
