@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
-  "generated_at": 1786201978.5053148,
+  "generated_at": 1786230586.419334,
   "interval_s": 60,
-  "pid": 60281,
+  "pid": 228595,
   "node_name": "victus-t7",
   "devices": {
     "video": [
@@ -233,6 +233,70 @@
       }
     ]
   },
+  "audio": {
+    "source": "alsa",
+    "sinks": [
+      {
+        "name": "hw:0,3 HDA NVidia \u2014 HDMI 0",
+        "state": null
+      },
+      {
+        "name": "hw:0,7 HDA NVidia \u2014 HDMI 1",
+        "state": null
+      },
+      {
+        "name": "hw:0,8 HDA NVidia \u2014 HDMI 2",
+        "state": null
+      },
+      {
+        "name": "hw:0,9 HDA NVidia \u2014 HDMI 3",
+        "state": null
+      },
+      {
+        "name": "hw:1,3 HD-Audio Generic \u2014 HDMI 0",
+        "state": null
+      },
+      {
+        "name": "hw:1,7 HD-Audio Generic \u2014 HDMI 1",
+        "state": null
+      },
+      {
+        "name": "hw:1,8 HD-Audio Generic \u2014 HDMI 2",
+        "state": null
+      },
+      {
+        "name": "hw:1,9 HD-Audio Generic \u2014 HDMI 3",
+        "state": null
+      },
+      {
+        "name": "hw:2,0 HD-Audio Generic \u2014 ALC245 Analog",
+        "state": null
+      }
+    ],
+    "sources": [
+      {
+        "name": "hw:2,0 HD-Audio Generic \u2014 ALC245 Analog",
+        "state": null
+      },
+      {
+        "name": "hw:3,0 acp63 \u2014 DMIC capture dmic-hifi-0",
+        "state": null
+      }
+    ],
+    "note": "pactl unavailable \u2014 these are ALSA cards seen by the kernel, not sound-server routing targets"
+  },
+  "storage": {
+    "source": "df",
+    "root": {
+      "filesystem": "/dev/sda2",
+      "size": "915G",
+      "used": "102G",
+      "available": "767G",
+      "use_pct": "12%",
+      "mounted_on": "/"
+    },
+    "note": null
+  },
   "kb2040": {
     "present": false,
     "responding": false
@@ -242,6 +306,8 @@
     "ttyUSB": 0,
     "ttyACM": 0,
     "input": 18,
-    "i2c": 0
+    "i2c": 0,
+    "audio_sinks": 9,
+    "audio_sources": 2
   }
 }

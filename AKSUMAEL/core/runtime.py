@@ -906,8 +906,18 @@ def run():
             # Must run before retirement: a train: goal is answered and popped
             # by its own handler, and check_retirement() has no timeout rule
             # for it, so it would otherwise sit as the current goal forever.
+            #
+            # fsm_state/objects/active_env feed the prompt's live-perception
+            # block so a training question cannot assert something about the
+            # bot's own runtime and have it accepted. fsm_state here is last
+            # tick's (the FSM ticks further down this loop) — one tick of lag,
+            # versus the several-second-stale disk snapshot the handler falls
+            # back to without it.
             try:
-                training_handler.maybe_handle(goals, cognitive.monologue, tick)
+                training_handler.maybe_handle(
+                    goals, cognitive.monologue, tick,
+                    fsm_state=fsm_state, objects=objects,
+                    active_env=attention_manager.get_active_name())
             except Exception as e:
                 print(f'[TRAIN] handler error: {e}')
 

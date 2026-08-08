@@ -6,20 +6,20 @@
     "armor_bar": 119164,
     "hunger_bar": 255212,
     "coal_ore": 11046,
-    "diamond_ore": 196386,
-    "emerald_ore": 114963,
-    "redstone_ore": 135245,
+    "diamond_ore": 225727,
+    "emerald_ore": 114969,
+    "redstone_ore": 138365,
     "lapis_ore": 27401,
-    "gold_ore": 127239,
+    "gold_ore": 136373,
     "bed": 1220,
     "torch": 65,
     "crosshair": 735,
     "oak_planks": 337,
-    "log": 909021,
-    "leaves": 266192,
-    "birch_log": 141840,
-    "pig": 82920,
-    "chicken": 204596,
+    "log": 1001489,
+    "leaves": 266245,
+    "birch_log": 188074,
+    "pig": 83390,
+    "chicken": 250830,
     "cobblestone": 163,
     "gravel": 4,
     "stone": 16,
@@ -27,8 +27,8 @@
     "zombie": 17622,
     "skeleton": 14416,
     "creeper": 4959,
-    "cow": 482446,
-    "sheep": 136891,
+    "cow": 485826,
+    "sheep": 183125,
     "crafting_table": 4,
     "chest_row": 39,
     "copper_ore": 20,
@@ -46,107 +46,107 @@
   },
   "recent_events": [
     {
-      "t": "10:38:51",
+      "t": "19:07:44",
       "event": "chopped log"
     },
     {
-      "t": "10:38:53",
+      "t": "19:07:46",
       "event": "survey sweep"
     },
     {
-      "t": "10:39:09",
+      "t": "19:08:09",
       "event": "chopped log"
     },
     {
-      "t": "10:39:10",
+      "t": "19:08:10",
       "event": "survey sweep"
     },
     {
-      "t": "10:39:26",
+      "t": "19:08:26",
       "event": "chopped log"
     },
     {
-      "t": "10:39:28",
+      "t": "19:08:28",
       "event": "survey sweep"
     },
     {
-      "t": "10:39:43",
+      "t": "19:08:44",
       "event": "chopped log"
     },
     {
-      "t": "10:39:45",
+      "t": "19:08:45",
       "event": "survey sweep"
     },
     {
-      "t": "10:40:01",
+      "t": "19:09:01",
       "event": "chopped log"
     },
     {
-      "t": "10:40:02",
+      "t": "19:09:03",
       "event": "survey sweep"
     },
     {
-      "t": "10:40:21",
+      "t": "19:09:19",
       "event": "chopped log"
     },
     {
-      "t": "10:40:22",
+      "t": "19:09:20",
       "event": "survey sweep"
     },
     {
-      "t": "10:40:47",
+      "t": "19:09:36",
       "event": "chopped log"
     },
     {
-      "t": "10:40:48",
+      "t": "19:09:38",
       "event": "survey sweep"
     },
     {
-      "t": "10:41:04",
+      "t": "19:09:57",
       "event": "chopped log"
     },
     {
-      "t": "10:41:06",
+      "t": "19:09:59",
       "event": "survey sweep"
     },
     {
-      "t": "10:41:22",
+      "t": "19:10:16",
       "event": "chopped log"
     },
     {
-      "t": "10:41:23",
+      "t": "19:10:18",
       "event": "survey sweep"
     },
     {
-      "t": "10:41:39",
+      "t": "19:10:34",
       "event": "chopped log"
     },
     {
-      "t": "10:41:41",
+      "t": "19:10:35",
       "event": "survey sweep"
     }
   ],
-  "total_ticks": 944150,
-  "deaths": 8698,
-  "surveys": 52259,
+  "total_ticks": 1018350,
+  "deaths": 8702,
+  "surveys": 54071,
   "depth_estimate": 16,
   "hunger_level": 11,
-  "game_tick": 7150,
-  "pickaxe_uses": 2497,
+  "game_tick": 9350,
+  "pickaxe_uses": 3245,
   "y_level": 16,
   "biome": "overworld",
-  "wood_count": 1674,
+  "wood_count": 2235,
   "food_items": [
     "carrot"
   ],
   "animals_seen": {
-    "pig": 942635,
-    "chicken": 944150,
-    "cow": 944150,
-    "sheep": 944150
+    "pig": 1007515,
+    "chicken": 1018332,
+    "cow": 1018142,
+    "sheep": 1018332
   },
   "near_water": false,
-  "llm_calls": 3753,
+  "llm_calls": 3782,
   "known_trees": [
     {
       "x": -2.0,
@@ -167,6 +167,6 @@
   "chunk_z": 3,
   "light_level": null,
   "day_count": null,
-  "fsm_state": "MINE",
-  "last_saved": "2026-08-08 10:41:48"
+  "fsm_state": "EXPLORE",
+  "last_saved": "2026-08-08 19:10:36"
 }

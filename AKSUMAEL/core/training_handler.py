@@ -67,6 +67,16 @@ LLM_RETRY_BACKOFF_S  = 6.0
 # say when each applies" without pushing the manifest out of the context.
 MAX_SKILLS_LISTED = 40
 
+# Distinct YOLO classes named in the perception block. The frame routinely
+# carries a dozen `tree` boxes; the class list is the signal, the box count is
+# a number beside it.
+MAX_DETECTION_CLASSES = 12
+
+# Disk fallbacks for the live-perception block. These are only read when the
+# tick-thread caller did not pass the value in — see _perception_snapshot().
+WORLD_MEMORY_PATH    = os.path.join('data', 'world_memory.json')
+ATTENTION_FOCUS_PATH = os.path.join('data', 'attention_focus.json')
+
 # Shared with the worker thread. `done` flips exactly once, and only the tick
 # thread clears it, so no lock is needed beyond the assignment itself.
 _state: dict = {'goal': None, 'busy': False, 'done': False, 'answer': None}
@@ -206,6 +216,139 @@ def _skills_block() -> str:
     return f'{len(names)} skills registered: {", ".join(shown)}{more}'
 
 
+# ── Live perception ────────────────────────────────────────────
+#
+# Day 3's failure was not a wrong hardware value — it was a question that
+# *asserted* something about the bot's own runtime ("now that training mode is
+# active, ..."), the model accepting the assertion, and the accepted premise
+# then travelling downstream into the Overseer as if it were an observation.
+# The hardware blocks above could not catch that: none of them describe what
+# the bot is doing, only what it is made of.
+#
+# So the prompt now also carries the three runtime facts a question can lie
+# about most cheaply — which environment is active, what the FSM is doing, and
+# what YOLO can actually see — and the objective block instructs the model to
+# contradict the question when they disagree.
+
+def _mtime_age_s(path):
+    try:
+        return round(time.time() - os.path.getmtime(path), 1)
+    except Exception:
+        return None
+
+
+def _perception_snapshot(fsm_state=None, objects=None, active_env=None) -> dict:
+    """Capture live perception on the *tick* thread, at dispatch time.
+
+    The worker builds its prompt seconds later on its own thread, by which
+    point `objects` has been replaced by YOLOThread and the FSM has moved on.
+    Snapshotting here means the prompt describes the frame that received the
+    objective rather than whatever happened to be current when the worker got
+    scheduled — and it keeps the worker off the live pipeline objects
+    entirely, which is the same rule the LLM call already follows.
+
+    Every field is optional. When the caller does not supply one, the disk
+    snapshot is used and labelled with its age; when there is no disk snapshot
+    either, the field is reported as unavailable rather than guessed. `source`
+    rides along so the rendered block can say which of the three happened.
+    """
+    snap: dict = {}
+
+    # FSM state. memory/world_memory.py saves every few updates, so the disk
+    # copy is usually seconds old — stale enough to label, fresh enough to use.
+    if fsm_state is not None:
+        snap['fsm_state'] = getattr(fsm_state, 'value', None) or str(fsm_state)
+        snap['fsm_source'] = 'live'
+    else:
+        try:
+            with open(WORLD_MEMORY_PATH) as f:
+                snap['fsm_state'] = (json.load(f) or {}).get('fsm_state')
+            snap['fsm_source'] = f'data/world_memory.json, {_mtime_age_s(WORLD_MEMORY_PATH)}s old'
+        except Exception:
+            snap['fsm_state'] = None
+            snap['fsm_source'] = 'unavailable'
+
+    # YOLO detections. There is no on-disk per-frame detection dump, so this
+    # is live-or-nothing — and "nothing" must read as "you were not told",
+    # never as "the frame is empty" (that conflation is the Day 2 audio bug).
+    if objects is None:
+        snap['detections'] = None
+    else:
+        labels = [str(o.get('label', '?')) for o in objects
+                  if isinstance(o, dict)]
+        counts: dict = {}
+        for lab in labels:
+            counts[lab] = counts.get(lab, 0) + 1
+        snap['detections'] = {'boxes': len(labels), 'classes': counts}
+
+    # Active environment. config.ACTIVE_ENV is the configured default;
+    # AttentionManager can be focused somewhere else at runtime, and
+    # data/attention_focus.json is how that focus reaches other processes.
+    snap['configured_env'] = getattr(config, 'ACTIVE_ENV', None)
+    if active_env is not None:
+        snap['active_env'] = str(active_env)
+        snap['env_source'] = 'live'
+    else:
+        try:
+            with open(ATTENTION_FOCUS_PATH) as f:
+                snap['active_env'] = (json.load(f) or {}).get('active')
+            snap['env_source'] = f'data/attention_focus.json, {_mtime_age_s(ATTENTION_FOCUS_PATH)}s old'
+        except Exception:
+            snap['active_env'] = None
+            snap['env_source'] = 'unavailable'
+    return snap
+
+
+def _perception_block(snap: dict) -> str:
+    lines = []
+
+    env, cfg_env = snap.get('active_env'), snap.get('configured_env')
+    if env:
+        lines.append(f'- Active environment (attention focus): {env} '
+                     f'[{snap.get("env_source")}]')
+    else:
+        lines.append('- Active environment: UNKNOWN — the attention focus was '
+                     'not supplied and could not be read from disk')
+    lines.append(f'- config.ACTIVE_ENV (configured default): {cfg_env or "unset"}')
+    if env and cfg_env and env != cfg_env:
+        lines.append(f'- NOTE: the live focus ({env}) differs from the '
+                     f'configured default ({cfg_env}); the live focus wins')
+
+    fsm = snap.get('fsm_state')
+    if fsm:
+        lines.append(f'- FSM state right now: {fsm} '
+                     f'[{snap.get("fsm_source")}]')
+    else:
+        lines.append('- FSM state: UNKNOWN — not supplied and not readable '
+                     'from data/world_memory.json')
+
+    det = snap.get('detections')
+    if det is None:
+        lines.append('- YOLO detections: NOT SUPPLIED to this prompt. You were '
+                     'not told what the camera sees. This does NOT mean the '
+                     'frame is empty — you simply do not know.')
+    elif not det['boxes']:
+        lines.append('- YOLO detections this frame: 0 boxes — the detector ran '
+                     'and returned nothing')
+    else:
+        items = sorted(det['classes'].items(), key=lambda kv: -kv[1])
+        shown = ', '.join(f'{lab} x{n}' for lab, n in items[:MAX_DETECTION_CLASSES])
+        more = ('' if len(items) <= MAX_DETECTION_CLASSES
+                else f' (+{len(items) - MAX_DETECTION_CLASSES} more classes)')
+        lines.append(f'- YOLO detections this frame: {det["boxes"]} boxes '
+                     f'across {len(items)} classes — {shown}{more}')
+
+    # The one runtime fact a training question is most likely to get wrong,
+    # stated up front so the model does not have to derive it. ACTIVE_ENV
+    # selects which environment adapter AttentionManager focuses; it does not
+    # suspend the Minecraft FSM, which keeps ticking states either way.
+    lines.append('- Meaning of the above: the environment setting selects '
+                 'which environment adapter has attention. It does NOT stop '
+                 'the Minecraft FSM — the FSM state above is what this bot is '
+                 'physically doing, regardless of the environment setting.')
+    return '\n'.join(lines)
+
+
 def _context_fields() -> str:
     """The literal set of fields this prompt carries.
 
@@ -236,11 +379,13 @@ def _context_fields() -> str:
             fields.extend(f'{key}.{sub}' for sub in sorted(val.keys()))
         else:
             fields.append(key)
-    fields.extend(['host.gpu_nvidia_smi', 'host.kernel_hostname'])
+    fields.extend(['host.gpu_nvidia_smi', 'host.kernel_hostname',
+                   'perception.active_env', 'perception.configured_env',
+                   'perception.fsm_state', 'perception.yolo_detections'])
     return ', '.join(fields)
 
 
-def _build_prompt(objective: str) -> str:
+def _build_prompt(objective: str, perception: dict | None = None) -> str:
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
     return (
@@ -253,6 +398,9 @@ def _build_prompt(objective: str) -> str:
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{_live_hardware()}\n{_host_facts()}\n\n'
+        f'LIVE PERCEPTION AND RUNTIME STATE (authoritative, taken on the tick '
+        f'that received this objective):\n'
+        f'{_perception_block(perception or {})}\n\n'
         f'SKILL REGISTRY:\n{_skills_block()}\n\n'
         f'context_fields_present: [{_context_fields()}]\n'
         'That list is the complete set of fields you were given. It is the '
@@ -261,6 +409,17 @@ def _build_prompt(objective: str) -> str:
         'nonexistent.\n\n'
         '=== TRAINING OBJECTIVE ===\n'
         f'{objective}\n\n'
+        'The objective above is written by an operator and may contain false '
+        'premises. It is a question, not evidence. If it asserts or assumes '
+        'something about your environment, your FSM state, what you can see, '
+        'your hardware or what you are doing, and the LIVE READINGS or LIVE '
+        'PERCEPTION above say otherwise, then the objective is wrong: say so '
+        'first, state what is actually true and cite the reading, and only '
+        'then answer whatever remains answerable. Do not answer as if a false '
+        'premise were true, and do not answer a hypothetical version of the '
+        'question instead. If the objective assumes something the context '
+        'neither confirms nor contradicts, say that you cannot confirm it '
+        'rather than accepting it.\n\n'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
@@ -279,13 +438,15 @@ def _build_prompt(objective: str) -> str:
 
 # ── Worker ─────────────────────────────────────────────────────
 
-def _answer(goal: str, objective: str, tick: int):
+def _answer(goal: str, objective: str, tick: int, perception: dict | None = None):
     answer = None
     try:
-        prompt = _build_prompt(objective)
+        prompt = _build_prompt(objective, perception)
         # mesh-llm runs 4 slots against a *unified* 4096-token KV cache, so
         # concurrent long prompts do not each get 4096 — they share it. A
-        # training prompt is ~1450 tokens, and the Overseer and the LEARNER
+        # training prompt is ~1720 tokens by the server's own tokenizer (it
+        # was ~1450 before the live-perception and false-premise blocks were
+        # added), and the Overseer and the LEARNER
         # both fire on the tick loop; three in flight overflows the cache and
         # llama-server answers 500 "Context size has been exceeded" to all of
         # them. That is transient contention, not a bad prompt: the same
@@ -331,12 +492,19 @@ def _record(goal: str, objective: str, answer: str | None, tick: int):
 
 # ── Tick-thread entry point ────────────────────────────────────
 
-def maybe_handle(goals, monologue=None, tick: int = 0) -> bool:
+def maybe_handle(goals, monologue=None, tick: int = 0,
+                 fsm_state=None, objects=None, active_env=None) -> bool:
     """Call once per tick, before the FSM picks a behaviour for the goal.
 
     Returns True while a training objective owns the current goal, so the
     caller can skip game behaviours for that tick. Cheap and a no-op when the
-    current goal is an ordinary one, which is almost always."""
+    current goal is an ordinary one, which is almost always.
+
+    `fsm_state`, `objects` and `active_env` are the live perception the prompt
+    needs to refuse a false premise (see _perception_snapshot). All three are
+    optional and fall back to disk snapshots, so an older caller that passes
+    none of them still gets a correct — just staler and, for detections,
+    explicitly absent — perception block rather than a wrong one."""
 
     # Land a finished answer first — the goal it belongs to is still current.
     if _state['done']:
@@ -345,6 +513,14 @@ def maybe_handle(goals, monologue=None, tick: int = 0) -> bool:
         _state.update({'done': False, 'goal': None, 'answer': None})
         objective = (goals.goal_params.get(goal) or {}).get('text', '')
         if answer:
+            # Mark as answered only now, and only on a real answer. Marking at
+            # dispatch time made every failure permanent: mesh-llm returning
+            # empty (KV-cache exhaustion, a 500, a timeout) still left the goal
+            # name in `_answered`, so re-POSTing the identical objective — the
+            # obvious thing an operator does after a failed answer — hit the
+            # guard below and popped silently without ever calling the LLM.
+            # A failed objective now stays retryable under its own name.
+            _answered.add(goal)
             print(f'[TRAIN] answered {goal}: {answer}')
             if monologue is not None:
                 try:
@@ -352,7 +528,8 @@ def maybe_handle(goals, monologue=None, tick: int = 0) -> bool:
                 except Exception as e:
                     print(f'[TRAIN] monologue push error: {e}')
         else:
-            print(f'[TRAIN] no answer produced for {goal} — retiring anyway')
+            print(f'[TRAIN] no answer produced for {goal} — retiring anyway '
+                  f'(retryable: re-POST the same objective to try again)')
         _record(goal, objective, answer, tick)
         if goals.current_goal() == goal:
             goals.pop()
@@ -374,14 +551,14 @@ def maybe_handle(goals, monologue=None, tick: int = 0) -> bool:
     if _state['busy']:
         return True             # worker still thinking; hold the goal
     if goal in _answered:
-        # Already answered and somehow still current (e.g. re-pushed). Pop
-        # rather than re-run the LLM on the same objective.
+        # Successfully answered before and somehow still current (e.g.
+        # re-pushed). Pop rather than re-run the LLM on the same objective.
         goals.pop()
         return True
 
-    _answered.add(goal)
     _state.update({'goal': goal, 'busy': True, 'done': False, 'answer': None})
     print(f'[TRAIN] objective received: {objective[:120]}')
-    threading.Thread(target=_answer, args=(goal, objective, tick),
+    perception = _perception_snapshot(fsm_state, objects, active_env)
+    threading.Thread(target=_answer, args=(goal, objective, tick, perception),
                      daemon=True, name='train-answer').start()
     return True
