@@ -194,6 +194,8 @@ def _manifest_summary():
         'ttyUSB': [d.get('path') for d in devices.get('ttyUSB', [])],
         'ttyACM': [d.get('path') for d in devices.get('ttyACM', [])],
         'input':  [d.get('name') for d in devices.get('input', [])],
+        'audio':   m.get('audio', {}),
+        'storage': m.get('storage', {}),
         'kb2040': {
             'present': kb.get('present', False),
             'responding': kb.get('responding', False),

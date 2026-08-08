@@ -277,6 +277,39 @@ def _audio_devices() -> dict:
     return audio
 
 
+def _storage() -> dict:
+    """Root filesystem usage, from `df -h /`.
+
+    `findmnt -o SOURCE,SIZE` (what the training prompt used through Day 2)
+    reports capacity only. Asked how much free space it had, the bot filled
+    the gap from priors and answered "approximately 89.5 gigabytes" against a
+    real 769G — and credited the live readings for it. Free space has to be
+    *in* the sweep; an absent field is not read as unknown.
+    """
+    storage: dict = {'source': None, 'root': None, 'note': None}
+    raw = _run(['df', '-h', '/'])
+    if raw is None:
+        storage['source'] = 'none'
+        storage['note'] = 'df unavailable or failed'
+        return storage
+    lines = raw.splitlines()
+    if len(lines) < 2:
+        storage['source'] = 'none'
+        storage['note'] = 'df returned no data row'
+        return storage
+    parts = lines[1].split()
+    if len(parts) < 6:
+        storage['source'] = 'none'
+        storage['note'] = f'unparsed df output: {lines[1]}'
+        return storage
+    storage['source'] = 'df'
+    storage['root'] = {
+        'filesystem': parts[0], 'size': parts[1], 'used': parts[2],
+        'available': parts[3], 'use_pct': parts[4], 'mounted_on': parts[5],
+    }
+    return storage
+
+
 # ── KB2040 bridge ──────────────────────────────────────────────
 _bridge_client = None
 _bridge_lock = threading.Lock()
@@ -420,6 +453,12 @@ def build_manifest() -> dict:
     except Exception as e:
         manifest['audio'] = {'source': 'error', 'sinks': [], 'sources': [],
                              'note': f'{type(e).__name__}: {e}'}
+
+    try:
+        manifest['storage'] = _storage()
+    except Exception as e:
+        manifest['storage'] = {'source': 'error', 'root': None,
+                               'note': f'{type(e).__name__}: {e}'}
 
     try:
         manifest['kb2040'] = _kb2040_probe(devices.get('ttyACM', []))

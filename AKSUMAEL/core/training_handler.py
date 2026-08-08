@@ -59,6 +59,10 @@ MAX_WORDS   = 120
 MAX_TOKENS  = 900
 LLM_TIMEOUT = 90.0      # generous: the model reasons before answering
 
+# Retries for KV-cache contention on the shared mesh-llm server (see _answer).
+LLM_ATTEMPTS         = 4
+LLM_RETRY_BACKOFF_S  = 6.0
+
 # Skill names are cheap, full descriptions are not. Enough for "name five and
 # say when each applies" without pushing the manifest out of the context.
 MAX_SKILLS_LISTED = 40
@@ -116,6 +120,21 @@ def _live_hardware() -> str:
         more = '' if len(rows) <= 6 else f' (+{len(rows) - 6} more)'
         return f'- {label} ({len(rows)}, via {a_src}): {names}{more}'
 
+    # Same rule as audio: free space is stated or its absence is named. Day 2
+    # answered "approximately 89.5 gigabytes" from priors when the prompt
+    # carried capacity but not availability.
+    sto = m.get('storage') or {}
+    root = sto.get('root') or {}
+    if root:
+        storage_line = (
+            f'- Root filesystem: {root.get("filesystem", "?")} mounted on '
+            f'{root.get("mounted_on", "/")}, {root.get("size", "?")} total, '
+            f'{root.get("available", "?")} free, {root.get("used", "?")} used '
+            f'({root.get("use_pct", "?")} full) — via df')
+    else:
+        storage_line = (f'- Root filesystem: UNKNOWN — storage was not probed '
+                        f'({sto.get("note") or "no storage block in manifest"})')
+
     kb = m.get('kb2040') or {}
     i2c = kb.get('i2c_addresses') or []
     lines = [
@@ -131,6 +150,7 @@ def _live_hardware() -> str:
         f'actually openable by this process',
         _audio_line('Audio outputs (sinks)', a_sinks),
         _audio_line('Audio inputs (sources)', a_sources),
+        storage_line,
     ]
     if aud.get('note') and a_src == 'alsa':
         lines.append(f'- Audio caveat: {aud["note"]}')
@@ -151,14 +171,10 @@ def _host_facts() -> str:
             facts.append(f'- GPU (nvidia-smi): {out.stdout.strip()}')
     except Exception:
         pass
-    try:
-        import subprocess
-        root = subprocess.run(['findmnt', '-n', '-o', 'SOURCE,SIZE', '/'],
-                              capture_output=True, text=True, timeout=8)
-        if root.returncode == 0 and root.stdout.strip():
-            facts.append(f'- Root filesystem: {root.stdout.strip()}')
-    except Exception:
-        pass
+    # Root filesystem is no longer probed here — findmnt reported SIZE with no
+    # AVAIL, and that half-answer is what Day 2 completed from priors. It now
+    # comes from manifest['storage'] (`df -h /`) via _live_hardware(), so there
+    # is exactly one storage line and it carries free space.
     try:
         facts.append(f'- Kernel hostname: {os.uname().nodename}')
     except Exception:
@@ -190,6 +206,40 @@ def _skills_block() -> str:
     return f'{len(names)} skills registered: {", ".join(shown)}{more}'
 
 
+def _context_fields() -> str:
+    """The literal set of fields this prompt carries.
+
+    Day 2's headline failure was not a wrong value, it was a wrong *belief
+    about coverage*: with no audio block in the prompt the model answered
+    "no sound cards, microphones, or speakers present" and wrote "the live
+    hardware readings confirm" in front of it. Silence in the context read as
+    positive evidence of absence.
+
+    Filling each individual gap does not fix that — there will always be a
+    next gap. What fixes it is telling the model the boundary of its own
+    context explicitly, so "not in this list" is a fact it can state rather
+    than an emptiness it has to interpret. Sub-keys are enumerated, not just
+    top-level ones, because `devices` being present says nothing about
+    whether `devices.ttyUSB` was scanned.
+    """
+    fields = ['identity', 'node_name', 'expected_hardware_from_config',
+              'skill_registry_names']
+    try:
+        from hardware.hardware_manager import get_manifest
+        m = get_manifest() or {}
+    except Exception:
+        return ', '.join(fields) + ', (manifest unavailable — no hardware fields)'
+
+    for key in sorted(m.keys()):
+        val = m.get(key)
+        if isinstance(val, dict) and val:
+            fields.extend(f'{key}.{sub}' for sub in sorted(val.keys()))
+        else:
+            fields.append(key)
+    fields.extend(['host.gpu_nvidia_smi', 'host.kernel_hostname'])
+    return ', '.join(fields)
+
+
 def _build_prompt(objective: str) -> str:
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
@@ -204,14 +254,25 @@ def _build_prompt(objective: str) -> str:
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{_live_hardware()}\n{_host_facts()}\n\n'
         f'SKILL REGISTRY:\n{_skills_block()}\n\n'
+        f'context_fields_present: [{_context_fields()}]\n'
+        'That list is the complete set of fields you were given. It is the '
+        'boundary of what you know. A field not on that list was not measured '
+        'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
+        'nonexistent.\n\n'
         '=== TRAINING OBJECTIVE ===\n'
         f'{objective}\n\n'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
         'READINGS above. If a device is expected but absent, say which one and '
-        'that it is missing. If you do not know something, say you do not know '
-        f'rather than guessing. Answer in at most {MAX_WORDS} words, as plain '
+        'that it is missing.\n'
+        'If the context does not contain information needed to answer a '
+        'question, say explicitly that the information is not available in '
+        'your current context. Never infer or estimate values that are not '
+        'present in the manifest or identity block.\n'
+        'Do not write "the live readings confirm", "the readings show" or any '
+        'similar phrase in front of a claim the readings above do not '
+        f'literally contain. Answer in at most {MAX_WORDS} words, as plain '
         'prose with no preamble, no bullet characters and no quotes.'
     )
 
@@ -222,12 +283,27 @@ def _answer(goal: str, objective: str, tick: int):
     answer = None
     try:
         prompt = _build_prompt(objective)
-        raw, provider = route_llm_call(prompt, max_tokens=MAX_TOKENS,
-                                       timeout=LLM_TIMEOUT)
-        answer = (raw or '').strip() or None
-        if answer is None:
+        # mesh-llm runs 4 slots against a *unified* 4096-token KV cache, so
+        # concurrent long prompts do not each get 4096 — they share it. A
+        # training prompt is ~1450 tokens, and the Overseer and the LEARNER
+        # both fire on the tick loop; three in flight overflows the cache and
+        # llama-server answers 500 "Context size has been exceeded" to all of
+        # them. That is transient contention, not a bad prompt: the same
+        # prompt sent alone answers in under a second.
+        #
+        # Retrying inside route_llm_call() would not help — its retries are
+        # immediate and land in the same crowded window. Back off between
+        # attempts instead, long enough for the tick-loop callers to drain.
+        for attempt in range(1, LLM_ATTEMPTS + 1):
+            raw, provider = route_llm_call(prompt, max_tokens=MAX_TOKENS,
+                                           timeout=LLM_TIMEOUT)
+            answer = (raw or '').strip() or None
+            if answer:
+                break
             print(f'[TRAIN] LLM returned nothing for {goal} '
-                  f'(provider={provider})')
+                  f'(provider={provider}, attempt {attempt}/{LLM_ATTEMPTS})')
+            if attempt < LLM_ATTEMPTS:
+                time.sleep(LLM_RETRY_BACKOFF_S * attempt)
     except Exception as e:
         print(f'[TRAIN] answer generation error for {goal}: {e}')
     finally:
