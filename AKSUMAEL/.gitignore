@@ -54,6 +54,30 @@ current_view.jpg
 *.tmp
 weights/
 
+# Runtime state — rewritten by the bot on essentially every tick, so they
+# show up permanently dirty in `git status` and every commit picks up an
+# unrelated diff. None of it is authored; all of it is regenerated (or
+# starts empty) on a fresh checkout.
+#
+# NOT ignored: data/skills/*.json. Those look like churn too — save_all()
+# rewrites last_used/success_count on every shutdown — but the mine_*,
+# dig_up, chop_tree, ... files are hand-authored skill definitions
+# (see skills/skill_system.py, _dedupe's "hand-authored skill" guard) and
+# losing them from the repo would lose real content. The stat fields
+# living in the same file as the definition is the actual problem there.
+data/attention_focus.json
+data/goals.json
+data/hardware_manifest.json
+data/last_train.json
+data/progression.json
+data/q_table.json
+data/supervisor_audit.jsonl
+data/world_memory.json
+data/world_model.json
+data/memory/episodes.jsonl
+data/memory/retired_goals.jsonl
+data/memory/skill_evolution.jsonl
+
 # Secrets — the Telegram bot token lives at ~/.config/telegram/token,
 # deliberately outside this tree. These patterns only exist so a stray
 # copy inside the repo can't be committed by accident.

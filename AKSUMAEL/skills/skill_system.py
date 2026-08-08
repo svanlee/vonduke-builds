@@ -453,7 +453,19 @@ class SkillSystem:
         os.makedirs(self.dir, exist_ok=True)
         count = 0
         purged = 0
+        stale_tmp = 0
         for fn in os.listdir(self.dir):
+            # Sweep leftover save() temp files. save() cleans up after
+            # itself now, but SIGKILL (systemd's TimeoutStopSec escalation)
+            # and power loss can't be caught, so boot is the only place a
+            # never-renamed .tmp can be reaped.
+            if fn.endswith('.tmp'):
+                try:
+                    os.remove(os.path.join(self.dir, fn))
+                    stale_tmp += 1
+                except OSError:
+                    pass
+                continue
             if not fn.endswith('.json'):
                 continue
             path = os.path.join(self.dir, fn)
@@ -494,6 +506,8 @@ class SkillSystem:
         msg = f'[SKILL] loaded {count} skills from disk'
         if purged:
             msg += f', purged {purged} junk skills'
+        if stale_tmp:
+            msg += f', swept {stale_tmp} orphaned .tmp files'
         print(msg)
 
     def save(self, skill: Skill):
@@ -501,17 +515,36 @@ class SkillSystem:
         safe = ''.join(c if c.isalnum() or c in '-_' else '_'
                        for c in skill.name)
         path = os.path.join(self.dir, f'{safe}.json')
+        # Write to a temp file in the same directory, then rename —
+        # os.replace is atomic on Linux, so an interruption mid-write can
+        # never leave a truncated/corrupted skill file on disk.
+        #
+        # The interruption is not hypothetical: core/runtime.py installs a
+        # SIGTERM handler that raises KeyboardInterrupt from inside the
+        # handler, so every `systemctl --user restart aksumael` can unwind
+        # this function at an arbitrary bytecode boundary during the
+        # shutdown save_all(). KeyboardInterrupt is a BaseException, so the
+        # old `except Exception` never saw it and the half-written .tmp was
+        # simply abandoned — that's where the 22 orphaned data/skills/*.tmp
+        # files came from. The finally block below deletes the temp file on
+        # any exit path except a completed os.replace (which unlinks the
+        # source itself, leaving nothing for the cleanup to find).
+        dir_path = os.path.dirname(path)
+        tmp_path = None
         try:
-            # Write to a temp file in the same directory, then rename —
-            # os.replace is atomic on Linux, so a SIGTERM mid-write can
-            # never leave a truncated/corrupted skill file on disk.
-            dir_path = os.path.dirname(path)
             with tempfile.NamedTemporaryFile('w', dir=dir_path, delete=False, suffix='.tmp') as tmp:
-                json.dump(skill.to_dict(), tmp, indent=2)
                 tmp_path = tmp.name
+                json.dump(skill.to_dict(), tmp, indent=2)
             os.replace(tmp_path, path)
+            tmp_path = None
         except Exception as e:
             print(f'[SKILL] save error: {e}')
+        finally:
+            if tmp_path is not None:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     def save_all(self):
         for sk in self.skills.values():
