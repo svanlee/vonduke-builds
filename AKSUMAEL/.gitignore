@@ -53,3 +53,12 @@ burst_*.jpg
 current_view.jpg
 *.tmp
 weights/
+
+# Secrets — the Telegram bot token lives at ~/.config/telegram/token,
+# deliberately outside this tree. These patterns only exist so a stray
+# copy inside the repo can't be committed by accident.
+*.token
+.token
+token
+telegram_token*
+.env

@@ -35,3 +35,20 @@ openai-whisper
 # Axon push-to-talk key listener (optional; falls back to `keyboard` lib on
 # SCROLL_LOCK, then to "on" mode, if neither is installed)
 pynput
+
+# Telegram channel — Scott texts the bot, the inner monologue answers
+# (optional, only used if TELEGRAM_CHANNEL_ENABLED and a token is
+# configured; core/telegram_channel.py no-ops without either)
+python-telegram-bot>=21
+
+# Honcho persistent memory — client SDK ONLY (Apache-2.0). The server is
+# AGPL-3.0, not on PyPI, and lives in its own checkout outside this repo;
+# we reach it over HTTP on localhost:8000. See docs/HONCHO_SPIKE.md.
+# Optional: core/honcho_context.py no-ops if the server is unreachable.
+honcho-ai>=2.2
+
+# tools/local_embed_server.py — the /v1/embeddings shim Honcho's deriver
+# needs (mesh-llm doesn't serve embeddings). Run it CPU-only.
+fastapi
+uvicorn
+transformers

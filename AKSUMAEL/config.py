@@ -478,3 +478,46 @@ MASTERMIND_ENABLED = False
 MASTERMIND_HOST    = "127.0.0.1"
 MASTERMIND_PORT    = 1883
 MASTERMIND_AGENT_ID = None   # None = auto-generate from hostname
+
+# ── Telegram channel ───────────────────────────────────────────
+# Scott texts the bot; the inner monologue answers (see
+# core/telegram_channel.py). Safe to leave True with no token
+# configured — the channel logs a warning and no-ops every method.
+TELEGRAM_CHANNEL_ENABLED = True
+
+# Token is read from $TELEGRAM_BOT_TOKEN first, then this file. Never
+# commit it — the path is outside the repo for exactly that reason.
+TELEGRAM_TOKEN_FILE = os.path.expanduser("~/.config/telegram/token")
+
+# A Telegram bot is reachable by anyone who knows its @name. Leave None
+# to accept the first chat that messages it (the id is printed on every
+# inbound message); set to a list of ints to lock it to Scott's chat.
+TELEGRAM_ALLOWED_CHAT_IDS = None
+
+# Where replies go before Scott has ever messaged the bot. None = wait
+# for an inbound message to learn the chat id.
+TELEGRAM_CHAT_ID = None
+
+# ── Honcho persistent memory ───────────────────────────────────
+# Self-hosted Honcho (Postgres + pgvector + deriver) reached over HTTP
+# with the Apache-2.0 honcho-ai SDK. Server setup, working config.toml
+# and the three blockers are in docs/HONCHO_SPIKE.md. Requires three
+# extra processes plus Postgres; degrades to no-op if any are down.
+HONCHO_CONTEXT_ENABLED = True
+HONCHO_URL             = "http://localhost:8000"
+HONCHO_WORKSPACE       = "aksumael"
+HONCHO_TIMEOUT         = 10.0    # seconds per SDK call; no SDK-level retries
+
+# context() is a Postgres+pgvector round-trip whose freshness depends on
+# a deriver that occupies mesh-llm for 2-7s per derivation — the same
+# single llama.cpp instance the vision loop needs. Cache aggressively;
+# never call it per tick.
+HONCHO_CONTEXT_REFRESH_SECONDS = 30.0
+HONCHO_CONTEXT_MAX_TOKENS      = 600   # mesh-llm n_ctx is only 4096
+
+# Writes are the expensive direction: every message handed to Honcho is
+# work the deriver will do on mesh-llm. The monologue fires every
+# MONOLOGUE_EVERY_N_SECONDS (8s) — persisting all of those would keep the
+# deriver saturated, so routine thoughts are throttled to this. Thoughts
+# that answer a Telegram message bypass the throttle.
+HONCHO_WRITE_EVERY_N_SECONDS = 120

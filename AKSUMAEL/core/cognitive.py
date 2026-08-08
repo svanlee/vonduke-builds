@@ -27,6 +27,8 @@ import config
 from core.identity import AKSUMAEL_IDENTITY
 from core.llm_router import route_llm_call
 from core.capture import push_monologue_line
+from core.honcho_context import get_honcho, default_session_id
+from core.telegram_channel import get_channel
 
 COGNITIVE_DIR = 'data/cognitive'
 MAX_THOUGHTS  = 50
@@ -67,7 +69,22 @@ class InnerMonologue:
     write and pre-queue TTS calls did earlier (2026-07-19).
 
     The most recent real thought is fed back into the next vision-LLM
-    planning call as extra context."""
+    planning call as extra context.
+
+    Phase 3 added two side channels, both hanging off this same
+    background thread because both are blocking network I/O that must
+    never touch the tick loop:
+
+      - **Honcho** (core/honcho_context.py) supplies a cross-session
+        self-model, prepended to the prompt as a "Memory:" block and
+        refreshed on its own 30s cadence, and receives each generated
+        thought so the deriver can build on it.
+      - **Telegram** (core/telegram_channel.py) supplies Scott's inbound
+        messages, injected as "Scott says:" lines. When Scott has spoken,
+        the resulting thought is sent back to him *and* the cadence gate
+        is bypassed so he isn't waiting on the next scheduled tick. When
+        he hasn't, nothing is sent — the monologue fires every few
+        seconds and would otherwise be a firehose."""
 
     FILE = f'{COGNITIVE_DIR}/inner_monologue.json'
 
@@ -77,23 +94,44 @@ class InnerMonologue:
         self._last_kickoff_ts = 0.0
         self._generating = False
         self._lock = threading.Lock()
+        self.session_id = default_session_id()
+        self.honcho     = get_honcho()
+        self.telegram   = get_channel()
+        self._last_honcho_write = 0.0
 
     def update(self, tick: int, objects: list, action_dict: dict, reward: float,
                goal: str = None, recent_episodes: list = None):
-        now = time.time()
-        if self._generating or now - self._last_kickoff_ts < config.MONOLOGUE_EVERY_N_SECONDS:
+        if self._generating:
             return
+        now = time.time()
+        # has_pending() is a queue peek, not a drain — a message is never
+        # consumed on a tick that then declines to handle it.
+        scott_spoke = self.telegram.has_pending()
+        if not scott_spoke and now - self._last_kickoff_ts < config.MONOLOGUE_EVERY_N_SECONDS:
+            return
+        incoming = self.telegram.get_pending_messages() if scott_spoke else []
         self._last_kickoff_ts = now
         self._generating = True
         threading.Thread(
             target=self._generate_and_store,
-            args=(tick, objects, action_dict, reward, goal, recent_episodes),
+            args=(tick, objects, action_dict, reward, goal, recent_episodes, incoming),
             daemon=True, name='monologue',
         ).start()
 
-    def _generate_and_store(self, tick, objects, action_dict, reward, goal, recent_episodes):
+    def _generate_and_store(self, tick, objects, action_dict, reward, goal,
+                             recent_episodes, incoming=None):
+        incoming = incoming or []
         try:
-            thought = self._generate_llm(objects, action_dict, reward, goal, recent_episodes)
+            # Persist Scott's side first so the thought that answers it is
+            # already downstream of it in the session history.
+            for m in incoming:
+                self.honcho.add_message('scott', m.text, self.session_id)
+            memory = self.honcho.get_context(
+                self.session_id,
+                search_query=incoming[-1].text if incoming else None)
+            thought = self._generate_llm(objects, action_dict, reward, goal,
+                                          recent_episodes, memory=memory,
+                                          incoming=incoming)
             if thought is None:
                 thought = self._compose(objects, action_dict, reward)
             with self._lock:
@@ -102,10 +140,34 @@ class InnerMonologue:
                 snapshot = list(self.thoughts)
             _save(self.FILE, snapshot)
             push_monologue_line(thought)
+            # Reply only when spoken to; the monologue itself is not a
+            # notification stream.
+            if incoming:
+                self.telegram.send_message(thought)
+            self._persist_thought(thought, forced=bool(incoming))
         except Exception as e:
             print(f'[COGNITIVE] monologue generation error: {e}')
         finally:
             self._generating = False
+
+    def _persist_thought(self, thought: str, forced: bool = False):
+        """Write the thought into Honcho, rate-limited.
+
+        The monologue fires every config.MONOLOGUE_EVERY_N_SECONDS (8s).
+        Handing Honcho a message that often would keep the deriver
+        permanently busy, and each derivation holds mesh-llm — the single
+        shared llama.cpp instance — for 2-7s, stalling vision inference
+        (docs/HONCHO_SPIKE.md, "The real cost: GPU contention"). So the
+        routine path writes at most one thought per
+        config.HONCHO_WRITE_EVERY_N_SECONDS. A thought that answers Scott
+        is always written: dropping half a conversation from the session
+        history is worse than the GPU cost of one derivation."""
+        now = time.time()
+        every = getattr(config, 'HONCHO_WRITE_EVERY_N_SECONDS', 120)
+        if not forced and now - self._last_honcho_write < every:
+            return
+        if self.honcho.add_message('assistant', thought, self.session_id):
+            self._last_honcho_write = now
 
     def _compose(self, objects: list, action_dict: dict, reward: float) -> str:
         labels = [o.get('label') for o in objects if o.get('label')]
@@ -115,7 +177,8 @@ class InnerMonologue:
         return f"{seen} I chose to {action}. That felt {mood} (r={reward:+.2f})."
 
     def _generate_llm(self, objects: list, action_dict: dict, reward: float,
-                       goal: str = None, recent_episodes: list = None) -> str | None:
+                       goal: str = None, recent_episodes: list = None,
+                       memory: str = None, incoming: list = None) -> str | None:
         if not config.LOCAL_LLM_ENABLED:
             return None
         labels = [o.get('label') for o in objects if o.get('label')]
@@ -124,10 +187,26 @@ class InnerMonologue:
             bad = [e.get('goal') for e in recent_episodes[-3:] if e.get('outcome') != 'success']
             if bad:
                 fails = f' Recent failures: {", ".join(bad)}.'
+        # Honcho's cross-session self-model goes in front of the task
+        # framing so the model reads it as standing context rather than
+        # as part of the current situation.
+        mem_block = f'Memory:\n{memory}\n\n' if memory else ''
+        if incoming:
+            said = '\n'.join(f'Scott says: {m.text}' for m in incoming)
+            task = (
+                f'{said}\n'
+                'You are the inner monologue of a Minecraft AI, and Scott just spoke '
+                'to you. In ONE short sentence (max 25 words), answer him directly. '
+            )
+        else:
+            task = (
+                'You are the inner monologue of a Minecraft AI. In ONE short sentence '
+                '(max 20 words), think out loud about what to do next. '
+            )
         prompt = (
             f'{AKSUMAEL_IDENTITY}\n'
-            'You are the inner monologue of a Minecraft AI. In ONE short sentence '
-            '(max 20 words), think out loud about what to do next. '
+            f'{mem_block}'
+            f'{task}'
             f'Current goal: {goal or "explore"}. Visible: {", ".join(labels) or "nothing"}. '
             f'Last reward: {reward:+.2f}.{fails} '
             'Respond with only the sentence, no quotes, no preamble.'
