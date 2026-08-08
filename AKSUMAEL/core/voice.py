@@ -1117,17 +1117,23 @@ class VoiceThread:
         if self.speaker is None:
             return
         self._speaking.set()
+        # Close the mic InputStream before opening the output stream.
+        # Having both an ALSA input and output stream open simultaneously
+        # causes a double-free crash in PortAudio's ALSA backend (pa_unix_util.c
+        # pthread_join + pa_linux_alsa.c PaUnixThread_Terminate) on Python 3.12.
+        # Stopping the segmenter here serialises access so only one ALSA stream
+        # is live at a time.
+        if self._segmenter is not None:
+            self._segmenter.stop()
         try:
             self.speaker.say(text)
         finally:
             self._speaking.clear()
+            post_suppress = float(getattr(config, 'VOICE_POST_SPEAK_SUPPRESS_SEC', 1.5))
             if self._segmenter is not None:
-                # Drop what the mic picked up while the speaker was playing;
-                # the gate only covers frames read during the call.
-                self._segmenter.flush()
-                # Suppress for an extra window after playback ends — mic hears
-                # room reflections for ~1s even after sd.wait() returns.
-                post_suppress = float(getattr(config, 'VOICE_POST_SPEAK_SUPPRESS_SEC', 1.5))
+                # Reopen mic after speaking, then apply suppress window so room
+                # echo doesn't immediately trip the newly-opened stream.
+                self._segmenter.start()
                 self._segmenter.suppress_until(time.monotonic() + post_suppress)
 
     # ── goal / state plumbing ──────────────────────────────────────────────
