@@ -144,10 +144,17 @@ class GameEar:
                                dtype='int16', device=dev_idx,
                                blocking=True)
                 # Mix stereo to mono
-                if CH > 1:
+                if audio.ndim > 1 and audio.shape[1] > 1:
                     mono = audio.mean(axis=1).astype('int16')
                 else:
                     mono = audio.flatten()
+
+                # A short/partial read is normal on device hiccups — skip it
+                # rather than classifying a stub frame.
+                if mono.size < 2:
+                    continue
+                if mono.size > samples:
+                    mono = mono[:samples]
 
                 af = mono.astype('float32') / 32768.0
                 event = self._classify(af, SR)
@@ -177,8 +184,11 @@ class GameEar:
         denom = np.sum(fft) + 1e-8
         cent  = float(np.sum(freqs * fft) / denom)
         zcr   = float(np.mean(np.abs(np.diff(np.sign(af)))) / 2)
-        flux  = float(np.sum(np.abs(fft[len(fft)//2:] -
-                                    fft[:len(fft)//2])) / denom)
+        # rfft returns n//2+1 bins — odd for even-length frames, so the two
+        # halves must be trimmed to a common length before subtracting.
+        half  = len(fft) // 2
+        flux  = (float(np.sum(np.abs(fft[half:2 * half] - fft[:half])) / denom)
+                 if half else 0.0)
 
         if rms > MC['explosion_rms'] and cent < MC['explosion_hz']:
             return 'explosion'
