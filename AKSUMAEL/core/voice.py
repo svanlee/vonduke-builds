@@ -473,8 +473,10 @@ class Speaker:
         return False
 
     def _speak_piper(self, text: str):
+        import io
+        import subprocess
+        import wave
         import numpy as np
-        import sounddevice as sd
         from piper.config import SynthesisConfig
         # length_scale < 1 = faster; 0.8 matches the ~30% rate bump applied to
         # pyttsx3 (175 -> 195 wpm). volume is normalized-full-scale amplitude
@@ -486,9 +488,21 @@ class Speaker:
         if not chunks:
             return
         audio = np.concatenate(chunks)
-        sd.play(audio, samplerate=self._piper_voice.config.sample_rate,
-                device=self._out_device_idx)
-        sd.wait()
+        # Use aplay subprocess instead of sd.play()/sd.wait(). The sounddevice
+        # ALSA backend has a double-free crash (pa_linux_alsa.c:3102) on
+        # Python 3.12 when the output stream closes — PortAudio's background
+        # thread isn't cleanly joined. aplay uses the kernel ALSA path
+        # directly (PipeWire intercepts it transparently) and avoids the race.
+        rate = self._piper_voice.config.sample_rate
+        audio_int16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(audio_int16.tobytes())
+        wav_bytes = buf.getvalue()
+        subprocess.run(['aplay', '-q'], input=wav_bytes, check=False)
 
     def say(self, text: str):
         """Blocking speak, serialized by a lock. The voice thread is idle
