@@ -95,8 +95,13 @@ class SkillRegistry:
 
     # ── JSON loading (read-only) ───────────────────────────────
     def load_from_json_dir(self, path: str | None = None, *,
-                           overwrite: bool = False, verbose: bool = False) -> int:
-        """Register every data/skills/*.json file. Returns the number added.
+                           overwrite: bool = False, verbose: bool = False,
+                           recursive: bool = True) -> int:
+        """Register every data/skills/**/*.json file. Returns the number added.
+
+        Walks subdirectories: hand-authored skills are filed by domain
+        (data/skills/hardware/ for KB2040 bridge sequences), and a
+        top-level-only listdir silently ignored every one of them.
 
         Strictly read-only: unlike SkillSystem._load_all(), this never purges,
         rewrites, or deletes a skill file. `overwrite=False` (the default) means
@@ -107,26 +112,67 @@ class SkillRegistry:
         if not os.path.isdir(path):
             return 0
         added = 0
-        for fn in sorted(os.listdir(path)):
-            if not fn.endswith('.json'):
-                continue
-            full = os.path.join(path, fn)
-            if not os.path.isfile(full):
-                continue
+        for full in self._json_files(path, recursive):
+            rel = os.path.relpath(full, path)
             try:
                 with open(full) as f:
                     data = json.load(f)
-                legacy = LegacySkill.from_dict(data)
-            except (OSError, ValueError, KeyError) as e:
+            except (OSError, ValueError) as e:
                 if verbose:
-                    print(f'[REGISTRY] skipping unreadable skill {fn}: {e}')
+                    print(f'[REGISTRY] skipping unreadable skill {rel}: {e}')
+                continue
+            # Recursing means meeting files that are not step-based skills at
+            # all — data/skills/vehicle/*.json is an {"id", "actions"} format
+            # for a different executor. LegacySkill.from_dict would accept
+            # those and register a stepless skill that replays into thin air.
+            #
+            # The discriminator is `actions`-without-`steps`, not the absence
+            # of `steps`: a skill file may legitimately carry no steps yet
+            # (a stub, or one defined purely by its trigger), and rejecting
+            # those would be a behaviour change on the top-level directory
+            # this call already loaded fine before it recursed.
+            if not isinstance(data, dict) or 'name' not in data:
+                if verbose:
+                    print(f'[REGISTRY] skipping {rel}: not a skill object')
+                continue
+            if 'actions' in data and 'steps' not in data:
+                if verbose:
+                    print(f'[REGISTRY] skipping {rel}: foreign "actions" '
+                          f'schema, not a step-based skill')
+                continue
+            try:
+                legacy = LegacySkill.from_dict(data)
+            except (ValueError, KeyError, TypeError) as e:
+                if verbose:
+                    print(f'[REGISTRY] skipping malformed skill {rel}: {e}')
                 continue
             if self.register(Skill.from_legacy(legacy), overwrite=overwrite):
                 added += 1
             elif verbose:
                 print(f'[REGISTRY] {legacy.name} already registered — keeping '
-                      f'existing definition, ignoring {fn}')
+                      f'existing definition, ignoring {rel}')
         return added
+
+    @staticmethod
+    def _json_files(path: str, recursive: bool) -> list[str]:
+        """Every *.json under `path`, deterministically ordered.
+
+        Sorted so a boot is reproducible, and top-level files come before
+        subdirectory ones so that with `overwrite=True` a domain skill can
+        never shadow a same-named mined skill purely by walk order.
+        """
+        if not recursive:
+            return sorted(os.path.join(path, fn) for fn in os.listdir(path)
+                          if fn.endswith('.json')
+                          and os.path.isfile(os.path.join(path, fn)))
+        out = []
+        for root, dirs, files in os.walk(path):
+            dirs.sort()
+            # __pycache__ and the like carry no skills and cost a stat each.
+            dirs[:] = [d for d in dirs if not d.startswith(('.', '__'))]
+            out.extend(os.path.join(root, fn) for fn in sorted(files)
+                       if fn.endswith('.json'))
+        return out
 
     def __repr__(self):
         return f'<SkillRegistry {self.name} n={len(self._skills)}>'

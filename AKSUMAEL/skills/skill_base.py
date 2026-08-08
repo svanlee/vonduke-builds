@@ -24,13 +24,73 @@ from typing import Any, Optional
 # ('oak' → 'tree', 'bread' → 'food', 'coal' → 'ore'). It is private to
 # skill_system but this module is the same package and deliberately reuses the
 # one canonicalisation table rather than starting a second, divergent one.
-from skills.skill_system import Skill as LegacySkill, _canonical, HUD_ALWAYS_VISIBLE
+from skills.skill_system import (
+    Skill as LegacySkill, _canonical, HUD_ALWAYS_VISIBLE,
+    HW_ACTION_KIND, normalise_step as _normalise_step,
+)
 
 __all__ = [
     'BeliefPrecondition', 'Skill',
     'labels_match', 'belief_labels', 'belief_inventory',
     'belief_health', 'belief_y_level', 'belief_last_used',
+    'ACTION_KINDS', 'VALID_ACTION_KINDS', 'HW_ACTION_KIND',
+    'action_kinds', 'is_hw_action', 'normalise_step',
 ]
+
+
+# ── Action kinds ───────────────────────────────────────────────
+# A skill step's `action` is a flat dict whose *keys* name what to do. The
+# four primary kinds:
+#
+#   key      -> a keyboard press          {'key': 'space'}
+#   click    -> an absolute mouse click   {'click': [0.5, 0.5]}
+#   gamepad  -> a controller report       {'gamepad': {'lx': ..., 'buttons': ...}}
+#   hw       -> a KB2040 bridge command   {'hw': {'cmd': 'gpio_out', 'pin': 5, 'value': 1}}
+#
+# `hw` is the odd one out: the first three drive the *game* through the HID
+# firmware, while `hw` drives whatever is wired to the board — GPIO, I2C,
+# SPI, ADC — through uart/kb2040_bridge.py's JSON protocol. It goes through
+# BridgeClient.send() rather than ActionExecutor.execute(), which is why
+# SkillReplayer in skills/skill_system.py has to branch on it.
+#
+# HW_ACTION_KIND itself is defined in skill_system (imported above) because
+# the step parser there needs it and cannot import this module back.
+ACTION_KINDS = frozenset({'key', 'click', 'gamepad', HW_ACTION_KIND})
+
+# Kinds the recorded skills in data/skills/*.json actually emit alongside
+# the four above. Listed separately because they are variants rather than
+# categories (`look`/`mouse_hold` are mouse detail, `keyboard_state` is a
+# true key hold), but they must count as valid — a validator that rejected
+# them would reject most of the mined skill library.
+EXTRA_ACTION_KINDS = frozenset({
+    'look', 'mouse_hold', 'mouse_button', 'mouse_button_name', 'keyboard_state',
+})
+VALID_ACTION_KINDS = ACTION_KINDS | EXTRA_ACTION_KINDS
+
+
+def action_kinds(action: Any) -> set[str]:
+    """The valid kind names present (and non-empty) in an action dict.
+
+    Empty for a no-op step — every recorded step carries the full key set
+    with nulls in the slots it doesn't use, so presence of a key means
+    nothing; a truthy value does.
+    """
+    if not isinstance(action, dict):
+        return set()
+    return {k for k in VALID_ACTION_KINDS if action.get(k)}
+
+
+def is_hw_action(action: Any) -> bool:
+    """True if this action is a KB2040 bridge command."""
+    return isinstance(action, dict) and bool(action.get(HW_ACTION_KIND))
+
+
+# Re-exported from skill_system, which owns step parsing (SkillStep is the
+# runtime representation and this module sits on top of it, so the import
+# can only go this way). Listed in __all__ because the kind vocabulary is
+# this module's job and a caller validating a step should not have to know
+# that the parser lives one layer down.
+normalise_step = _normalise_step
 
 
 # ── Label matching ─────────────────────────────────────────────

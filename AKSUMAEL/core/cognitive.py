@@ -20,6 +20,7 @@
 
 import json
 import os
+import re
 import threading
 import time
 
@@ -32,6 +33,32 @@ from core.telegram_channel import get_channel
 
 COGNITIVE_DIR = 'data/cognitive'
 MAX_THOUGHTS  = 50
+
+# ── Repetition gate ────────────────────────────────────────────
+# The monologue prompt is nearly identical tick to tick — same goal, same
+# visible labels, same reward — so a local model will happily emit the same
+# sentence forever. Observed in the wild as 10+ consecutive ticks of "I need
+# to gather wood and food before I can craft the crafting table", which is
+# not a thought, it's a stuck loop, and it poisons the planning context that
+# reads it back.
+#
+# After REPEAT_LIMIT identical thoughts in a row, the next prompt carries an
+# explicit break instruction. Cheap, local, and it can't wedge: the gate is
+# computed fresh from the thought log on every generation, so one different
+# sentence clears it.
+REPEAT_LIMIT  = 3
+REPEAT_NUDGE  = 'Try something different.'
+
+
+def _thought_key(text: str) -> str:
+    """Comparison form of a thought — case, whitespace and trailing
+    punctuation folded away.
+
+    Strict equality would miss the actual failure mode: the model re-emits
+    the same sentence with a different final period or a stray capital, and
+    a byte-comparison would read that as progress.
+    """
+    return re.sub(r'\s+', ' ', (text or '').strip().lower()).strip('.!? ')
 
 
 def _load(path, default):
@@ -169,6 +196,17 @@ class InnerMonologue:
         if self.honcho.add_message('assistant', thought, self.session_id):
             self._last_honcho_write = now
 
+    def _is_repeating(self) -> bool:
+        """True if the last REPEAT_LIMIT thoughts are all the same one."""
+        with self._lock:
+            recent = [t.get('thought') for t in self.thoughts[-REPEAT_LIMIT:]]
+        if len(recent) < REPEAT_LIMIT:
+            return False
+        keys = [_thought_key(t) for t in recent]
+        # An empty key means a blank thought — those are not repetition,
+        # and treating them as such would fire the nudge on a fresh log.
+        return bool(keys[0]) and len(set(keys)) == 1
+
     def _compose(self, objects: list, action_dict: dict, reward: float) -> str:
         labels = [o.get('label') for o in objects if o.get('label')]
         seen   = f"I see {', '.join(labels)}." if labels else "I don't see anything notable."
@@ -203,12 +241,29 @@ class InnerMonologue:
                 'You are the inner monologue of a Minecraft AI. In ONE short sentence '
                 '(max 20 words), think out loud about what to do next. '
             )
+        # Repetition gate. Placed after the situation and before the output
+        # instruction so it reads as the most recent thing said, which is
+        # where a small local model actually weights it. Skipped when Scott
+        # is being answered — repetition there is his conversation, not a
+        # stuck loop, and telling the model to change the subject mid-reply
+        # would make it answer a question he did not ask.
+        nudge = ''
+        if not incoming and self._is_repeating():
+            last = ''
+            with self._lock:
+                if self.thoughts:
+                    last = (self.thoughts[-1].get('thought') or '').strip()
+            print(f'[COGNITIVE] monologue repeated {REPEAT_LIMIT}x — nudging: {last[:60]!r}')
+            nudge = (f'You have now said "{last}" {REPEAT_LIMIT} times in a row. '
+                     f'{REPEAT_NUDGE} Do not repeat that sentence or its meaning; '
+                     f'name a concrete next action instead. ')
         prompt = (
             f'{AKSUMAEL_IDENTITY}\n'
             f'{mem_block}'
             f'{task}'
             f'Current goal: {goal or "explore"}. Visible: {", ".join(labels) or "nothing"}. '
             f'Last reward: {reward:+.2f}.{fails} '
+            f'{nudge}'
             'Respond with only the sentence, no quotes, no preamble.'
         )
         # Generous budget — the model 'thinks' before answering, which can

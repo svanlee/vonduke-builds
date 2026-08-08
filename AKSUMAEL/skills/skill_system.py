@@ -87,19 +87,79 @@ def _fuzzy_overlap(trigger_set: set, current_set: set) -> float:
     return min(1.0, (exact + partial) / len(trigger_canon))
 
 
+# Action kind for a KB2040 bridge command — see skills/skill_base.py, which
+# owns the full kind vocabulary and imports this constant. It lives here
+# because normalise_step() below needs it and skill_base sits on top of this
+# module, so the import can only go one way.
+HW_ACTION_KIND = 'hw'
+
+
+def normalise_step(step) -> dict:
+    """Accept either step spelling and return the internal
+    `{'action': {...}, 'delay_after_ms': int}` form.
+
+    Hand-authored hardware skills (data/skills/hardware/*.json) are written
+    the readable way, with the kind hoisted to the step level and the
+    timing in seconds:
+
+        {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 1},
+         "duration": 0.1}
+
+    Mined skills use the recorded form, where `action` is already the dict
+    and the timing is `delay_after_ms`. Both land here as the same thing,
+    so nothing downstream of SkillStep has to know which file it came from
+    — including to_dict(), which always writes the recorded form back.
+    """
+    if not isinstance(step, dict):
+        return {'action': {}, 'delay_after_ms': 150}
+
+    action = step.get('action')
+    delay = step.get('delay_after_ms')
+    if delay is None and step.get('duration') is not None:
+        try:
+            delay = int(float(step['duration']) * 1000)
+        except (TypeError, ValueError):
+            delay = None
+
+    if isinstance(action, str):
+        # Hoisted form: the string names the kind, and the payload sits
+        # beside it — under 'cmd' for hw (what the bridge protocol calls
+        # it), otherwise under the kind's own name.
+        kind = action.strip().lower()
+        payload = step.get('cmd') if kind == HW_ACTION_KIND else step.get(kind)
+        if payload is None:
+            payload = step.get('cmd', step.get('value'))
+        action = {kind: payload, 'source': 'skill'}
+    elif not isinstance(action, dict):
+        action = {}
+
+    try:
+        delay = 150 if delay is None else int(delay)
+    except (TypeError, ValueError):
+        delay = 150
+    return {'action': action, 'delay_after_ms': delay}
+
+
 class SkillStep:
     """One action within a skill sequence, with timing."""
     def __init__(self, action: dict, delay_after_ms: int = 150):
-        self.action        = action          # {key, click, gamepad}
+        self.action        = action          # {key, click, gamepad, hw}
         self.delay_after_ms = delay_after_ms # ms to wait after this step
 
     def to_dict(self):
         return {'action': self.action, 'delay_after_ms': self.delay_after_ms}
 
+    @property
+    def is_hw(self) -> bool:
+        """True if this step is a KB2040 bridge command rather than a HID
+        action — SkillReplayer routes the two to different transports."""
+        return bool(isinstance(self.action, dict)
+                    and self.action.get(HW_ACTION_KIND))
+
     @classmethod
     def from_dict(cls, d):
-        return cls(action=d.get('action', {}),
-                   delay_after_ms=d.get('delay_after_ms', 150))
+        n = normalise_step(d)
+        return cls(action=n['action'], delay_after_ms=n['delay_after_ms'])
 
 
 class Skill:
@@ -232,10 +292,17 @@ class Skill:
                 self.blacklisted = True
 
     def has_real_action(self) -> bool:
-        """False if every step is a no-op (null key/click/look, zeroed gamepad)."""
+        """False if every step is a no-op (null key/click/look, zeroed gamepad).
+
+        `hw` counts as real: a hardware skill has no key or click in it at
+        all, and without this line evolve_skills() would read every skill in
+        data/skills/hardware/ as an empty no-op and delete it.
+        """
         for s in self.steps:
             a = s.action
             if a.get('key') or a.get('click') or a.get('look'):
+                return True
+            if a.get(HW_ACTION_KIND):
                 return True
             gp = a.get('gamepad') or {}
             if any(gp.get(k) for k in ('lx', 'ly', 'rx', 'ry', 'lt', 'rt', 'buttons')):
@@ -265,6 +332,19 @@ class SkillReplayer:
     Replays a skill's full step sequence in a background thread,
     sending each action through the executor with correct timing.
     The main loop keeps running during replay.
+
+    Two transports, chosen per step by SkillStep.is_hw:
+
+      HID  — key/click/gamepad/look go to ActionExecutor.execute(), which
+             drives the game through the KB2040's HID interfaces.
+      hw   — bridge commands go to BridgeClient.send(), which drives GPIO,
+             I2C, SPI and ADC through uart/kb2040_bridge.py's JSON
+             protocol. Nothing about it is Minecraft-shaped, so it does
+             not belong in ActionExecutor.
+
+    A hw step whose bridge is missing is skipped with a log line rather
+    than aborting the replay — a bench rig gets unplugged mid-session and
+    a half-replayed skill is more debuggable than a dead replayer thread.
     """
 
     def __init__(self, executor):
@@ -296,11 +376,46 @@ class SkillReplayer:
         for i, step in enumerate(skill.steps):
             if not self._active:
                 break
-            self.executor.execute(step.action)
+            if step.is_hw:
+                self._execute_hw(skill, i, step.action[HW_ACTION_KIND])
+            else:
+                self.executor.execute(step.action)
             delay = step.delay_after_ms / 1000.0
             time.sleep(max(0.05, delay))
         self._active  = False
         self._current = None
+
+    def _execute_hw(self, skill, index, cmd):
+        """Send one bridge command. Never raises — see the class docstring."""
+        if not isinstance(cmd, dict):
+            print(f'[SKILL] {skill.name} step {index}: hw payload must be a '
+                  f'dict, got {type(cmd).__name__} — skipped')
+            return
+        # Imported here, not at module scope: hardware.hardware_manager pulls
+        # in the GPU/capture-card adapters, and this module is imported by
+        # the registry on every boot including on boxes with no bridge.
+        try:
+            from hardware.hardware_manager import get_bridge_client
+        except ImportError as e:
+            print(f'[SKILL] {skill.name} step {index}: no hardware bridge '
+                  f'({e}) — skipped')
+            return
+        client = get_bridge_client()
+        if client is None:
+            print(f'[SKILL] {skill.name} step {index}: KB2040 bridge not '
+                  f'connected — hw step skipped')
+            return
+        try:
+            resp = client.send(cmd)
+        except Exception as e:
+            print(f'[SKILL] {skill.name} step {index}: hw send failed: '
+                  f'{type(e).__name__}: {e}')
+            return
+        # The firmware answers every command with ok/error; surfacing the
+        # error is the whole point of a synchronous protocol.
+        if isinstance(resp, dict) and not resp.get('ok', True):
+            print(f'[SKILL] {skill.name} step {index}: hw {cmd.get("cmd")} '
+                  f'-> {resp.get("error")}')
 
     def is_active(self) -> bool:
         return self._active

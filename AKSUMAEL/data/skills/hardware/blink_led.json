@@ -1,0 +1,22 @@
+{
+  "name": "blink_led",
+  "description": "Blink GPIO 25 three times — the onboard LED on most RP2040 boards. Smoke test for the KB2040 bridge: if this blinks, the host-side BridgeClient, the serial link, and the firmware's gpio_out handler are all working.",
+  "trigger_objects": [],
+  "steps": [
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 1}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 0}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 1}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 0}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 1}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "gpio_out", "pin": 25, "value": 0}, "duration": 0.15},
+    {"action": "hw", "cmd": {"cmd": "release", "pin": 25}, "duration": 0.05}
+  ],
+  "avg_reward": 0.0,
+  "uses": 0,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": true
+}

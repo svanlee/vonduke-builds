@@ -18,14 +18,16 @@
 # bridge stays a pure reader and can start before run() does — nothing to
 # initialise, nothing to break if the loop dies.
 #
-# The one writer is POST /goal, which appends to data/injected_goals.json
-# in exactly the {"queue": [...]} shape axon/hub.py._enqueue_goal writes,
-# so memory.goals.GoalStack.check_injected_goals() drains a Claude-sent
-# goal identically to a voice command or a hive assignment.
+# The only writers are POST /goal and POST /train, which append to
+# data/injected_goals.json in exactly the {"queue": [...]} shape
+# axon/hub.py._enqueue_goal writes, so
+# memory.goals.GoalStack.check_injected_goals() drains a Claude-sent goal
+# identically to a voice command or a hive assignment.
 
 import json
 import logging
 import os
+import re
 import threading
 import time
 
@@ -39,6 +41,7 @@ MONOLOGUE_PATH = 'data/cognitive/inner_monologue.json'
 BELIEF_PATH    = 'data/cognitive/belief_state.json'
 GOALS_PATH     = 'data/goals.json'
 INJECTED_PATH  = 'data/injected_goals.json'   # memory/goals.py owns the schema
+MANIFEST_PATH  = 'data/hardware_manifest.json'  # hardware/hardware_manager.py owns it
 
 # Mirrors core/runtime.py's HEALTH_LOG_PATH (kept as a literal rather than
 # imported — importing core.runtime pulls in the whole vision/YOLO stack).
@@ -65,6 +68,23 @@ VALID_GOALS = frozenset({
 # a survival-critical goal). Map onto the meaningful bands, skipping 1 and 4
 # — they behave identically to 2 and 5 respectively.
 _PRIORITY_TO_AUTHORITY = {1: 2, 2: 3, 3: 5}
+
+# POST /train carries a free-text objective rather than a goal name. The
+# 3-week training plan's objectives are all one-off English sentences, so
+# there is no enum to validate against and VALID_GOALS would reject every
+# one of them. The text rides in the injected-goal `params` field, which
+# GoalStack.check_injected_goals() already reads and stashes in
+# `goal_params[goal]` — no change needed on the GoalStack side.
+#
+# The goal *name* is still a name, because GoalStack pushes it onto a
+# stack and prints it: a slug of the first few words keeps two objectives
+# queued in the same batch distinct (a shared name would have the second
+# one's params silently overwrite the first's) while staying readable in
+# the goal log.
+TRAIN_GOAL_PREFIX  = 'train:'
+MAX_TRAIN_TEXT     = 2000   # a training objective, not a corpus
+_SLUG_WORDS        = 5
+_SLUG_MAX          = 40
 
 MAX_LOG_LINES      = 1000   # cap so /log can't be used to slurp the whole file
 MAX_MONOLOGUE      = 10     # most recent thoughts returned by /state
@@ -148,6 +168,41 @@ def _node():
     }
 
 
+def _manifest_summary():
+    """Compact view of data/hardware_manifest.json for /state.
+
+    Read from disk rather than calling hardware_manager.manifest_summary()
+    directly: importing that module pulls in the GPU/capture-card adapters,
+    and this file's whole design is that it holds no references into the
+    running bot (see the module docstring). The manifest is rewritten every
+    60s, so `age_s` is the tell for a dead writer thread.
+    """
+    m = _read_json(MANIFEST_PATH)
+    if not isinstance(m, dict):
+        return {
+            'present': False,
+            'age_s': _age_s(MANIFEST_PATH),
+            'note': 'no manifest — hardware_manager.start_manifest_writer() '
+                    'not running?',
+        }
+    devices = m.get('devices', {})
+    kb = m.get('kb2040', {})
+    return {
+        'present': True,
+        'counts': m.get('counts', {}),
+        'video':  [d.get('path') for d in devices.get('video', [])],
+        'ttyUSB': [d.get('path') for d in devices.get('ttyUSB', [])],
+        'ttyACM': [d.get('path') for d in devices.get('ttyACM', [])],
+        'input':  [d.get('name') for d in devices.get('input', [])],
+        'kb2040': {
+            'present': kb.get('present', False),
+            'responding': kb.get('responding', False),
+            'i2c_addresses': kb.get('i2c', {}).get('hex', []),
+        },
+        'age_s': _age_s(MANIFEST_PATH),
+    }
+
+
 def _state():
     """Assemble the /state payload from the bot's on-disk snapshots."""
     monologue = _read_json(MONOLOGUE_PATH, []) or []
@@ -167,14 +222,20 @@ def _state():
             'count': len(monologue),
             'age_s': _age_s(MONOLOGUE_PATH),
         },
+        # The live hardware registry — swept and rewritten every 60s by
+        # hardware/hardware_manager.py. This is the field to read; the
+        # belief_state block below is its dead predecessor.
+        'hardware_manifest': _manifest_summary(),
         # Legacy: core/cognitive.py removed BeliefState (it was a write-only
         # no-op nothing read back), so this file is frozen at whatever the
         # last version that still wrote it left behind. Served because it was
-        # asked for — check age_s before believing any of it.
+        # asked for — check age_s before believing any of it, and prefer
+        # hardware_manifest above for anything about attached devices.
         'belief_state': {
             'data': _read_json(BELIEF_PATH),
             'age_s': _age_s(BELIEF_PATH),
-            'note': 'legacy file — BeliefState was removed from core/cognitive.py',
+            'note': 'legacy file — BeliefState was removed from '
+                    'core/cognitive.py; use hardware_manifest instead',
         },
         'active_goals': {
             'current': goals.get('current'),
@@ -196,7 +257,19 @@ def _state():
     }
 
 
-def _enqueue_goal(goal, priority):
+def _train_slug(text):
+    """'Practise mining at y=11 with a stone pickaxe' -> 'practise_mining_at_y_11_with'.
+
+    Purely cosmetic — it names the goal in the stack and the log. Falls
+    back to a fixed name when the text has no word characters at all
+    (all-emoji, all-punctuation), since an empty goal name would be
+    dropped by check_injected_goals()'s `if not goal: continue`.
+    """
+    words = re.findall(r'[A-Za-z0-9]+', text.lower())[:_SLUG_WORDS]
+    return ('_'.join(words) or 'objective')[:_SLUG_MAX].strip('_') or 'objective'
+
+
+def _enqueue_goal(goal, priority, params=None, reason='claude_bridge'):
     """Append one goal to data/injected_goals.json. Returns the queue depth.
 
     Same read-modify-write append axon/hub.py uses. GoalStack deletes the
@@ -204,23 +277,33 @@ def _enqueue_goal(goal, priority):
     queued in the same instant — acceptable here (the caller sees the depth
     and can re-send), and the lock keeps two HTTP requests from clobbering
     each other, which is the realistic collision.
+
+    `params` is passed through untouched to the queue entry's `params`
+    field, which GoalStack.check_injected_goals() copies into
+    `goal_params[goal]`. Omitted (not written as null) when empty, so a
+    plain /goal entry stays byte-identical to what it was before /train
+    existed.
     """
     authority = _PRIORITY_TO_AUTHORITY[priority]
+    entry = {
+        'goal': goal,
+        'reason': reason,
+        'authority': authority,
+        'received_at': time.time(),
+    }
+    if params:
+        entry['params'] = params
     with _inject_lock:
         existing = _read_json(INJECTED_PATH, {}) or {}
         queue = existing.get('queue', []) if isinstance(existing, dict) else []
         if not isinstance(queue, list):
             queue = []
-        queue.append({
-            'goal': goal,
-            'reason': 'claude_bridge',
-            'authority': authority,
-            'received_at': time.time(),
-        })
+        queue.append(entry)
         os.makedirs(os.path.dirname(INJECTED_PATH) or '.', exist_ok=True)
         with open(INJECTED_PATH, 'w') as f:
             json.dump({'queue': queue}, f)
-    print(f'[BRIDGE] queued goal "{goal}" (priority={priority} authority={authority})')
+    print(f'[BRIDGE] queued goal "{goal}" ({reason} priority={priority} '
+          f'authority={authority})')
     return authority, len(queue)
 
 
@@ -304,6 +387,73 @@ def _build_app():
                     'authority is too low for the goal in progress',
         })
 
+    @app.post('/train')
+    def train():
+        """Inject a free-text training objective.
+
+            curl -XPOST localhost:7683/train -H 'content-type: application/json' \
+                 -d '{"text": "practise mining at y=11 with a stone pickaxe"}'
+
+        Unlike /goal there is no name enum to check against: the whole
+        point is that the objective is prose. The text lands in the
+        goal's `params`, which the runtime reads back via
+        GoalStack.goal_params[goal]['text'].
+        """
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({'error': 'expected a JSON object body'}), 400
+
+        text = body.get('text')
+        if not isinstance(text, str) or not text.strip():
+            return jsonify({'error': 'missing "text" (non-empty string)'}), 400
+        text = text.strip()
+        if len(text) > MAX_TRAIN_TEXT:
+            return jsonify({
+                'error': f'"text" too long ({len(text)} chars, '
+                         f'max {MAX_TRAIN_TEXT})',
+            }), 400
+
+        # Default 3 (authority 5): a training objective is an operator
+        # instruction and should override whatever the FSM drifted into,
+        # which is the failure mode the 3-week plan keeps hitting.
+        try:
+            priority = int(body.get('priority', 3))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'priority must be an integer 1-3'}), 400
+        if priority not in _PRIORITY_TO_AUTHORITY:
+            return jsonify({'error': 'priority must be 1, 2, or 3'}), 400
+
+        name = body.get('goal')
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            return jsonify({'error': '"goal" must be a non-empty string'}), 400
+        goal = name.strip() if name else TRAIN_GOAL_PREFIX + _train_slug(text)
+
+        params = {'text': text, 'kind': 'train'}
+        # Anything else the caller sent rides along in params rather than
+        # being dropped — the training harness wants to tag objectives
+        # (day, phase, expected reward) and this is the only channel.
+        for k, v in body.items():
+            if k not in ('text', 'goal', 'priority'):
+                params[k] = v
+
+        try:
+            authority, depth = _enqueue_goal(goal, priority, params=params,
+                                             reason='claude_bridge_train')
+        except OSError as e:
+            return jsonify({'error': f'could not write goal queue: {e}'}), 500
+
+        return jsonify({
+            'queued': True,
+            'goal': goal,
+            'text': text,
+            'params': params,
+            'priority': priority,
+            'authority': authority,
+            'queue_depth': depth,
+            'note': 'drained on the next runtime tick into '
+                    'GoalStack.goal_params[goal]',
+        })
+
     return app
 
 
@@ -341,5 +491,6 @@ def start(port=DEFAULT_PORT):
     threading.Thread(target=_serve, args=(app, port),
                      name='claude-bridge', daemon=True).start()
     print(f'[BRIDGE] Claude bridge → http://localhost:{port}/  '
-          f'(/health /state /goal /log)  node={getattr(config, "NODE_NAME", "unknown")}')
+          f'(/health /state /goal /train /log)  '
+          f'node={getattr(config, "NODE_NAME", "unknown")}')
     return True

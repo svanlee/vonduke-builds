@@ -1,0 +1,247 @@
+{
+  "version": "1.0.0",
+  "generated_at": 1786201978.5053148,
+  "interval_s": 60,
+  "pid": 60281,
+  "node_name": "victus-t7",
+  "devices": {
+    "video": [
+      {
+        "path": "/dev/video0",
+        "index": 0,
+        "mode": "0o660",
+        "readable": true,
+        "writable": true
+      },
+      {
+        "path": "/dev/video1",
+        "index": 1,
+        "mode": "0o660",
+        "readable": true,
+        "writable": true
+      }
+    ],
+    "ttyUSB": [],
+    "ttyACM": [],
+    "input": [
+      {
+        "name": "Power Button",
+        "phys": "PNP0C0C/button/input0",
+        "handlers": [
+          "kbd",
+          "event0"
+        ],
+        "event_nodes": [
+          "/dev/input/event0"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "Lid Switch",
+        "phys": "PNP0C0D/button/input0",
+        "handlers": [
+          "event1"
+        ],
+        "event_nodes": [
+          "/dev/input/event1"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "AT Translated Set 2 keyboard",
+        "phys": "isa0060/serio0/input0",
+        "handlers": [
+          "sysrq",
+          "kbd",
+          "event2",
+          "leds"
+        ],
+        "event_nodes": [
+          "/dev/input/event2"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "Video Bus",
+        "phys": "LNXVIDEO/video/input0",
+        "handlers": [
+          "kbd",
+          "event5"
+        ],
+        "event_nodes": [
+          "/dev/input/event5"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "Video Bus",
+        "phys": "LNXVIDEO/video/input0",
+        "handlers": [
+          "kbd",
+          "event6"
+        ],
+        "event_nodes": [
+          "/dev/input/event6"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "ELAN07FB:00 04F3:321A Mouse",
+        "phys": "i2c-ELAN07FB:00",
+        "handlers": [
+          "mouse0",
+          "event3"
+        ],
+        "event_nodes": [
+          "/dev/input/event3"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "ELAN07FB:00 04F3:321A Touchpad",
+        "phys": "i2c-ELAN07FB:00",
+        "handlers": [
+          "mouse1",
+          "event4"
+        ],
+        "event_nodes": [
+          "/dev/input/event4"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HP WMI hotkeys",
+        "phys": "wmi/input0",
+        "handlers": [
+          "kbd",
+          "event7"
+        ],
+        "event_nodes": [
+          "/dev/input/event7"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic HDMI/DP,pcm=3",
+        "phys": "ALSA",
+        "handlers": [
+          "event8"
+        ],
+        "event_nodes": [
+          "/dev/input/event8"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic HDMI/DP,pcm=7",
+        "phys": "ALSA",
+        "handlers": [
+          "event9"
+        ],
+        "event_nodes": [
+          "/dev/input/event9"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic HDMI/DP,pcm=8",
+        "phys": "ALSA",
+        "handlers": [
+          "event10"
+        ],
+        "event_nodes": [
+          "/dev/input/event10"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic HDMI/DP,pcm=9",
+        "phys": "ALSA",
+        "handlers": [
+          "event11"
+        ],
+        "event_nodes": [
+          "/dev/input/event11"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HDA NVidia HDMI/DP,pcm=3",
+        "phys": "ALSA",
+        "handlers": [
+          "event12"
+        ],
+        "event_nodes": [
+          "/dev/input/event12"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HDA NVidia HDMI/DP,pcm=7",
+        "phys": "ALSA",
+        "handlers": [
+          "event13"
+        ],
+        "event_nodes": [
+          "/dev/input/event13"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HDA NVidia HDMI/DP,pcm=8",
+        "phys": "ALSA",
+        "handlers": [
+          "event14"
+        ],
+        "event_nodes": [
+          "/dev/input/event14"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HDA NVidia HDMI/DP,pcm=9",
+        "phys": "ALSA",
+        "handlers": [
+          "event15"
+        ],
+        "event_nodes": [
+          "/dev/input/event15"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic Mic",
+        "phys": "ALSA",
+        "handlers": [
+          "event16"
+        ],
+        "event_nodes": [
+          "/dev/input/event16"
+        ],
+        "accessible": false
+      },
+      {
+        "name": "HD-Audio Generic Headphone",
+        "phys": "ALSA",
+        "handlers": [
+          "event17"
+        ],
+        "event_nodes": [
+          "/dev/input/event17"
+        ],
+        "accessible": false
+      }
+    ]
+  },
+  "kb2040": {
+    "present": false,
+    "responding": false
+  },
+  "counts": {
+    "video": 2,
+    "ttyUSB": 0,
+    "ttyACM": 0,
+    "input": 18,
+    "i2c": 0
+  }
+}
