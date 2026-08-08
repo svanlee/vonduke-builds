@@ -112,8 +112,7 @@ class HumanAssist:
 
     def __init__(self, executor):
         self.executor    = executor
-        self.human_mode  = True
-        print('[HumanAssist] Starting in HUMAN mode (auto)')
+        self.human_mode  = False
 
         self._device     = None
         self._available  = False
