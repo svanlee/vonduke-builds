@@ -98,6 +98,24 @@ def _live_hardware() -> str:
     # differently from "nothing is plugged in" and must not be conflated.
     openable = sum(1 for e in inputs if e.get('accessible'))
 
+    # Audio is stated in full even when empty. An omitted audio line reads as
+    # "no audio hardware" to the model — on Day 2 it answered that this laptop
+    # has "no sound cards, microphones, or speakers present" and credited the
+    # live readings for it, while four ALSA cards were enumerable.
+    aud = m.get('audio') or {}
+    a_src = aud.get('source')
+    a_sinks, a_sources = aud.get('sinks') or [], aud.get('sources') or []
+
+    def _audio_line(label, rows):
+        if a_src in (None, 'none', 'error'):
+            return (f'- {label}: UNKNOWN — audio was not probed '
+                    f'({aud.get("note") or "no audio block in manifest"})')
+        if not rows:
+            return f'- {label}: NONE DETECTED (probed via {a_src})'
+        names = ', '.join(r.get('name', '?') for r in rows[:6])
+        more = '' if len(rows) <= 6 else f' (+{len(rows) - 6} more)'
+        return f'- {label} ({len(rows)}, via {a_src}): {names}{more}'
+
     kb = m.get('kb2040') or {}
     i2c = kb.get('i2c_addresses') or []
     lines = [
@@ -111,7 +129,11 @@ def _live_hardware() -> str:
         f'{", ".join(str(a) for a in i2c) if i2c else "none (bus empty or unreachable)"}',
         f'- Input devices listed: {len(inputs)}, of which {openable} are '
         f'actually openable by this process',
+        _audio_line('Audio outputs (sinks)', a_sinks),
+        _audio_line('Audio inputs (sources)', a_sources),
     ]
+    if aud.get('note') and a_src == 'alsa':
+        lines.append(f'- Audio caveat: {aud["note"]}')
     return '\n'.join(lines)
 
 

@@ -189,6 +189,94 @@ def _input_devices() -> list[dict]:
     return devices
 
 
+# ── Audio ──────────────────────────────────────────────────────
+def _run(cmd: list[str], timeout: float = 5.0) -> str | None:
+    """Run a probe command, returning stdout or None. Never raises — a
+    missing binary is a normal answer here, not an error."""
+    try:
+        import subprocess
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout)
+    except Exception:
+        # FileNotFoundError (binary absent) and TimeoutExpired alike — both
+        # mean "this probe has no answer", which the caller handles.
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None
+
+
+def _audio_devices() -> dict:
+    """Audio sinks (outputs) and sources (inputs).
+
+    Preferred probe is `pactl list short sinks|sources`, which reports what
+    the sound server will actually route to. pactl ships in pulseaudio-utils
+    and is *not* installed on every box that runs PipeWire — this host is one
+    of them — so a failed pactl falls back to `aplay -l` / `arecord -l`,
+    which read ALSA directly and need no server at all.
+
+    The distinction is recorded in `source` and it matters: ALSA cards mean
+    "the kernel sees this hardware", not "the bot can play through it". A
+    reader that conflates the two would claim working audio on a box with no
+    sound server running.
+
+    Absence is reported as an empty list plus a `note`, never as a missing
+    key — a hardware block that vanishes when a probe fails reads exactly
+    like a box with no audio hardware, which is how Day 1 produced an answer
+    asserting no sound cards exist on a laptop with four of them.
+    """
+    audio: dict = {'source': None, 'sinks': [], 'sources': [], 'note': None}
+
+    def _short(kind):
+        # pactl short format: index \t name \t driver \t sample_spec \t state
+        raw = _run(['pactl', 'list', 'short', kind])
+        if raw is None:
+            return None
+        rows = []
+        for line in raw.splitlines():
+            parts = line.split('\t')
+            if len(parts) < 2:
+                continue
+            rows.append({'name': parts[1],
+                         'state': parts[4] if len(parts) > 4 else None})
+        return rows
+
+    sinks, sources = _short('sinks'), _short('sources')
+    if sinks is not None or sources is not None:
+        audio['source'] = 'pactl'
+        audio['sinks'] = sinks or []
+        audio['sources'] = sources or []
+        return audio
+
+    # ── ALSA fallback ──
+    def _alsa(cmd):
+        raw = _run([cmd, '-l'])
+        if raw is None:
+            return None
+        rows = []
+        for line in raw.splitlines():
+            m = re.match(r'card (\d+): (\S+) \[([^\]]+)\], '
+                         r'device (\d+): (.+?) \[', line)
+            if m:
+                rows.append({'name': f'hw:{m.group(1)},{m.group(4)} '
+                                     f'{m.group(3)} — {m.group(5)}',
+                             'state': None})
+        return rows
+
+    a_sinks, a_sources = _alsa('aplay'), _alsa('arecord')
+    if a_sinks is not None or a_sources is not None:
+        audio['source'] = 'alsa'
+        audio['sinks'] = a_sinks or []
+        audio['sources'] = a_sources or []
+        audio['note'] = ('pactl unavailable — these are ALSA cards seen by '
+                         'the kernel, not sound-server routing targets')
+        return audio
+
+    audio['source'] = 'none'
+    audio['note'] = 'no audio probe available (pactl, aplay and arecord all failed)'
+    return audio
+
+
 # ── KB2040 bridge ──────────────────────────────────────────────
 _bridge_client = None
 _bridge_lock = threading.Lock()
@@ -328,6 +416,12 @@ def build_manifest() -> dict:
     manifest['devices'] = devices
 
     try:
+        manifest['audio'] = _audio_devices()
+    except Exception as e:
+        manifest['audio'] = {'source': 'error', 'sinks': [], 'sources': [],
+                             'note': f'{type(e).__name__}: {e}'}
+
+    try:
         manifest['kb2040'] = _kb2040_probe(devices.get('ttyACM', []))
     except Exception as e:
         manifest['kb2040'] = {'present': False, 'responding': False,
@@ -339,6 +433,8 @@ def build_manifest() -> dict:
         'ttyACM': len(devices.get('ttyACM', [])),
         'input':  len(devices.get('input', [])),
         'i2c':    manifest.get('kb2040', {}).get('i2c', {}).get('count', 0),
+        'audio_sinks':   len(manifest.get('audio', {}).get('sinks', [])),
+        'audio_sources': len(manifest.get('audio', {}).get('sources', [])),
     }
     return manifest
 
