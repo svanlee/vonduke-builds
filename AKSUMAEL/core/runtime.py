@@ -106,6 +106,7 @@ from core                    import code_skill_generator
 from core                    import self_editor
 from core                    import feature_extractor
 from core                    import policy_blender
+from core                    import training_handler
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
@@ -889,6 +890,15 @@ def run():
                 mastermind_client.tick(tick, status='running',
                                         current_goal=goals.current_goal(),
                                         world_model=world)
+
+            # ── Free-text training objectives (bridge POST /train) ──
+            # Must run before retirement: a train: goal is answered and popped
+            # by its own handler, and check_retirement() has no timeout rule
+            # for it, so it would otherwise sit as the current goal forever.
+            try:
+                training_handler.maybe_handle(goals, cognitive.monologue, tick)
+            except Exception as e:
+                print(f'[TRAIN] handler error: {e}')
 
             # ── Goal retirement + episode memory (v1.1) ─────────
             # Snapshot inventory the first tick we see a given goal, so a
