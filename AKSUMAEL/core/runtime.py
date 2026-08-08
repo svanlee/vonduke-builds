@@ -419,9 +419,11 @@ def run():
         print(f'[ATTENTION] training env unavailable: {e}')
 
     _default_env = config.ACTIVE_ENV if config.ACTIVE_ENV in _attention_envs else 'minecraft'
-    if _default_env != 'minecraft':
-        print(f'[ATTENTION] default focus: {_default_env} (ACTIVE_ENV override)')
     attention_manager = AttentionManager(_attention_envs, default=_default_env)
+    # Persist the focus BEFORE start() so sync_external_focus() (called on
+    # the idle tick 5s after start) doesn't overwrite it with the stale
+    # 'minecraft' entry left in data/attention_focus.json from previous runs.
+    attention_manager.focus(_default_env)
     attention_manager.start()
 
     # ── Voice (core/voice.py) ───────────────────────────────────
