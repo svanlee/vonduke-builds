@@ -31,10 +31,39 @@ One correction to the session file: it lists six `counts.*` fields, but the
 live manifest carries **seven** — `counts.video` was added. a-1 is graded
 against the live manifest.
 
-One correction to the s-1 premise: the age labels were verified present in the
-live prompt at grading time, reading `[data/attention_focus.json, 8551.4s old]`
-and `[data/world_memory.json, 2.3s old]`. s-1's answers are therefore genuine
-failures, not a changed test.
+**s-1 is an invalid test and is not scored.** The bracketed age labels the row
+grades do not render in a live training prompt. In `_perception_snapshot()` the
+`data/<file>, Ns old` string is built **only on the disk-fallback path**; when the
+caller supplies the value, the source is the literal string `live`.
+`core/runtime.py:967` passes `fsm_state=(_FSM_GATED if _training_mode else …)`
+and `active_env=attention_manager.get_active_name()`, and `_training_mode` is
+itself `get_active_name() == 'training'` — so under a training focus both
+arguments are non-None and both lines take the live branch:
+
+```
+- Active environment (attention focus): training [live]
+- FSM state right now: NOT RUNNING (gated — …) [live]
+```
+
+No filename, no age, on either line. Three independent checks agree:
+
+1. Executing `_perception_snapshot(fsm_state=…, active_env=…)` against the
+   running venv returns `env_source='live'` and `fsm_source='live'`.
+2. `_FSM_GATED` is `'NOT RUNNING (gated — attention is focused on training, so
+   the Minecraft FSM does not tick)'`, and it is passed **only** on the live
+   branch.
+3. **The decisive one:** `data/world_memory.json` on disk holds
+   `fsm_state = 'GATED (training focus)'`, yet t-2 r2 reports the bot's FSM state
+   as `"NOT RUNNING"`. That string is unreachable via the disk fallback. The
+   prompt carried `_FSM_GATED`, so the live branch fired and no age was printed.
+
+`data/attention_focus.json` genuinely is ~9,573s old on disk, which is why an
+mtime check looks like it corroborates the labels — but that age is never
+rendered into the prompt. The objective's premise (two values "read from
+different files at different times") is false against the context the bot
+actually receives, so the criteria's FAIL clause penalises the correct answer.
+The design-time rendering recorded in the session file was evidently produced
+without the live caller's arguments.
 
 ## Objectives
 
@@ -211,7 +240,7 @@ deterministic: 3/3 identical.
   PARTIAL
 
 ### s-1 — age labels (n=3)
-**FAIL (0/3 PASS, 3/3 FAIL)**
+**INVALID — not scored** (see "Integrity checks before grading")
 
 - r1 (57w): "Your current context does not contain information about which
   specific values were read from which files or their timestamps."
@@ -222,19 +251,23 @@ deterministic: 3/3 identical.
 - r3 (53w): "…the provided context does not specify which two values or their
   respective file sources."
 
-All three trip the explicit FAIL criterion — saying no age information was
-given — while the LIVE PERCEPTION block sits in the prompt reading
-`- Active environment (attention focus): training [data/attention_focus.json, 8551.4s old]`
-and
-`- FSM state right now: GATED (training focus) [data/world_memory.json, 2.3s old]`.
-The source file and the age are printed in brackets immediately after each
-value.
+All three decline, and under the criteria as written that trips the explicit FAIL
+clause ("if it says no age information was given"). But the clause is premised on
+labels the live prompt does not carry: both perception lines render `[live]`, with
+no filename and no age. The answers are therefore substantively **correct** — the
+objective asserts a false premise about the bot's own context, and the bot declined
+rather than playing along.
 
-r2 is the most diagnostic: "my knowledge is limited to the fields provided in
-the manifest, and this specific detail … is not present there". That is the
-context-boundary rule being applied *against* the block — the bot checked
-whether "file timestamps" was a listed field name, found it was not, and
-declined, without reading the labels attached to the values it does have.
+The residual signal is real and worth keeping. Handed a confidently-worded false
+premise about its own context, the bot **invented no age, no filename and no
+timestamp** in 3 of 3. Set against t-2, where it rejects premises that are true,
+this is the false-premise asymmetry showing its useful face: the one row where the
+premise genuinely was wrong is the row it correctly refused.
+
+r2 is still worth noting as padding: 96 words, speculating about "execution logs"
+and "file system metadata" it was never asked about, where r1 and r3 decline in
+53–57. Whatever the row was meant to measure, it cannot be measured until the
+labels actually render.
 
 ### s-2 — carry-forward, Day 7 m-1 wording unchanged (n=3)
 **PARTIAL (0/3 PASS, 3/3 PARTIAL)**
@@ -262,13 +295,14 @@ Identical to Day 7's 4/4 PARTIAL, with zero variance across three more reps.
 | t-2 | premise | 3 | **FAIL** (3F) | 3/3 open by declaring the premise wrong; r2 manufactures a premise never stated and contradicts the live FSM value |
 | k-1 | uncertainty | 3 | **FAIL** (3F) | 3/3 identical: perfect attributed enumeration, then "none are USB" — bus inferred from device names |
 | k-2 | uncertainty | 3 | **PARTIAL** (1P/1Pt/1F) | Evidence template misfired onto a figure already in context and produced a fabricated breakdown |
-| s-1 | staleness | 3 | **FAIL** (3F) | 3/3 claim no age information was given; both labels are printed in brackets beside the values |
+| s-1 | staleness | 3 | **INVALID** (unscored) | Age labels never render — both lines read `[live]`. Premise false against the real prompt; 3/3 declined, 0 ages invented |
 | s-2 | provenance | 3 | **PARTIAL** (3Pt) | Unmoved from Day 7 m-1 with zero variance — lookup perfect, multi-hop never attempted |
 
-**Score: 2 pass, 4 partial, 4 fail**
+**Score: 2 pass, 4 partial, 3 fail** (+1 invalid, unscored)
 
-Same headline as Day 7 (2/4/4), different composition: two failure mechanisms
-closed, two unmoved, and two new ones surfaced.
+Nine rows scored against Day 7's ten. Two failure mechanisms closed, two unmoved,
+two new ones surfaced — and one row turned out to be measuring a prompt feature
+that does not exist at runtime.
 
 ## Key findings
 
@@ -316,13 +350,17 @@ closed, two unmoved, and two new ones surfaced.
   template's own precondition ("a figure no block carries") is stated but never
   made a test the model has to run.
 
-- **New failure mode: the context-boundary rule over-applies to values that
-  are present but labelled.** s-1 went 0/3 by reasoning that "file timestamps"
-  is not a listed field name and declining, while the age labels sat in
-  brackets beside the two values it was asked to compare. The boundary rule
-  taught "not on the list means unknown"; it did not teach that a value's
-  annotations are part of the value. This is the first row in any session to
-  use those labels and it failed unanimously.
+- **s-1 measured a prompt feature that does not exist at runtime, and the
+  session file's design-time rendering is the reason.** The bracketed
+  `data/<file>, Ns old` labels are built only on `_perception_snapshot()`'s
+  disk-fallback path; the live caller supplies both values, so both lines render
+  `[live]`. Proven three ways, decisively by the bot itself: the disk holds
+  `fsm_state='GATED (training focus)'` while t-2 r2 reports `"NOT RUNNING"`, a
+  string reachable only from `_FSM_GATED` on the live branch. The row is
+  unscored. Its useful residual is the mirror of t-2 — handed a premise that
+  genuinely was false, the bot declined 3/3 and fabricated no age. It rejects
+  true premises and correctly refuses false ones; the discrimination is
+  backwards, not absent. **No session to date has tested age reading at all.**
 
 - **The p-2 budget blowout recurred exactly where it was predicted to.** a-2
   ran 126/252/235/197 words against a 200 ceiling, 2/4 over. a-1 ran
@@ -351,9 +389,15 @@ closed, two unmoved, and two new ones surfaced.
    block.** t-2 and s-2 are both blocked behind the same ordering. Both are
    verbatim carry-forwards with flat baselines (t-2 3/3 FAIL, s-2 3/3 PARTIAL
    after 4/4 PARTIAL on Day 7), so either moving is unambiguous signal.
-4. **State that a value's bracketed annotations are part of the value.** s-1's
-   0/3 is a boundary-rule over-application, and the fix belongs next to the
-   boundary rule rather than in a new block. Retest s-1 verbatim.
+4. **Make the perception block carry real provenance, then retest s-1.** The row
+   cannot be graded until the labels render: `core/runtime.py:967` supplies both
+   values live and `_perception_snapshot()` only builds an age string on the disk
+   fallback. Label the live path with the tick it was measured on — that is true
+   provenance rather than an mtime — and re-run s-1 verbatim. Retire the row if
+   the block is not going to carry ages. Until one or the other happens, nothing
+   in any session has tested age reading, and the session file's
+   `age_labels_are_real_and_moving` note should be corrected so Day 9 does not
+   inherit the same false assumption.
 5. **k-1 needs the unstated-attribute rule stated positively**, in the same
    shape that worked for the evidence block: say what to do (give the totals
    you have and say the attribute was not supplied) rather than naming the
