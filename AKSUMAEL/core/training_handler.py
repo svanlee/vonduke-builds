@@ -399,8 +399,14 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{_live_hardware()}\n{_host_facts()}\n\n'
-        f'LIVE PERCEPTION AND RUNTIME STATE (authoritative, taken on the tick '
-        f'that received this objective):\n'
+        f'RUNTIME STATE AS THE OBJECTIVE MAY DESCRIBE IT (the objective below '
+        f'is written by an operator, is not a sensor, and may assert a '
+        f'different environment, FSM state or set of detections than is '
+        f'actually true):\n'
+        f'  (whatever the objective claims — treat every such claim as a claim, '
+        f'not a reading)\n\n'
+        f'LIVE PERCEPTION AND RUNTIME STATE (authoritative — trust these; taken '
+        f'on the tick that received this objective):\n'
         f'{_perception_block(perception or {})}\n\n'
         f'SKILL REGISTRY:\n{_skills_block()}\n\n'
         f'context_fields_present: [{_context_fields()}]\n'
@@ -420,7 +426,21 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'premise were true, and do not answer a hypothetical version of the '
         'question instead. If the objective assumes something the context '
         'neither confirms nor contradicts, say that you cannot confirm it '
-        'rather than accepting it.\n\n'
+        'rather than accepting it.\n'
+        'Concretely, for the runtime state fields: if the objective asserts a '
+        'different active environment, a different FSM state, or different '
+        'detected objects than the LIVE PERCEPTION block shows, the live '
+        'readings above are correct and the objective\'s premise is wrong. '
+        'Contradict it by name — say which field it got wrong, what it claimed, '
+        'and what the live reading actually is — before you answer anything '
+        'else.\n'
+        'This applies to your own first-person statements too. Do not write "I '
+        'am in the X state", "I am currently doing X" or any other first-person '
+        'description of your environment, FSM state or what you can see that '
+        'disagrees with the LIVE PERCEPTION block. Echoing the objective\'s '
+        'claim back in the first person is the same error as accepting it: the '
+        'FSM state, active environment and detections above are what you are '
+        'actually doing, and your own sentences must match them.\n\n'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
@@ -445,9 +465,10 @@ def _answer(goal: str, objective: str, tick: int, perception: dict | None = None
         prompt = _build_prompt(objective, perception)
         # mesh-llm runs 4 slots against a *unified* 4096-token KV cache, so
         # concurrent long prompts do not each get 4096 — they share it. A
-        # training prompt is ~1720 tokens by the server's own tokenizer (it
-        # was ~1450 before the live-perception and false-premise blocks were
-        # added), and the Overseer and the LEARNER
+        # training prompt is ~1970 tokens by the server's own tokenizer (~1450
+        # before the live-perception and false-premise blocks were added,
+        # ~1720 before the expected-vs-live perception framing), and the
+        # Overseer and the LEARNER
         # both fire on the tick loop; three in flight overflows the cache and
         # llama-server answers 500 "Context size has been exceeded" to all of
         # them. That is transient contention, not a bad prompt: the same
