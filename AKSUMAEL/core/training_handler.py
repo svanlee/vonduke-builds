@@ -788,6 +788,35 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # able to tell those apart. Per-item attribution is also the wrong shape
     # for 30 items from one block — one leading sentence naming the block is
     # what the answer needs, so ask for that literally, with an example.
+    #
+    # Day 8 split that result in two and only half of it needed fixing.
+    # Attribution DOES generalise: a-2 asked for an unexemplified block and 2
+    # of 4 reps opened "From the EXPECTED HARDWARE section ...", with no worked
+    # example for it anywhere in the prompt. What the other two did was walk
+    # LIVE HARDWARE READINGS, then the whole SKILL REGISTRY, then all forty
+    # context_fields_present entries, at 252 and 235 words — and one of them
+    # never named a configured item at all. So a worked example's real payload
+    # is not the attribution sentence, it is a *stopping condition*: on an
+    # exemplified block the model emits one sentence and halts, and on an
+    # unexemplified one it has no model of where the answer ends. That is why
+    # adding a third example bought only the third block, and why a fourth
+    # would buy only the fourth.
+    #
+    # A termination rule is therefore stated outright rather than demonstrated.
+    # No new example: an example is the thing that does not generalise here,
+    # and by 1fc4679's own result the model consumes examples as templates.
+    # The tie-break clause ("name the most specific one that matches") exists
+    # because the alternative to a wrong block is not silence — a-2 r2 and r3
+    # show that an unresolved "which block?" is what starts the walk.
+    #
+    # Not duplicated from the anti-padding rule in the shared tail ("Do not
+    # pad, do not add context that was not asked for, do not recite readings
+    # ..."). That rule has been present through every one of these blowouts and
+    # is about *proportion* — it says an answer may not carry material the
+    # question did not touch, and gives no test for when one is finished. This
+    # one is a boundary with a test attached: one block, its items, stop. The
+    # tail rule is kept as-is because it reaches both branches and Day 8 t-1
+    # shows it is already doing work on the non-enumerating side.
     premise = (
         'The objective above asks you to name the members of a set. It is a '
         'request for information, not a claim about you: it asserts nothing '
@@ -813,6 +842,11 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'asks for is genuinely not in the context, say that item is not '
         'available — that is a gap in what you were given, not a false '
         'premise.\n'
+        'Once you have named every item from the block the question asks '
+        'about, stop. Do not name items from other blocks, and do not explain '
+        'why other blocks were not asked about. If you are not sure which '
+        'block the question refers to, name the most specific one that '
+        'matches — then stop.\n'
         'The list is bounded by the block, not by the count. Where a line '
         'gives a count in front of its items — "Audio outputs (sinks) (9, via '
         'alsa): ..." — that count is authoritative and the names after it are '
