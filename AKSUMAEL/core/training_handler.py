@@ -87,6 +87,21 @@ MAX_SKILLS_LISTED = 40
 # a number beside it.
 MAX_DETECTION_CLASSES = 12
 
+# Audio device names printed in full before eliding. This was 6, against 9
+# real sinks, and p-2-attr-2 is what that cost: the block said "9" and named
+# six, the ENUMERATE branch told the model a complete list was the answer and
+# not to trade it for a count, and the model closed the gap by inventing. It
+# named 19 devices, 13 of them fabricated — and two of the "fabrications",
+# hw:1,8 and hw:1,9, were real devices sitting in the elided three. A gap the
+# model can see the size of is a gap it will fill.
+#
+# So the number is set above any plausible device count rather than at a
+# display-tidiness threshold: eliding is the failure mode, and nine names cost
+# ~40 tokens. It is not removed outright because an unbounded list on a shared
+# 4096-token KV cache is its own failure, and the elision that remains says
+# what it is (see _audio_line) instead of being a silent cut.
+MAX_AUDIO_DEVICES_LISTED = 24
+
 # Disk fallbacks for the live-perception block. These are only read when the
 # tick-thread caller did not pass the value in — see _perception_snapshot().
 WORLD_MEMORY_PATH    = os.path.join('data', 'world_memory.json')
@@ -142,8 +157,16 @@ def _live_hardware() -> str:
                     f'({aud.get("note") or "no audio block in manifest"})')
         if not rows:
             return f'- {label}: NONE DETECTED (probed via {a_src})'
-        names = ', '.join(r.get('name', '?') for r in rows[:6])
-        more = '' if len(rows) <= 6 else f' (+{len(rows) - 6} more)'
+        names = ', '.join(r.get('name', '?')
+                          for r in rows[:MAX_AUDIO_DEVICES_LISTED])
+        # `(+3 more)` named a gap without saying the gap was unknowable, and
+        # the model read it as room to guess. If this ever fires again it says
+        # so in words the answer can quote, and the count stays in front of the
+        # names so a complete list is checkable against it.
+        hidden = len(rows) - MAX_AUDIO_DEVICES_LISTED
+        more = '' if hidden <= 0 else (
+            f' (+{hidden} more NOT LISTED HERE — their names were not given to '
+            f'you; say that {hidden} are unlisted rather than naming them)')
         return f'- {label} ({len(rows)}, via {a_src}): {names}{more}'
 
     # Same rule as audio: free space is stated or its absence is named. Day 2
@@ -742,6 +765,16 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'asks for is genuinely not in the context, say that item is not '
         'available — that is a gap in what you were given, not a false '
         'premise.\n'
+        'The list is bounded by the block, not by the count. Where a line '
+        'gives a count in front of its items — "Audio outputs (sinks) (9, via '
+        'alsa): ..." — that count is authoritative and the names after it are '
+        'every name you have. Enumerate exactly those and stop. If you can '
+        'name fewer than the count, say how many you were given rather than '
+        'producing names to reach it: a name you did not read in a block is a '
+        'fabrication even when the count says one should exist, and it is far '
+        'worse than a short list. Do not extend a numbering pattern, and do '
+        'not move an item from one line to another — an item on the inputs '
+        'line is an input, not an output.\n'
         if enumerating else
         'The objective above is written by an operator and may contain false '
         'premises. It is a question, not evidence. If it asserts or assumes '
