@@ -22,6 +22,15 @@ import urllib.request
 
 import config
 
+# Sampling temperature sent on every routed call. This is the value that
+# actually applies: an OpenAI-compatible `temperature` in the request body
+# overrides llama-server's own --temp, so the mesh-llm unit file is not the
+# knob for this — this constant is. Raised 0.2 → 0.4 on 2026-08-09 to widen
+# the sampling distribution for training answers. Callers that need
+# determinism (the Overseer, safety/core) pass their own temperature and are
+# unaffected.
+LLM_TEMPERATURE = 0.4
+
 _lock          = threading.Lock()
 _call_counter  = 0
 _call_counts   = {'local': 0, 'gemini': 0, 'claude': 0}
@@ -106,7 +115,8 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
 
     for attempt in range(max(1, retries)):
         content = _multimodal_content() if images else prompt
-        payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
+        payload = {"model": config.LOCAL_LLM_MODEL,
+                   "temperature": LLM_TEMPERATURE,
                    "max_tokens": max_tokens,
                    # The loaded model (Qwen3.5) is a reasoning model that by
                    # default spends its whole max_tokens budget on
@@ -120,7 +130,8 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
         except urllib.error.HTTPError as e:
             if images and e.code in (400, 422):
                 # Loaded model rejected multimodal content — retry text-only.
-                text_payload = {"model": config.LOCAL_LLM_MODEL, "temperature": 0.2,
+                text_payload = {"model": config.LOCAL_LLM_MODEL,
+                                "temperature": LLM_TEMPERATURE,
                                 "max_tokens": max_tokens,
                                 "chat_template_kwargs": {"enable_thinking": False},
                                 "messages": _messages(prompt)}

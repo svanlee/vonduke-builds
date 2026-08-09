@@ -57,7 +57,20 @@ TRAINING_LOG = os.path.join(config.MEMORY_DIR, 'training_log.jsonl')
 
 # A training answer is prose, not a monologue line — the 20-word cap that
 # keeps the monologue readable would truncate every useful answer here.
-MAX_WORDS   = 120
+#
+# One ceiling cannot fit both shapes of question a session asks. s-1 is
+# "What's 2+2?" and wants a word; p-2 is "What skills are currently in your
+# registry?" against a 30-name registry, and p-2's own design note calls the
+# flat 120 "tight" for a full enumeration. So the ceiling is picked per
+# objective — see _word_budget().
+#
+# All three are ceilings *quoted to the model*, not truncation: nothing in
+# this module cuts an answer to length. That makes the error asymmetric — too
+# high costs padding, too low costs the answer itself — which is why the
+# default stays where it has been graded and only the two ends move.
+MAX_WORDS       = 120   # default: open-ended assessment and judgement
+ENUMERATE_WORDS = 200   # the items asked for ARE the answer
+SHORT_WORDS     = 40    # closed or single-value factual questions
 MAX_TOKENS  = 900
 LLM_TIMEOUT = 90.0      # generous: the model reasons before answering
 
@@ -611,12 +624,57 @@ def _withhold_prior_answer(objective: str) -> tuple[str, int]:
     return out, n
 
 
+# Asked to name the members of a set. "what are" alone misses the common
+# form — p-2 is "What skills are currently in your registry?" — so a noun or
+# two is allowed between "what" and "are". Pronouns are excluded from that
+# slot: "...progress on what you are currently doing..." is a-1 describing an
+# activity, not asking for a list, and without the guard it matched.
+_ENUMERATE_RE = re.compile(
+    r'\b(?:'
+    r'list|enumerate|how many|describe all|which|'
+    r'what(?:\s+(?!you\b|i\b|we\b|they\b|it\b|he\b|she\b|that\b)\w+){0,2}\s+are|'
+    r'name\s+(?:the|all|every|each)'
+    r')\b', re.I)
+
+# Length is the proxy for "simple factual". It is a proxy and not a keyword
+# rule because the questions that genuinely need room are long for a
+# structural reason: an objective that asks the bot to weigh or revise
+# something has to carry the evidence to weigh, and that evidence is the
+# bulk of the text. u-1 and u-2 are 15 and 30 words; s-1 and p-3 are 3 and 6.
+SHORT_OBJECTIVE_WORDS = 12
+
+
+def _word_budget(objective: str) -> tuple[int, bool]:
+    """Word ceiling to quote for this objective, and whether it is an
+    enumeration. Enumeration is checked first: "how many" is a counting
+    question but reads as one of a set, and over-budgeting is the safe
+    direction."""
+    text = objective or ''
+    if _ENUMERATE_RE.search(text):
+        return ENUMERATE_WORDS, True
+    if len(text.split()) <= SHORT_OBJECTIVE_WORDS:
+        return SHORT_WORDS, False
+    return MAX_WORDS, False
+
+
 def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # Withhold here rather than at the call site so that re-rendering a prompt
     # offline — the standard check for "did the model actually receive X?" —
     # shows the same text the worker sent. Idempotent: the marker carries no
     # quote characters, so a caller that already withheld pays one scan.
     objective, _ = _withhold_prior_answer(objective)
+    # Budget the withheld text, not the original: the marker is what the model
+    # actually reads, and a withheld prior answer must not drag the objective
+    # over the short-question line or match a keyword the operator never wrote.
+    budget, enumerating = _word_budget(objective)
+    ceiling = (
+        f'{budget} words is a hard ceiling. This objective asks you to name '
+        'the members of a set, so a complete list may legitimately run long '
+        'against it — do not trade the list for a count to stay short.'
+        if enumerating else
+        f'{budget} words is a hard ceiling you should almost never approach, '
+        'not a target.'
+    )
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
     return (
@@ -709,8 +767,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'not pad, do not add context that was not asked for, do not recite '
         'readings or hardware or state that the question did not touch, and do '
         'not restate what you just said in other words. There is no length to '
-        f'fill — {MAX_WORDS} words is a hard ceiling you should almost never '
-        'approach, not a target.\n'
+        f'fill — {ceiling}\n'
         'Brevity means cutting padding, never cutting the answer. If the '
         'objective asks what something contains, which items are present, or '
         'to name or list them, then the items ARE the answer: give them in '

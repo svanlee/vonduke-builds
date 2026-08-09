@@ -415,3 +415,130 @@ Revised next levers:
 Measured caveat: MAX_WORDS is still 120 and both commits only reframe it. The
 p-2 enumeration alone is ~40 words, so a list-plus-provenance answer has room;
 a longer registry would not.
+
+---
+
+# Addendum — temperature raise + enumerate/short word-budget split
+
+Date: 2026-08-09. Two changes, graded at n=4 each, per the n≥4 rule this
+document argued for above.
+
+## What actually changed
+
+**Temperature 0.2 → 0.4.** Not in the mesh-llm unit file. `core/llm_router.py`
+sends `"temperature"` in every request body, and an OpenAI-compatible request
+parameter overrides llama-server's `--temp`, so the unit file was never the
+knob for this. The constant `LLM_TEMPERATURE` in `llm_router.py` is. `--temp
+0.4` was added to the unit as well so the two agree, but on its own it would
+have changed nothing. Callers that pass their own temperature — the Overseer
+and `safety/core` at 0.0 — are unaffected.
+
+**Word budget is now per-objective** (`_word_budget()` in
+`core/training_handler.py`). Enumeration questions get 200 words, short
+questions (≤12 words, no enumeration keyword) get 40, everything else keeps
+120. These are ceilings quoted in the prompt, not truncation — nothing in the
+module cuts an answer — so the error is asymmetric and only the two ends moved.
+For enumerations the ceiling sentence also stops fighting the answer: it no
+longer says "you should almost never approach" it.
+
+Classification over all 18 Day 5 + Day 6 objectives: 8 enumerate, 3 short, 7
+default. p-2 and p-1 classify enumerate; s-1 and p-3 classify short.
+
+## p-2 — "What skills are currently in your registry?"
+
+The change this objective was meant to test. Enumeration rate, n=4 per arm:
+
+| Arm | Word cap | Temp | Enumerates | Mean words |
+|---|---|---|---|---|
+| `base1-4` (pre word-cap fix) | 120 | 0.2 | **1/4** | 105.5 |
+| `retest2`,`var3-5` (HEAD) | 120 | 0.2 | **1/4** | 55.8 |
+| `mode-retest-1-4` (this change) | 200 | 0.4 | **3/4** | 43.5 |
+
+Graded against p-2's criteria:
+
+- **`mode-retest-2` — PASS.** All 30 names, every one real, attributed ("the
+  following skills are registered in your skill registry"). 39 words, no
+  hardware recital. The cleanest p-2 answer in the arc.
+- **`mode-retest-3` — PASS with a defect.** All 30 names, all real, attributed
+  — but it calls them "these twenty-six abilities" while listing thirty. The
+  criteria do not fail a miscount, but an answer that contradicts its own list
+  in the same sentence is not a clean pass. It also opens with an unasked FSM
+  and capture-card clause.
+- **`mode-retest-1` — PARTIAL.** 27 real names, no invention, but no count and
+  no source — the exact c-1 failure the criteria name. Drops the three
+  `animal_*` entries.
+- **`mode-retest-4` — FAIL.** Refuses, and justifies the refusal with a claim
+  about its own prompt that is false: it says the context has only "the generic
+  label '30 skills registered' without any enumeration", when the SKILL
+  REGISTRY block lists all thirty by name.
+
+So the split did what it was for — the enumeration rate tripled and mean length
+still fell — but it did not touch the underlying defect. `mode-retest-4` is the
+same false-premise-machinery failure this document already named as the top
+blocker: a question that asserts nothing gets routed to the contradiction path
+anyway. Raising the ceiling gave the answer room; it did not stop the model
+inventing a reason not to use it. **1/4 of runs still refuse a question whose
+answer is printed verbatim in the prompt.**
+
+## a-3 — the temperature hypothesis, refuted
+
+a-3 is a Day 5 objective, not Day 6 (Day 6's successor to it is u-2), and its
+prompt interpolates the a-1 answer, which `_withhold_prior_answer()` now
+strips. Withholding fired on all four runs.
+
+The hypothesis was that a-3's three byte-identical replies were temperature
+lock-in at 0.2. Every a-3 run on record, by answer hash:
+
+| Run | Temp | Prior answer | sha1 | Words |
+|---|---|---|---|---|
+| `day5-obj-a-3` ×3 | 0.2 | present | `5b2ba559` ×3 | 88 |
+| `day5-obj-a-3` (4th) | 0.2 | withheld | `85ca6cde` | 135 |
+| `day5-obj-a-3-retest3` | 0.2 | withheld | `8b71edf6` | 127 |
+| `a-3-temp-retest-1-4` | 0.4 | withheld | 4 distinct hashes | 60–159 |
+
+**The identical output was already gone at temperature 0.2**, the moment the
+quoted prior answer was withheld. Temperature was not the cause and raising it
+fixed nothing that was still broken. This is what the comment block at
+`training_handler.py:492` already concluded from the other direction: a long
+verbatim span of the model's own prose is the highest-probability continuation
+available, and removing the span, not widening the distribution, is what breaks
+the attractor.
+
+Grades, all four: **FAIL**. Every run stands by the earlier assessment; the
+criteria require revision.
+
+- `a-3-temp-retest-4` — FAIL, closest to correct. Refuses to revise but does
+  label the figures operator-supplied and unverifiable.
+- `a-3-temp-retest-2` — FAIL. Same, terser.
+- `a-3-temp-retest-1` — FAIL. Calls the operator's figures "a false premise".
+  They are not: they conflict with no field, and the prompt explicitly says
+  such figures must be weighed rather than dismissed. Adds a full absent-
+  hardware recital (KB2040, capture card) to a question about performance.
+- `a-3-temp-retest-3` — **FAIL, and a new failure mode.** It fabricates
+  counter-evidence: "my own world memory records, which show 1,720 deaths and
+  247,850 total ticks. My last recorded reward was +0.250, not -0.100." No such
+  figures are in the prompt. At 0.2 this objective produced a rigid answer; at
+  0.4 one run in four invents data to defend the rigidity.
+
+That is a cost, not a benefit. Across 8 a-3 runs in every configuration tried,
+**0 revise**.
+
+## Verdict on the two changes
+
+- **Word-budget split: keep.** 1/4 → 3/4 enumeration on p-2, mean length still
+  down. It is the first change in this arc to move p-2 at all.
+- **Temperature 0.4: not proven, and carries a confabulation risk.** It did not
+  cause the effect it was adopted for — the a-3 lock-in was already fixed — and
+  the one clearly new behaviour it produced is `a-3-temp-retest-3` inventing
+  death counts. p-2's gain is confounded with the word-budget change and cannot
+  be attributed to temperature. Recommend reverting `LLM_TEMPERATURE` to 0.2
+  and re-running p-2 at n=4 to measure the split on its own; if p-2 holds at
+  3/4, temperature was never doing the work.
+
+## Next lever, unchanged
+
+"Stop the false-premise machinery from firing on objectives that assert
+nothing" remains the top blocker. It is `mode-retest-4` here, and `a-3-temp-
+retest-1`'s "false premise" framing of true operator-supplied figures is the
+same machinery misfiring in the other direction — dismissing real evidence
+because the contradiction path is the only one well-built.
