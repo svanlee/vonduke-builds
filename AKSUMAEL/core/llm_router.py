@@ -25,11 +25,12 @@ import config
 # Sampling temperature sent on every routed call. This is the value that
 # actually applies: an OpenAI-compatible `temperature` in the request body
 # overrides llama-server's own --temp, so the mesh-llm unit file is not the
-# knob for this — this constant is. Raised 0.2 → 0.4 on 2026-08-09 to widen
-# the sampling distribution for training answers. Callers that need
-# determinism (the Overseer, safety/core) pass their own temperature and are
-# unaffected.
-LLM_TEMPERATURE = 0.4
+# knob for this — this constant is. Raised 0.2 → 0.4 on 2026-08-09 and reverted
+# to 0.2 the same day: the diversity it bought was already there at 0.2, and one
+# a-3 run in four fabricated death, tick and reward figures to defend a refusal.
+# Callers that need determinism (the Overseer, safety/core) pass their own
+# temperature and are unaffected.
+LLM_TEMPERATURE = 0.2
 
 _lock          = threading.Lock()
 _call_counter  = 0

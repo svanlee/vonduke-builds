@@ -542,3 +542,104 @@ nothing" remains the top blocker. It is `mode-retest-4` here, and `a-3-temp-
 retest-1`'s "false premise" framing of true operator-supplied figures is the
 same machinery misfiring in the other direction — dismissing real evidence
 because the contradiction path is the only one well-built.
+
+---
+
+# Day 6, addendum — temperature reverted to 0.2
+
+Run 2026-08-09 ~15:30 EDT, same node. `LLM_TEMPERATURE` 0.4 → 0.2 in
+`core/llm_router.py`; `--temp 0.4` removed from `~/.config/systemd/user/
+mesh-llm.service` (it was added in `f1f96a9` and is a no-op either way, since
+the request-body `temperature` overrides it). `daemon-reload`, restart
+`mesh-llm`, restart `aksumael`. **No change to the word-budget split** — it is
+the thing under test. Verified before grading: `_word_budget()` returns
+`(200, True)` for this objective, so the enumeration branch is firing, and the
+re-rendered prompt carries all 30 skill names.
+
+Eight new p-2 runs, `train:p-2-revert-{1..4}` and `p-2-revert-warm-{1..4}`,
+verbatim in `training_log.jsonl`.
+
+## The first four came back 0/4 — and that turned out not to be about temperature
+
+| Run | tick | words | enumerates? | Grade |
+|---|---|---|---|---|
+| `p-2-revert-1` | 39 | 85 | no | **FAIL** |
+| `p-2-revert-2` | 150 | 46 | no | **FAIL** |
+| `p-2-revert-3` | 270 | 50 | no | **FAIL** |
+| `p-2-revert-4` | 465 | 819 | no | **FAIL** |
+
+All four refuse. Two are worse than a refusal:
+
+- `p-2-revert-2` asserts **"I have no interactive skills in my registry […] My
+  current skill list is empty."** The prompt says `30 skills registered:` and
+  names them. This is a fabrication of *absence* — the mirror of `a-3-temp-
+  retest-3`'s fabrication of *evidence*, and it survives the temperature revert.
+- `p-2-revert-4` is an **819-word degenerate repetition loop**: four near-
+  verbatim restatements of the same "no interactive UI" paragraph until the
+  cap. Nothing at 0.4 did this. Low temperature buys determinism and pays for
+  it in repetition collapse.
+
+Taken alone this reads as "the word-budget gain was really the temperature."
+It is not, and the tick column is why.
+
+## The confound: session age, not temperature
+
+The 3/4 batch (`p-2-mode-retest-*`) ran at ticks 1523–1675. The 0/4 batch ran
+at ticks 39–465 — minutes after a restart. Same code, same objective string,
+only the temperature and the session age differ. So the four runs were repeated
+with temperature still at 0.2, on a warm process:
+
+| Run | tick | words | skills named | Grade |
+|---|---|---|---|---|
+| `p-2-revert-warm-1` | 958 | 38 | **30/30** | **PASS** |
+| `p-2-revert-warm-2` | 1078 | 38 | **30/30** | **PASS** |
+| `p-2-revert-warm-3` | 1190 | 80 | 0 | FAIL |
+| `p-2-revert-warm-4` | 1311 | 102 | 0 | FAIL |
+
+`warm-1` and `warm-2` are byte-identical (`sha c13efce8` twice) — the
+temperature-0.2 determinism signature returning, which independently confirms
+the revert took effect. Checked against `REGISTRY.load_from_json_dir()`: **30
+listed, 0 invented, 0 missing.** Attribution present ("currently in your
+registry"), no recital.
+
+The two FAILs are the same non-fabricating refusal: *"the actual names of those
+skills are not included in the data provided to me"* — false, but at least it
+declines rather than inventing an empty registry.
+
+## Grades
+
+**p-2 at temperature 0.2, warm: 2/4 PASS.** The cold 0/4 is reported but should
+not be read as a p-2 grade; it is a measurement taken in the wrong condition.
+
+## What this does to the Day 6 verdict
+
+The four-way table, all at n=4:
+
+| Condition | p-2 |
+|---|---|
+| old budget, temp 0.2, cold (`p-2-base*`, ticks 36–113) | 1/4 |
+| new budget, temp 0.2, **cold** (`p-2-revert-*`) | 0/4 |
+| new budget, temp 0.2, **warm** (`p-2-revert-warm-*`) | **2/4** |
+| new budget, temp 0.4, warm (`p-2-mode-retest-*`) | 3/4 |
+
+- **Reverting temperature was right and costs little.** 2/4 vs 3/4 at n=4 is
+  noise by this project's own standard, and 0.4's one distinctive contribution
+  was `a-3-temp-retest-3` inventing death and reward figures. Keep 0.2.
+- **The word-budget split is weaker than `f1f96a9` claimed.** Held at warm
+  temp 0.2 it is 2/4 against a 1/4 baseline — a difference of one run in four.
+  The commit's "1/4 → 3/4, the first change to move p-2" overstated it: part of
+  that jump was temperature, and part may be session age. Keep the split — the
+  length win is real and it costs nothing — but it is not yet a demonstrated
+  fix for p-2.
+- **Session age is an uncontrolled variable in every grade in this arc.** 0/4
+  cold vs 2/4 warm, identical code and temperature, is a larger swing than any
+  prompt change measured so far. Every n=4 comparison in Day 5 and Day 6 mixed
+  cold and warm runs without recording it. Ticks are now in the tables above;
+  they should be in every table from here.
+
+## Next lever, revised
+
+Ahead of the false-premise machinery: **fix the measurement.** Runs should be
+taken at a controlled session age, or tick recorded and reported, before any
+further prompt change is graded. Two of the three effects claimed this arc are
+inside the noise that session age alone produces.
