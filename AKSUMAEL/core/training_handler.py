@@ -984,8 +984,41 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # makes attribution free, adopting the figure is what creates the
     # opportunity to mis-attribute — so neither number means anything read on
     # its own. Grade the pair.
+    #
+    # The guard on the front is Day 8 k-2 r2, which is a failure of this block
+    # and not of the row it appeared on. k-2 asks how much of a 104G aggregate
+    # its weights account for and supplies nothing new: 104G is the bot's own
+    # df line, quoted back at it. The rep opened "The objective supplies the
+    # figure 104G used. My own context carries no such figure" — both clauses
+    # false — and, having reclassified its own reading as operator evidence,
+    # completed the template's demand for an updated assessment by asserting
+    # the aggregate IS the breakdown ("approximately 104GB ... is occupied by
+    # model weights and training data"). The fabrication is downstream of the
+    # template, not of the context-boundary rule.
+    #
+    # carries_evidence is doing what it was written to do — it excludes
+    # enumerations and short questions, and k-2 is neither — so the gate is not
+    # the defect. The defect is that a template with no stated trigger reads as
+    # unconditional, and an unconditional template will find something to
+    # consume. t-2 r2 is the same shape one block over, manufacturing a premise
+    # ("minecraft") the objective never made so the contradiction machinery had
+    # a target. Day 8's session file called this block "inert" on rows carrying
+    # no evidence; it is available, which is not the same thing.
+    #
+    # So the trigger is stated in the block itself rather than tightened in the
+    # gate. A gate cannot make this call: "a figure or measurement presented as
+    # new" is not a property the objective text carries syntactically — a digit
+    # test passes k-2, which quotes 104G, and fails an objective that supplies
+    # a fact in words. What separates them is whether the objective offers the
+    # figure as something the bot did not have, and that is a reading, not a
+    # match. The instruction is negative in form but names no refusal vocabulary
+    # — it says which objectives the section covers, not what to say when it
+    # does not, so there is no phrase here to hand back as a reason.
     evidence = (
         '=== NEW EVIDENCE VERSUS DISAGREEMENT ===\n'
+        'Only apply this if the objective explicitly presents a figure or '
+        'measurement as new information. If no new figure appears in the '
+        'objective, skip this instruction entirely.\n'
         'The objective may carry facts your context does not: figures from '
         'world memory, a death or tick count, a past reward, a measurement, '
         'something the operator observed directly. The "live readings win" '
