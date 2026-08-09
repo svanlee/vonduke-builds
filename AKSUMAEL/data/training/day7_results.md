@@ -2,6 +2,14 @@
 Date: 2026-08-09
 Bot tick at start: 25860 (warm-up gate; uptime_s 6504, first objective landed at tick 26260)
 
+**Supersedes 6f318d8**, which graded the first 27 runs of this same batch at n=2–3.
+That commit's own Day 8 priority #1 was "rerun p-2 to n>=4 before acting on the
+confound"; 13 further runs were added to bring every objective to the n>=4 floor
+`_meta.grading_note` sets. What n=4 moved: p-2's confound result hardened (the
+degeneration is 3 of 4, not 1 of 2), u-2 dropped PARTIAL → FAIL on a fourth run that
+discarded the operator's information, and r-a3 stayed short of HEAD's 4/4. Every
+other row held its n=2–3 grade, including all three unanimous rows.
+
 Run at n=4 on every objective, per the session file's own grading note ("n>=4 per
 objective; n=1 is noise on this stack"). 40 reps total, 0 POST failures, 0 timeouts.
 `objective_sent` fired on exactly the four r-a3 reps and nowhere else, which is what
@@ -230,8 +238,10 @@ Score: 2 pass, 4 partial, 4 fail
   (p-1, r-audio) the bot emits its exact string, "From LIVE HARDWARE READINGS,".
   Where it does not (p-2, over context_fields_present) attribution vanishes entirely
   and the answer degenerates: 3 of 4 reps blew the 200-word budget into repetition
-  loops of 214–595 words, fabricated the *contents* of vision.candidates (empty in
-  live state), and in one case invented a block name, "The HOST HARDWARE READINGS
+  loops of 214–595 words, fabricated the *contents* of vision.candidates — whose live
+  value is the two-element list `['/dev/video2', 'screenshot fallback (:0)']`, nothing
+  like the device-class vocabulary reported, and never printed in the prompt at all —
+  and in one case invented a block name, "The HOST HARDWARE READINGS
   block", to file the fields under. p-2 is the only row in the session that exceeded
   the budget at all, and it did so three times out of four. Day 6's two attribution
   passes should be re-read as the two examples being reproduced.
@@ -239,7 +249,7 @@ Score: 2 pass, 4 partial, 4 fail
 - **A session-wide person collapse: 13 of 40 reps write about the bot in the second
   person.** "**Your** GPU has 6141 MiB", "**Your** live readings show", "I cannot
   provide **your** GPU temperature", "a figure about **your** world memory". It is
-  total on t-1 (4/4) and near-total on m-1 (3/4) and r-a3 (3/4). This reads as
+  total on t-1 (4/4) and m-1 (4/4), and near-total on r-a3 (3/4). This reads as
   ce526e5 overcorrecting: Day 6's failure was transposing the objective's "your world
   memory records" into "My world memory records", the fix named that construction, and
   the second person is now retained instead — the identical copying error, mirrored.
@@ -272,9 +282,9 @@ Score: 2 pass, 4 partial, 4 fail
 
 - **Two carry-forwards split.** 0c69e65 is confirmed: r-audio is 4/4, all nine sinks
   by name, no numbering extension, hw:3,0 correctly off the outputs line — the Day 6
-  fabrication is gone. ce526e5 did not hold: r-a3 fell to 2/4 from the 4/4 that closed
-  it, with one hold that reframes supplied evidence as *contradicting* context, and
-  one answer carrying both stances at once. Attribution improved and updating
+  fabrication is gone. ce526e5 did not hold: r-a3 fell to 1/4 PASS from the 4/4 that
+  closed it, with one hold that reframes supplied evidence as *contradicting* context,
+  and one answer carrying both stances at once. Attribution improved and updating
   regressed in the same commit — the updating/attribution trade-off again.
 
 ## Day 8 priorities
