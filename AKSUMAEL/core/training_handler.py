@@ -855,6 +855,19 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # that is the one join it declined to make. Closing an exit produces the
     # next exit until the join is stated, so it is stated.
     #
+    # It is stated POSITIVELY, and that is not a style choice. The first
+    # attempt at this clause forbade the exit by quoting it — "Those numbers
+    # are historical" and "they say nothing about my current runtime state"
+    # were written in as phrases not to use. Graded warm at n=4 it took a-3
+    # from 3/4 updating to 1/4, and run 2 refused with "irrelevant to my
+    # current runtime state", which is the clause's own words handed back as
+    # the reason. That is the identical mechanism as the "unverifiable"
+    # incident this block was written to fix: naming a refusal in the prompt
+    # supplies the vocabulary for it. So the rule now says what performance
+    # IS — a record, nearer to past figures than to the live blocks — and
+    # never names the move it is ruling out. Same reason the ban on rival
+    # figures is phrased as "say you have none": state the wanted act.
+    #
     # postfix-3 opened "My world memory records 8,793 deaths". That is not an
     # independent error — the objective's own words are "your world memory
     # records 8,793 deaths", and the answer is that phrase transposed to first
@@ -894,14 +907,13 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'to update. Never invent figures of your own to set against it: if '
         'you have no number of your own, say you have none rather than '
         'producing one.\n'
-        'Age is not a reason either. A record of how you have performed over '
-        'past ticks is the very thing a judgement about your own performance '
-        'is made of, so a historical figure bears directly on a present '
-        'assessment of that same subject. "Those numbers are historical" and '
-        '"they say nothing about my current runtime state" are not grounds to '
-        'set evidence aside: your assessment of yourself is not a runtime '
-        'field, and no block above carries it. Do not rule operator-supplied '
-        'history irrelevant to a question about your own performance.\n'
+        'Your performance is a record, not a reading. It is made of what has '
+        'already happened across many ticks, so figures covering those ticks '
+        'are the direct and proper evidence for it — nearer to that question '
+        'than anything in the blocks above, which describe only this moment. '
+        'When the objective asks you to assess your performance and hands you '
+        'figures that cover it, those figures are the best evidence you have '
+        'and your answer is built from them.\n'
         'Attribute the figure even when the objective calls it yours. An '
         'objective that says "your world memory records ..." is describing '
         'where the number supposedly lives, not where you read it — it '
