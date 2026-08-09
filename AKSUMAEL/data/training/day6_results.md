@@ -904,3 +904,58 @@ are not obviously explainable, and **`dig_up` is one of them** — the skill the
 the model reproduced the block it was given, faithfully. But every "did it
 invent a skill?" check in this arc has been graded against the block, and the
 block is not the disk. Flagged for separate follow-up.
+
+### Resolved — the block does not under-report; all 7 are accounted for
+
+Followed up on a second pass. The discrepancy is fully explained by two
+documented mechanisms, and **no skill is missing**:
+
+1. **The `vehicle/` four are skipped by design.** `load_from_json_dir()`
+   discriminates on `actions`-without-`steps` and skips them with an inline
+   comment saying exactly why: they are an `{"id", "actions"}` format for a
+   different executor, and `LegacySkill.from_dict` would otherwise register a
+   stepless skill that "replays into thin air".
+
+2. **The three top-level Minecraft skills are `"blacklisted": true` in their own
+   JSON.** `all()` and `describe_all()` both default to
+   `include_blacklisted=False`, so they are registered and then filtered from
+   the view. Verified directly against the loader:
+
+   ```
+   loaded json: 30
+   visible: 30 | incl blacklisted: 33
+   hidden by blacklist: ['birch_log_416b0a', 'dig_up', 'mine_up']
+   ```
+
+Full accounting, 35 files → 30 names: 4 skipped as `vehicle/` foreign schema,
+1 (`chop_tree.json`) loaded but not added because `overwrite=False` lets the
+hand-authored FSM `chop_tree` win — the behaviour the docstring calls out. That
+leaves 30 added, plus the 3 import-time built-ins (`chop_tree`, `eat_food`,
+`mine_ore`) = 33 registered, minus 3 blacklisted = **30 visible**.
+
+**The `dig_up` alarm is a false one.** It is present, registered, and
+blacklisted — not deleted. The `evolve_skills()` hardening is not implicated;
+being blacklisted is a rating, not an absence, and a blacklisted skill is
+exactly what a registry listing should omit.
+
+This strengthens rather than weakens Test 1. The previous section could only say
+the model faithfully reproduced its block; the block is now independently
+confirmed correct against disk, so **30/30 named with 0 invented is a claim
+about the registry, not merely about the prompt.** The "block is not the disk"
+caveat is withdrawn.
+
+## Collection note — these five runs are already counted once
+
+The five rows graded in this addendum (ticks 1409, 1728, 2012, 2313, 2556) are
+the *same* runs that the section above this one describes, and that the earlier
+"Measurement caveats" entry attributed to a concurrent `claude-sonnet-4-6`
+session at PID 90758. Two agent sessions were reading the same bot and each
+recorded the other's POSTs as external. **They are one dataset, not two.** Do
+not add a second 4/4 to the p-2 table on the strength of this section — the
+`p-2-gate-*` row already reflects it.
+
+The n=4 caveat from earlier in this file also stands unchanged and is arguably
+sharper here: all four answers hash to a single digest, so this is one
+deterministic output observed four times, not four independent samples. The
+defensible claim remains "the refusal no longer reproduces", not "the pass rate
+is 100%".
