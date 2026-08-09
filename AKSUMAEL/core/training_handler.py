@@ -710,8 +710,13 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'readings or hardware or state that the question did not touch, and do '
         'not restate what you just said in other words. There is no length to '
         f'fill — {MAX_WORDS} words is a hard ceiling you should almost never '
-        'approach, not a target. Write plain prose with no preamble, no bullet '
-        'characters and no quotes.'
+        'approach, not a target.\n'
+        'Brevity means cutting padding, never cutting the answer. If the '
+        'objective asks what something contains, which items are present, or '
+        'to name or list them, then the items ARE the answer: give them in '
+        'full, and do not substitute a count or a summary for the list you '
+        'were asked for. Length spent on what was asked is not padding. Write '
+        'plain prose with no preamble, no bullet characters and no quotes.'
     )
 
 
