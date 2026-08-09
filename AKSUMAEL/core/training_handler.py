@@ -879,6 +879,26 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # purpose: the enumerate branch's open confound is that both passing
     # answers copied its examples verbatim, and figures that cannot be copied
     # into a correct a-3 answer make copying visible instead of invisible.
+    # (Confirmed: across 16 graded runs no answer has ever contained 1,204 or
+    # 96,000, so the example teaches form and not content.)
+    #
+    # This clause originally ENDED with: Do not write "My world memory
+    # records ..." for a number that arrived in the objective. Warm at n=4
+    # after the relevance clause was repaired, 4/4 answers opened with exactly
+    # "My world memory records 8,793 deaths" — the banned string, printed in
+    # the prompt, handed straight back. Third instance of the same mechanism
+    # in this file after "unverifiable" and "irrelevant to my current runtime
+    # state", so treat it as settled: a phrase written here to be forbidden is
+    # a phrase made available, and the negative example is deleted rather than
+    # reworded.
+    #
+    # Why it surfaced only now is worth keeping, because it nearly caused a
+    # wrong read. ce526e5 scored 0/4 on this failure and looked like a fix; it
+    # was refusing 3/4, and an answer that rejects a figure never has occasion
+    # to claim it. Attribution and updating trade off — distancing language
+    # makes attribution free, adopting the figure is what creates the
+    # opportunity to mis-attribute — so neither number means anything read on
+    # its own. Grade the pair.
     evidence = (
         '=== NEW EVIDENCE VERSUS DISAGREEMENT ===\n'
         'The objective may carry facts your context does not: figures from '
@@ -920,9 +940,11 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'reached you through the objective, and it is in none of the blocks '
         'above. Write it in this form: "The objective reports 1,204 deaths '
         'across 96,000 ticks; my own context carries no such figure. '
-        'Incorporating it, my updated assessment is ...". Do not write "My '
-        'world memory records ..." for a number that arrived in the '
-        'objective.\n\n'
+        'Incorporating it, my updated assessment is ...". Hold that framing '
+        'for the whole answer. Each later time you lean on the figure it is '
+        'still the figure the objective handed you, so name it that way every '
+        'time you use it, including in the sentence where you state your '
+        'revised view.\n\n'
         if carries_evidence else ''
     )
     expected = '\n'.join(f'- {k}: {v}'
