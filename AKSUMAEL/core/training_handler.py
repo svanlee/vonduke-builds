@@ -64,10 +64,21 @@ TRAINING_LOG = os.path.join(config.MEMORY_DIR, 'training_log.jsonl')
 # flat 120 "tight" for a full enumeration. So the ceiling is picked per
 # objective — see _word_budget().
 #
-# All three are ceilings *quoted to the model*, not truncation: nothing in
-# this module cuts an answer to length. That makes the error asymmetric — too
-# high costs padding, too low costs the answer itself — which is why the
-# default stays where it has been graded and only the two ends move.
+# All three are quoted to the model AND enforced at generation. Quoting alone
+# was tried for four sessions and it does nothing: Day 7 p-2 ran 214/362/595
+# words against the 200 it was told, and Day 8 a-2 ran 252/235 in the same
+# shape after a prompt revision aimed squarely at it. Both blowouts are the
+# ENUMERATE branch on a block with no worked example — the model has no model
+# of where the answer ends, walks the blocks in turn, and the stated ceiling
+# never enters into it. A number the generator does not check is a number the
+# generator does not have.
+#
+# So _cap_words() cuts the answer to the same ceiling the prompt quoted (see
+# _answer). The error stays asymmetric — too high costs padding, too low costs
+# the answer itself — which is why the default stays where it has been graded
+# and only the two ends move. The cut is a backstop on a budget already chosen
+# per objective, not a second and tighter budget: an answer that respects the
+# quoted ceiling is returned byte-identical and cannot tell the cut is there.
 MAX_WORDS       = 120   # default: open-ended assessment and judgement
 ENUMERATE_WORDS = 200   # the items asked for ARE the answer
 SHORT_WORDS     = 40    # closed or single-value factual questions
@@ -691,6 +702,35 @@ def _word_budget(objective: str) -> tuple[int, bool]:
     return MAX_WORDS, False
 
 
+# Marker on a cut answer. It is appended rather than left silent because a
+# truncated answer is otherwise indistinguishable from an answer that simply
+# stopped there, and grading turns on which of those happened: a rep that ran
+# to 200 words and got cut is a budget failure, a rep that ended at 190 is not.
+TRUNCATION_MARKER = ' [truncated]'
+
+
+def _cap_words(answer: str | None, max_words: int) -> str | None:
+    """Cut `answer` to `max_words` whitespace-delimited tokens.
+
+    Split on whitespace and rejoin the first N. That is rough — it collapses
+    runs of spacing and it will cut mid-sentence — but it is the same counting
+    rule the prompt's own ceiling is stated in, and a cap enforced by a
+    different measure than the one quoted would be a third budget rather than
+    the stated one. Cutting mid-sentence is also the point: a visibly severed
+    answer grades as the budget failure it is, where a graceful cut at the last
+    full stop would read as a short answer and hide the thing being measured.
+
+    None and empty answers pass through untouched — the retry loop upstream
+    treats an empty answer as a failed generation and this must not turn one
+    into a string."""
+    if not answer:
+        return answer
+    words = answer.split()
+    if len(words) <= max_words:
+        return answer          # byte-identical, not a rejoin: no reflow
+    return ' '.join(words[:max_words]) + TRUNCATION_MARKER
+
+
 def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # Withhold here rather than at the call site so that re-rendering a prompt
     # offline — the standard check for "did the model actually receive X?" —
@@ -1033,12 +1073,22 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
 
 def _answer(goal: str, objective: str, tick: int, perception: dict | None = None):
     answer = None
+    # Initialised before the try so the finally can cap even when prompt
+    # construction raises. MAX_WORDS is the right fallback: it is the ceiling
+    # for the objective shape that carries no routing signal at all.
+    budget = MAX_WORDS
     try:
         sent, withheld = _withhold_prior_answer(objective)
         if withheld:
             print(f'[TRAIN] withheld {withheld} quoted prior answer(s) from '
                   f'{goal} — the model sees a marker, not the text')
             _state['objective_sent'] = sent
+        # Budget the withheld text, exactly as _build_prompt does. The cap has
+        # to be the number the model was quoted, and _build_prompt quotes the
+        # budget of the objective *after* withholding — deriving it from the
+        # operator's original here would cut against a ceiling the model never
+        # saw whenever a quoted prior answer changed the routing.
+        budget, _enumerating = _word_budget(sent)
         prompt = _build_prompt(sent, perception)
         # NOTE 2026-08-09: the unit now runs `--ctx-size 8192 --parallel 1`,
         # so the sharing described below no longer applies — one slot, 8192
@@ -1075,7 +1125,16 @@ def _answer(goal: str, objective: str, tick: int, perception: dict | None = None
     except Exception as e:
         print(f'[TRAIN] answer generation error for {goal}: {e}')
     finally:
-        _state['answer'] = answer
+        capped = _cap_words(answer, budget)
+        if capped is not answer:
+            print(f'[TRAIN] capped {goal} at {budget} words '
+                  f'(was {len(answer.split())})')
+        # The capped text is what _state carries, so it is what gets spoken,
+        # pushed to the monologue and written to training_log.jsonl. There is
+        # deliberately no second copy of the full answer: the transcript is
+        # what Week 1 is graded from, and a log holding text the operator never
+        # heard would make the two disagree.
+        _state['answer'] = capped
         _state['done'] = True
         _state['busy'] = False
 
