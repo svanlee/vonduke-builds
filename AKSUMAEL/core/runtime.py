@@ -892,6 +892,15 @@ def run():
             except Exception as e:
                 print(f'[ATTENTION] focus sync error: {e}')
 
+            # Training focus — gates the whole Minecraft half of this tick
+            # (see the "Training focus" block further down). Read from the
+            # attention manager rather than config.ACTIVE_ENV directly: the
+            # manager is *initialised* from ACTIVE_ENV (see _default_env
+            # above), so ACTIVE_ENV=training already lands here at boot, but
+            # a live voice/bridge switch back to minecraft must un-gate the
+            # FSM even though ACTIVE_ENV still says training.
+            _training_mode = attention_manager.get_active_name() == 'training'
+
             # ── Mastermind hive — drain assigned goals, publish status ──
             try:
                 goals.check_injected_goals()
@@ -942,14 +951,6 @@ def run():
                 )
                 goals.last_retirement = None
 
-            # ── Curriculum: suggest a new goal when idle (v1.1) ─
-            try:
-                curriculum.run_every_n_ticks(tick, goals, inventory, world)
-            except Exception as e:
-                print(f'[CURRICULUM] error: {e}')
-
-            progression.auto_update(inventory, world_mem, tick)
-
             # ── Proximity to base (used by chest interaction + LLM context) ─
             _near_base = (
                 world_mem.pos_x is not None and world_mem.pos_z is not None
@@ -957,46 +958,60 @@ def run():
                      + (world_mem.pos_z - BASE_Z) ** 2) ** 0.5 <= 20
             )
 
-            # Made it back after a respawn — resume normal exploration.
-            if _near_base and goals.current_goal() == 'return_to_base':
-                print('[GOALS] reached base — clearing return_to_base')
-                goals.current = 'explore'
-                goals.save()
+            # ── Minecraft goal machinery ────────────────────────
+            # Curriculum, craft chains and ore progression all *push goals*.
+            # Under training focus they'd stomp the train: objective the
+            # handler is working through (goals.push puts them on top of the
+            # same stack), so gate the whole group — not just the FSM below.
+            if not _training_mode:
+                # ── Curriculum: suggest a new goal when idle (v1.1) ─
+                try:
+                    curriculum.run_every_n_ticks(tick, goals, inventory, world)
+                except Exception as e:
+                    print(f'[CURRICULUM] error: {e}')
 
-            # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
-            # Skip when mine_ore is the primary goal — crafting chains should
-            # not interrupt ore mining (bot has creative-mode access to tools).
-            if (tick % 60 == 0 and inv_reader._cache_ts > 0
-                    and goals.current != 'mine_ore'
-                    and 'mine_ore' not in goals.stack):
-                goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
+                progression.auto_update(inventory, world_mem, tick)
 
-            # ── Ore progression — mine one stack of each ore in tier order ─
-            # Runs every 60 ticks alongside suggest_craft_goal. Skips when a
-            # craft goal or ore-mine goal is already queued to avoid stomping
-            # on in-progress work.
-            if (tick % 60 == 0
-                    and not goals.has_craft_goal()
-                    and goals.current_goal() not in ore_progression.ALL_MINE_GOALS
-                    and not any(g in ore_progression.ALL_MINE_GOALS for g in goals.stack)):
-                _ore_goal, _ore_reason = ore_progression.next_goal(inventory)
-                if _ore_goal and _ore_goal not in (goals.current_goal(),):
-                    print(f'[ORE_PROG] pushing {_ore_goal} ({_ore_reason})')
-                    goals.push(_ore_goal)
-                elif _ore_goal is None:
-                    print(f'[ORE_PROG] {_ore_reason}')
+                # Made it back after a respawn — resume normal exploration.
+                if _near_base and goals.current_goal() == 'return_to_base':
+                    print('[GOALS] reached base — clearing return_to_base')
+                    goals.current = 'explore'
+                    goals.save()
 
-            # ── Auto-return to base when inventory is full ───────────────
-            # InventoryTracker.should_drop_junk() fires when total tracked
-            # item count exceeds 27 slots. When that's true and the bot
-            # isn't near base yet, nudge it home so the chest interaction
-            # block below can stash the overflow.
-            if (inventory.should_drop_junk() and not _near_base
-                    and goals.current_goal() not in ('return_to_base',)
-                    and 'return_to_base' not in goals.stack
-                    and tick % 120 == 0):   # check every ~60s, not every tick
-                print('[GOALS] inventory full — pushing return_to_base to stash overflow')
-                goals.push('return_to_base')
+                # ── Craft goal auto-push (every 60 ticks if inv cache is warm) ─
+                # Skip when mine_ore is the primary goal — crafting chains should
+                # not interrupt ore mining (bot has creative-mode access to tools).
+                if (tick % 60 == 0 and inv_reader._cache_ts > 0
+                        and goals.current != 'mine_ore'
+                        and 'mine_ore' not in goals.stack):
+                    goals.suggest_craft_goal(inv_reader.read(force=False), world_mem.chest_inv)
+
+                # ── Ore progression — mine one stack of each ore in tier order ─
+                # Runs every 60 ticks alongside suggest_craft_goal. Skips when a
+                # craft goal or ore-mine goal is already queued to avoid stomping
+                # on in-progress work.
+                if (tick % 60 == 0
+                        and not goals.has_craft_goal()
+                        and goals.current_goal() not in ore_progression.ALL_MINE_GOALS
+                        and not any(g in ore_progression.ALL_MINE_GOALS for g in goals.stack)):
+                    _ore_goal, _ore_reason = ore_progression.next_goal(inventory)
+                    if _ore_goal and _ore_goal not in (goals.current_goal(),):
+                        print(f'[ORE_PROG] pushing {_ore_goal} ({_ore_reason})')
+                        goals.push(_ore_goal)
+                    elif _ore_goal is None:
+                        print(f'[ORE_PROG] {_ore_reason}')
+
+                # ── Auto-return to base when inventory is full ───────────────
+                # InventoryTracker.should_drop_junk() fires when total tracked
+                # item count exceeds 27 slots. When that's true and the bot
+                # isn't near base yet, nudge it home so the chest interaction
+                # block below can stash the overflow.
+                if (inventory.should_drop_junk() and not _near_base
+                        and goals.current_goal() not in ('return_to_base',)
+                        and 'return_to_base' not in goals.stack
+                        and tick % 120 == 0):   # check every ~60s, not every tick
+                    print('[GOALS] inventory full — pushing return_to_base to stash overflow')
+                    goals.push('return_to_base')
 
             if tick % 50 == 0:
                 inventory.save()
@@ -1032,6 +1047,33 @@ def run():
                     reward.add_audio_reward(audio_ev['reward'])
                     if audio_ev.get('persona'):
                         tts.say_line(audio_ev['persona'])
+
+            # ── Training focus: skip the Minecraft half of the tick ─────
+            # With focus on 'training' the bot's job is to work through
+            # training objectives, not to play Minecraft. Everything above
+            # still runs every tick — capture, YOLO, HUD, voice/TTS, the
+            # attention sync and training_handler.maybe_handle() — so vision
+            # keeps feeding the training context and the human channel stays
+            # open. Everything below is Minecraft: the FSM, the LLM action
+            # call, skill replay, the anti-stuck executor nudges and the F3
+            # overlay toggle.
+            #
+            # Skipping *only* fsm.tick() would be worse than not gating at
+            # all: fsm_state would stay None, and the blocks below gated on
+            # `fsm_state in (State.EXPLORE, None)` — learning orbit, surveyor
+            # sweep, curriculum orbit — read None as "safe to run" and would
+            # start driving the camera. Hence the full skip.
+            if _training_mode:
+                if tick % 60 == 0:
+                    _write_health_log(tick, goals.current_goal(), reward.average(),
+                                       cognitive, camera_index=pipeline.camera_index)
+                if tick % 20 == 0:
+                    _yolo_n = len(objects)
+                    print(f'[{tick:04d}] {round(time.time() - t0, 2)}s | TRAINING | '
+                          f'goal={goals.current_goal() or "none"} | yolo:{_yolo_n} | '
+                          f'minecraft FSM gated')
+                time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
+                continue
 
             # ── Unknown object → learning orbit ────────────────
             # Two trigger paths:
