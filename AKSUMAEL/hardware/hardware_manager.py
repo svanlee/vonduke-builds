@@ -466,6 +466,12 @@ def build_manifest() -> dict:
         manifest['kb2040'] = {'present': False, 'responding': False,
                               'error': f'{type(e).__name__}: {e}'}
 
+    try:
+        manifest['vision'] = _vision_source()
+    except Exception as e:
+        manifest['vision'] = {'source': None, 'kind': 'unknown',
+                              'note': f'{type(e).__name__}: {e}'}
+
     manifest['counts'] = {
         'video':  len(devices.get('video', [])),
         'ttyUSB': len(devices.get('ttyUSB', [])),
@@ -481,6 +487,33 @@ def build_manifest() -> dict:
 _manifest: dict = {}
 _manifest_lock = threading.Lock()
 _writer_thread = None
+
+
+def _vision_source() -> dict:
+    """What the runtime is actually seeing *through* — not what is plugged in.
+
+    The `video` list is an enumeration of /dev nodes, and on this laptop that
+    is misleading on its own: /dev/video0 exists and opens but only ever
+    delivers black, so core/capture.py skips past it and, once every camera
+    has failed, falls back to grabbing the X display. That fallback has to be
+    visible here, otherwise the manifest reads as "no camera" sitting next to
+    a list of camera nodes that plainly do exist.
+
+    Deliberately its own block rather than an extra entry in `video`: a
+    screen grab is not a device node, has no mode/readable/writable, and
+    would inflate counts.video for anything counting cameras.
+    """
+    adapter = CaptureCardAdapter()
+    metrics = adapter.get_metrics()
+    return {
+        'source':       metrics.get('device'),      # e.g. 'screenshot fallback (:0)'
+        'kind':         metrics.get('kind'),        # 'camera' | 'screenshot' | None
+        # False whenever the frames are a desktop grab — the field to read
+        # before believing the bot can see the game.
+        'card_present': metrics.get('card_present', False),
+        'candidates':   metrics.get('candidates', []),
+        'summary':      adapter.get_summary(),
+    }
 
 
 def get_manifest() -> dict:
@@ -551,6 +584,9 @@ def manifest_summary() -> dict:
     return {
         'counts': m.get('counts', {}),
         'video':  [d.get('path') for d in devices.get('video', [])],
+        # Which of those nodes (or the screen-grab fallback) is actually
+        # feeding frames — see _vision_source().
+        'vision': m.get('vision', {}),
         'ttyUSB': [d.get('path') for d in devices.get('ttyUSB', [])],
         'ttyACM': [d.get('path') for d in devices.get('ttyACM', [])],
         'input':  [d.get('name') for d in devices.get('input', [])],
