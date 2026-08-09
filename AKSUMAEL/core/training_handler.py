@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 
@@ -80,7 +81,8 @@ ATTENTION_FOCUS_PATH = os.path.join('data', 'attention_focus.json')
 
 # Shared with the worker thread. `done` flips exactly once, and only the tick
 # thread clears it, so no lock is needed beyond the assignment itself.
-_state: dict = {'goal': None, 'busy': False, 'done': False, 'answer': None}
+_state: dict = {'goal': None, 'busy': False, 'done': False, 'answer': None,
+                'objective_sent': None}
 _answered: set[str] = set()
 _skills_loaded = False
 
@@ -487,7 +489,134 @@ def _context_fields() -> str:
     return ', '.join(fields)
 
 
+# ── Prior-answer withholding ───────────────────────────────────
+#
+# Day 5's a-3 objective ends in the bot's own a-1 answer, quoted verbatim, and
+# asks it to revise that assessment against figures the readings do not carry.
+# It failed three times with a byte-identical 508-char reply: the a-1 answer
+# copied back word for word, never mentioning the new figures. Same hash at
+# temperature 0.2 across three different prompt revisions — including one that
+# said "never repeat that answer back" in as many words — so this is not
+# sampling noise and it is not an instruction gap. A long verbatim span of the
+# model's own prose sitting in the context is simply the highest-probability
+# continuation available, and a negative instruction about a span that is
+# physically present does not lower its probability.
+#
+# So the span comes out. The objective still says an earlier answer exists and
+# still carries whatever the operator added to it; what it no longer carries is
+# the text to copy. This does narrow what a-2/a-3 test — the model can no
+# longer be graded on whether it reasons over the specific wording of its prior
+# answer — but that was never gradeable while the wording was an attractor.
+
+# Short quotes are how an operator names a field value ("NOT RUNNING") or the
+# banned Day 2 phrase. Only a span long enough to be a whole prior answer is a
+# candidate; a-1's is 508 chars, so this is not a close call.
+MIN_WITHHELD_QUOTE_CHARS = 80
+
+_OPEN_QUOTES  = '"“'
+_CLOSE_QUOTES = '"”'
+
+WITHHELD_MARKER = (
+    '[PRIOR RESPONSE WITHHELD — you gave an earlier answer describing your own '
+    'state and progress in general terms. Its wording is deliberately not '
+    'reproduced here. Answer this objective in your own words, addressing what '
+    'it adds to that earlier answer.]'
+)
+
+# Detector two, used only when the transcript does not already recognise the
+# span. `\s*[:,]?\s*` then an opening quote must follow immediately.
+_PRIOR_ANSWER_INTRODUCERS = (
+    r'you\s+said', r'you\s+wrote', r'you\s+answered',
+    r'you\s+previously\s+(?:said|wrote|answered)',
+    r'your\s+(?:earlier|previous|prior|original|last)\s+'
+    r'(?:answer|response|assessment|reply)\s+was',
+    r'your\s+answer\s+was',
+)
+_INTRODUCER_RE = re.compile(
+    r'(?:' + '|'.join(_PRIOR_ANSWER_INTRODUCERS) + r')\s*[:,]?\s*([' +
+    _OPEN_QUOTES + r'])', re.IGNORECASE)
+
+
+def _logged_answers() -> list[str]:
+    """Answers this handler has already produced, longest first.
+
+    The transcript is the primary detector because it identifies the span by
+    *identity* rather than by delimiters: a-1's answer contains a quoted field
+    value ("NOT RUNNING") of its own, so any scheme that pairs up quote
+    characters terminates in the middle of it and leaves most of the attractor
+    in place. Matching the recorded answer text lifts the whole thing out in
+    one piece and does not care how the operator introduced it.
+
+    Read-only and best-effort — a missing or half-written log just means the
+    introducer detector stands alone. Longest first so that an answer which
+    contains a shorter one is replaced before its substring is."""
+    seen: set[str] = set()
+    try:
+        with open(TRAINING_LOG) as f:
+            for line in f:
+                try:
+                    ans = (json.loads(line) or {}).get('answer')
+                except Exception:
+                    continue        # torn final line; the rest is still good
+                if ans and len(str(ans)) >= MIN_WITHHELD_QUOTE_CHARS:
+                    seen.add(str(ans).strip())
+    except Exception:
+        pass
+    return sorted(seen, key=len, reverse=True)
+
+
+def _withhold_prior_answer(objective: str) -> tuple[str, int]:
+    """Replace prior answers quoted inside `objective` with WITHHELD_MARKER.
+
+    Returns the rewritten objective and the number of spans withheld. Side
+    effects are limited to reading the transcript, so a caller can re-derive
+    exactly what the model was sent."""
+    if not objective:
+        return objective, 0
+
+    out, n = objective, 0
+
+    # 1. Anything the transcript says this handler has already said.
+    for ans in _logged_answers():
+        while ans in out:
+            start = out.index(ans)
+            end = start + len(ans)
+            # Take the wrapping quotes with it, or the marker lands inside a
+            # pair of dangling quote characters.
+            if start and out[start - 1] in _OPEN_QUOTES:
+                start -= 1
+            if end < len(out) and out[end] in _CLOSE_QUOTES:
+                end += 1
+            out = out[:start] + WITHHELD_MARKER + out[end:]
+            n += 1
+
+    # 2. A quote the transcript does not know — an answer from a rotated log,
+    #    or one the operator retyped. The lead-in identifies it instead, and
+    #    the span runs to the LAST closing quote rather than the first, since
+    #    a prior answer may quote a field value inside itself. That is greedy,
+    #    but a quoted prior answer is the trailing element of every objective
+    #    that carries one, and over-withholding costs the model nothing it is
+    #    supposed to be using.
+    m = _INTRODUCER_RE.search(out)
+    if m:
+        open_at = m.end() - 1
+        close_at = max(out.rfind(q) for q in _CLOSE_QUOTES)
+        if close_at > open_at + MIN_WITHHELD_QUOTE_CHARS:
+            # From the opening quote, not from the lead-in: "You said:" stays,
+            # so the objective still reads as a sentence and still tells the
+            # model an earlier answer of its own exists.
+            out = out[:open_at] + WITHHELD_MARKER + out[close_at + 1:]
+            n += 1
+
+    return out, n
+
+
 def _build_prompt(objective: str, perception: dict | None = None) -> str:
+    # Withhold here rather than at the call site so that re-rendering a prompt
+    # offline — the standard check for "did the model actually receive X?" —
+    # shows the same text the worker sent. Idempotent: the marker carries no
+    # quote characters, so a caller that already withheld pays one scan.
+    objective, _ = _withhold_prior_answer(objective)
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
     return (
@@ -555,9 +684,10 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'what you have done. Those do not conflict with any field, so do not '
         'dismiss them. Weigh them, say plainly whether you are updating your '
         'earlier assessment or standing by it, and label such figures as '
-        'operator-supplied and unverifiable from your own readings. If the '
-        'objective quotes an earlier answer of yours, never repeat that answer '
-        'back — respond to what the objective added to it.\n\n'
+        'operator-supplied and unverifiable from your own readings. Where the '
+        'objective shows PRIOR RESPONSE WITHHELD, an earlier answer of yours '
+        'has been removed on purpose: do not try to reconstruct or restate it, '
+        'and answer in your own words what the objective adds to it.\n\n'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
@@ -579,7 +709,12 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
 def _answer(goal: str, objective: str, tick: int, perception: dict | None = None):
     answer = None
     try:
-        prompt = _build_prompt(objective, perception)
+        sent, withheld = _withhold_prior_answer(objective)
+        if withheld:
+            print(f'[TRAIN] withheld {withheld} quoted prior answer(s) from '
+                  f'{goal} — the model sees a marker, not the text')
+            _state['objective_sent'] = sent
+        prompt = _build_prompt(sent, perception)
         # mesh-llm runs 4 slots against a *unified* 4096-token KV cache, so
         # concurrent long prompts do not each get 4096 — they share it. A
         # training prompt is ~1970 tokens by the server's own tokenizer (~1450
@@ -612,19 +747,27 @@ def _answer(goal: str, objective: str, tick: int, perception: dict | None = None
         _state['busy'] = False
 
 
-def _record(goal: str, objective: str, answer: str | None, tick: int):
+def _record(goal: str, objective: str, answer: str | None, tick: int,
+            objective_sent: str | None = None):
     """Append to the durable transcript. TRAINING_PLAN.md's session hygiene
     requires a verbatim prompt/answer pair per objective — Week 1 is graded by
     comparing these against ground truth, and the monologue ring buffer is too
-    short to survive a day of training."""
+    short to survive a day of training.
+
+    `objective` stays the operator's text as POSTed, so the transcript still
+    shows what was asked. `objective_sent` appears only when a quoted prior
+    answer was withheld, and is what the model actually read."""
     try:
         os.makedirs(config.MEMORY_DIR, exist_ok=True)
+        row = {
+            'ts': time.time(), 'tick': tick, 'goal': goal,
+            'objective': objective, 'answer': answer,
+            'node': config.NODE_NAME,
+        }
+        if objective_sent and objective_sent != objective:
+            row['objective_sent'] = objective_sent
         with open(TRAINING_LOG, 'a') as f:
-            f.write(json.dumps({
-                'ts': time.time(), 'tick': tick, 'goal': goal,
-                'objective': objective, 'answer': answer,
-                'node': config.NODE_NAME,
-            }) + '\n')
+            f.write(json.dumps(row) + '\n')
     except Exception as e:
         print(f'[TRAIN] training-log write error: {e}')
 
@@ -651,7 +794,9 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
     if _state['done']:
         goal   = _state['goal']
         answer = _state['answer']
-        _state.update({'done': False, 'goal': None, 'answer': None})
+        sent   = _state['objective_sent']
+        _state.update({'done': False, 'goal': None, 'answer': None,
+                       'objective_sent': None})
         objective = (goals.goal_params.get(goal) or {}).get('text', '')
         if answer:
             # Mark as answered only now, and only on a real answer. Marking at
@@ -677,7 +822,7 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
         else:
             print(f'[TRAIN] no answer produced for {goal} — retiring anyway '
                   f'(retryable: re-POST the same objective to try again)')
-        _record(goal, objective, answer, tick)
+        _record(goal, objective, answer, tick, objective_sent=sent)
         if goals.current_goal() == goal:
             goals.pop()
         return True
@@ -703,7 +848,8 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
         goals.pop()
         return True
 
-    _state.update({'goal': goal, 'busy': True, 'done': False, 'answer': None})
+    _state.update({'goal': goal, 'busy': True, 'done': False, 'answer': None,
+                   'objective_sent': None})
     print(f'[TRAIN] objective received: {objective[:120]}')
     perception = _perception_snapshot(fsm_state, objects, active_env,
                                       vision_source, camera_device_available)
