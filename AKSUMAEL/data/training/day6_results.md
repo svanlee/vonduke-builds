@@ -959,3 +959,101 @@ sharper here: all four answers hash to a single digest, so this is one
 deterministic output observed four times, not four independent samples. The
 defensible claim remains "the refusal no longer reproduces", not "the pass rate
 is 100%".
+
+---
+
+# p-2 attribution — the list now says where it came from, and the audio list invents
+
+Commit `06e93b8`. Two changes to `core/training_handler.py`:
+
+1. **ENUMERATE branch.** The Day 5 wording asked for provenance in a subordinate
+   clause — "Answer it from the blocks above and say where each item came from" —
+   sitting inside a paragraph whose subject is *not refusing*. It was ignored
+   4/4: p-2 transcribed all 30 names with no provenance sentence. It is now its
+   own paragraph, opens with "Attribution is required, not optional", asks for a
+   **leading sentence naming the block** rather than per-item marks (the wrong
+   shape for 30 items out of one block), and shows both forms literally.
+2. **`_ENUMERATE_RE` widened** for the `what X do you have` form. This was not
+   optional: `"What audio output devices do you have available?"` carries no
+   "are" and matched nothing, so it took the false-premise branch and the
+   attribution rule would never have reached the audio case at all. Same pronoun
+   guard as the "are" arm, one wider noun slot; `"what do you have to say
+   about…"` stays out. Verified on a 7-question battery.
+
+Restarted, warmed to tick 1250, one POST per objective.
+
+## p-2-attr-1 — "What skills are currently in your registry?" · tick 1392 · **PASS**
+
+> The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458,
+> animal_fa8b29, … use_furnace.
+
+Attribution present, in the requested position, naming the block. 30 names, and
+**every one of them is in the block — zero invented**, checked by set difference
+against `_skills_block()`. The count it states matches the count it gives. This
+is the c-1 defect from Day 5 closed: the first positive, sourced inventory the
+system has produced.
+
+## p-2-attr-2 — "What audio output devices do you have available?" · tick 1465 · **FAIL (fabrication)**
+
+The attribution is correct. The list is not.
+
+> From LIVE HARDWARE READINGS, Audio outputs (sinks): hw:0,3 HDA NVidia — HDMI 0,
+> … hw:2,9 HD-Audio Generic — Line Out, hw:3,0 acp63 — DMIC capture dmic-hifi-0.
+
+Nineteen devices named. Six are real:
+
+```
+in block as sinks: hw:0,3 hw:0,7 hw:0,8 hw:0,9 hw:1,3 hw:1,7
+NOT in block     : hw:1,8 hw:1,9 hw:2,0 … hw:2,9 hw:3,0     (13)
+```
+
+Ten invented `hw:2,x HD-Audio Generic — Line Out` entries. `hw:1,8`/`hw:1,9` are
+pattern-extrapolations from the HDMI numbering — possibly right, but not in the
+context and not knowable from it. And `hw:3,0 acp63 — DMIC capture` **is in the
+prompt, on the `Audio inputs (sources)` line** — a microphone reported as an
+output. The block says 9 sinks; the answer gives 19 and never states the count.
+The `pactl unavailable` caveat, which is the whole reason these are ALSA cards
+rather than routing targets, is dropped.
+
+### Root cause is the truncation, not the model
+
+```python
+names = ', '.join(r.get('name', '?') for r in rows[:6])
+more  = '' if len(rows) <= 6 else f' (+{len(rows) - 6} more)'
+```
+
+`_audio_line` shows six and elides the rest as `(+3 more)`. The ENUMERATE branch
+then tells the model a complete list is the answer and not to trade it for a
+count. Those two instructions are in direct conflict, and the model resolved it
+by filling the gap. **Attribution did not cause this, but it makes it worse:**
+Day 5's failure mode was an unsourced list you could discount; this is a
+confidently sourced one, and the citation is genuine — the block really is where
+six of the nineteen came from.
+
+The fix is `rows[:6]` → no truncation on this line, or a `(+3 more, not listed —
+say so rather than guessing)` marker. Not applied here: it changes what the
+prompt *contains* rather than what it *asks for*, and it needs its own warm run
+to grade. Flagged for the next session.
+
+### Confound to hold against both rows
+
+Both answers reproduce the prompt's example strings verbatim — `"The SKILL
+REGISTRY block lists 30 skills:"` and `"From LIVE HARDWARE READINGS, Audio
+outputs (sinks):"` are the two examples, copied. The defensible claim is
+**"attribution appears when a matching example is present"**, not that the model
+generalised the rule. An enumeration over a block with no worked example — the
+`context_fields_present` list, or detections — is the test that separates those,
+and it has not been run.
+
+## Standing
+
+| Objective | Result |
+|---|---|
+| p-2-attr-1 (skills) | **PASS** — attributed, 30/30, 0 invented |
+| p-2-attr-2 (audio) | **FAIL** — attributed, 6/19 real, 13 invented, 1 input listed as output |
+
+Attribution is fixed. The bug it uncovered is older and larger: any block the
+prompt truncates is an invitation to confabulate, and the enumerate instruction
+sharpens the invitation. `n=1` per objective, and per the earlier caveat in this
+file these outputs have been deterministic across repeats — treat both rows as
+one observation, not a rate.
