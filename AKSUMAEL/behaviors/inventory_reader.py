@@ -26,9 +26,28 @@ def _strip_code_fences(text: str) -> str:
     return _CODE_FENCE_RE.sub('', text).strip()
 
 
+def _salvage_truncated_array(cleaned: str):
+    """Recover the complete objects from a JSON array cut off mid-element.
+
+    max_tokens runs out partway through the model's bbox-laden reply, e.g.
+    '[{"label": "x", "bbox": [1,2,3,4]}, {"label": "y", "bbo' — trimming
+    back to the last closed '}' and re-closing the array keeps everything
+    that did arrive instead of throwing the whole read away."""
+    if not cleaned.startswith('['):
+        return None
+    end = cleaned.rfind('}')
+    if end == -1:
+        return None
+    try:
+        return json.loads(cleaned[:end + 1] + ']')
+    except json.JSONDecodeError:
+        return None
+
+
 def _parse_json_response(raw) -> dict | list | None:
-    """Parse an LLM JSON reply, tolerating markdown code fences and
-    empty/None responses. Returns None (never raises) on any failure."""
+    """Parse an LLM JSON reply, tolerating markdown code fences,
+    empty/None responses and truncated arrays. Returns None (never
+    raises) on any failure."""
     if not raw or not raw.strip():
         return None
     cleaned = _strip_code_fences(raw)
@@ -37,7 +56,92 @@ def _parse_json_response(raw) -> dict | list | None:
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
+        return _salvage_truncated_array(cleaned)
+
+
+# Labels sometimes arrive as the repr of a numpy array of class names —
+# "['iron_pickaxe' 'pickaxe']" — or of a Python list, "['iron_pickaxe']".
+_REPR_LABEL_RE = re.compile(r"^[\[\(](.*)[\]\)]$", re.DOTALL)
+_ITEM_ID_RE    = re.compile(r'^[a-z0-9_]+$')
+# Keys a detection-style entry may carry the item name under.
+_LABEL_KEYS = ('label', 'item', 'name', 'item_name', 'class')
+
+
+def _clean_label(value) -> str | None:
+    """Normalise one model label into a bare snake_case Minecraft item id.
+
+    Handles the shapes seen live: plain 'oak_log', namespaced
+    'minecraft:iron_pickaxe', and Python/numpy reprs like
+    "['iron_pickaxe' 'pickaxe']" (first name wins). Returns None when the
+    value can't be reduced to a plausible item id."""
+    if isinstance(value, dict):
+        value = next((value[k] for k in _LABEL_KEYS if k in value), None)
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    if value is None:
         return None
+    text = str(value).strip()
+
+    # Unwrap a repr of a list/array of names and keep the first one.
+    m = _REPR_LABEL_RE.match(text)
+    if m:
+        names = re.findall(r"""['"]([^'"]+)['"]""", m.group(1)) or m.group(1).split()
+        if not names:
+            return None
+        text = names[0].strip()
+
+    text = text.split(':')[-1]                    # drop 'minecraft:' namespace
+    text = text.lower().replace(' ', '_').replace('-', '_').strip('.,_')
+    if not text or len(text) > 50 or not _ITEM_ID_RE.match(text):
+        return None
+    return text
+
+
+def _normalize_parsed(parsed, slot_indices: list[int]) -> dict[int, str]:
+    """Flatten either accepted reply shape into {slot_index: item_id}.
+
+    The prompt asks for {"slot": "item"} but the local model frequently
+    answers with a detection-style list instead (see the mesh-llm GUI-bias
+    note). List entries carry no slot of their own, so they map positionally
+    onto the non-empty slots in the order they were composited — the same
+    order the prompt states."""
+    out: dict[int, str] = {}
+
+    if isinstance(parsed, dict):
+        # A dict whose values are detection entries is really a list reply
+        # wearing a dict: {"0": {"label": ...}} parses the same way.
+        for slot_key, value in parsed.items():
+            item = _clean_label(value)
+            if item is None:
+                continue
+            try:
+                out[int(slot_key)] = item
+            except (ValueError, TypeError):
+                continue
+        return out
+
+    if isinstance(parsed, list):
+        for i, entry in enumerate(parsed):
+            item = _clean_label(entry)
+            if item is None:
+                continue
+            slot = None
+            if isinstance(entry, dict):
+                for key in ('slot', 'slot_index', 'index'):
+                    if key in entry:
+                        try:
+                            slot = int(entry[key])
+                        except (ValueError, TypeError):
+                            slot = None
+                        break
+            if slot is None:
+                if i >= len(slot_indices):
+                    break
+                slot = slot_indices[i]
+            out[slot] = item
+        return out
+
+    return out
 
 
 # ── Inventory screen slot layout (vanilla Java 1920×1080 GUI scale 2) ──────
@@ -253,7 +357,12 @@ class InventoryReader:
             # Press Escape to close (safer than E which could toggle a different menu)
             self._tap('escape', 300)
         else:
-            print('[INV] inventory was not open — skipping close key')
+            # We pressed 'e' above, so leaving without a close key risks
+            # stranding the GUI open. 'e' is the safe undo either way: it
+            # closes the inventory if it did open, and is a no-op-or-toggle
+            # if it didn't.
+            print('[INV] inventory not detected — toggling e back')
+            self._tap('e', 200)
         return items
 
     def _ask_llm(self, frame) -> tuple[dict, bool]:
@@ -285,6 +394,13 @@ class InventoryReader:
             print('[INV] all 36 slot crops appear empty — inventory not open?')
             return {}, False
 
+        # The slot crops are the only parse-independent evidence of what's on
+        # screen, so "was the inventory open?" is decided here — NOT by whether
+        # the LLM's reply happened to parse. Tying the two together made every
+        # bad parse also claim the menu never opened, so the close key was
+        # skipped and the inventory stayed open (see _do_read).
+        was_open = True
+
         print(f'[INV] {len(non_empty)} non-empty slots → local classification')
 
         # ── 2. Build composite image ──────────────────────────────────────
@@ -297,40 +413,42 @@ class InventoryReader:
             cols=COLS, cell=_CELL_PX, indices=slot_indices)
 
         # ── 3. Single local LLM call ──────────────────────────────────────
+        # 300 tokens ran out mid-reply whenever the model padded each item with
+        # a bbox, truncating the JSON into an unparseable stub.
         raw, _ = route_llm_call(
-            prompt, max_tokens=300, images=[frame_to_b64(composite)],
+            prompt, max_tokens=500, images=[frame_to_b64(composite)],
             timeout=config.LOCAL_LLM_TIMEOUT, local_retries=1,
             system=_SLOT_CLASSIFY_SYSTEM)
 
         if raw is None:
             print('[INV] local LLM call failed')
-            return {'items': [], 'parse_error': True}, False
+            return {'items': [], 'parse_error': True}, was_open
 
         # ── 4. Parse JSON response ────────────────────────────────────────
         parsed = _parse_json_response(raw)
-        if not isinstance(parsed, dict):
+        if not isinstance(parsed, (dict, list)):
             print(f'[INV] unexpected response ({type(parsed).__name__}) — raw={raw[:200]!r}')
-            return {'items': [], 'parse_error': True}, False
+            return {'items': [], 'parse_error': True}, was_open
+
+        slot_indices = [s for s, _ in non_empty]
+        by_slot = _normalize_parsed(parsed, slot_indices)
+        if not by_slot:
+            print(f'[INV] no usable labels in response — raw={raw[:200]!r}')
+            return {'items': [], 'parse_error': True}, was_open
+        if isinstance(parsed, list) and len(parsed) != len(slot_indices):
+            print(f'[INV] list reply covered {len(parsed)}/{len(slot_indices)} '
+                  f'slots — mapping positionally')
 
         # Build {item_name: {count, slot}} — multiple slots of same item → sum
         result: dict[str, dict] = {}
-        for slot_key, item_name in parsed.items():
-            if not isinstance(item_name, str):
-                continue
-            item_name = item_name.lower().replace(' ', '_').strip('.')
-            if not item_name or len(item_name) > 50:
-                continue
-            try:
-                slot_idx = int(slot_key)
-            except (ValueError, TypeError):
-                continue
+        for slot_idx, item_name in sorted(by_slot.items()):
             if item_name in result:
                 result[item_name]['count'] += 1
             else:
                 result[item_name] = {'count': 1, 'slot': slot_idx}
 
         print(f'[INV] local classified: {list(result.keys())}')
-        return result, bool(result)
+        return result, was_open
 
     def _tap(self, key: str, wait_ms: int):
         self.executor.execute({
