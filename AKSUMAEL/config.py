@@ -62,11 +62,39 @@ LOCAL_LLM_TIMEOUT = 40      # seconds — live 2026-07-19 measurement shows this
                             # came back, and 20s turned out to do the same thing.
 LOCAL_LLM_ENABLED = True
 
-# Inventory reader uses local-only per-slot crop classification (see
-# behaviors/inventory_reader.py). Each slot is extracted as a 32×32 crop
-# and composed into a small grid image for a single local Qwen call,
-# avoiding the full-GUI screenshot that triggers bounding-box detection mode.
+# Inventory reader identifies slots by sprite template matching, not by
+# asking a vision model (see behaviors/inventory_reader.py). The slot grid
+# is fitted to the frame at read time, so nothing here assumes a GUI scale.
 INVENTORY_READER_ENABLED = True
+
+# Minimum template correlation to accept a match. Above this an icon is
+# reported as that item; below it the sprite is filed as a new template.
+# See vision/sprite_matcher.py for the measurements behind the default.
+INVENTORY_MATCH_THRESHOLD = 0.92
+
+# Whether to ask the local model to put a name on a sprite the library has
+# never seen. OFF by default, on measurement rather than principle: asked to
+# name 25 real sprites one at a time it replied cleanly and fast (23 parsed,
+# 10s total) but was wrong about half the time, and gave the same answer to
+# several different sprites — three separate items came back `golden_carrot`.
+#
+# A wrong name is worse here than no name. An `unknown_<hash>` item simply
+# never matches a recipe, so the crafting logic declines to act; a confidently
+# wrong one has it act on an inventory that doesn't exist. Identity does not
+# depend on this either way — the same sprite gets the same id every time it
+# is seen regardless.
+#
+# The reliable way to fill in real names is to look at the sprites:
+#     tools/inv_templates.py sheet /tmp/lib.png
+#     tools/inv_templates.py label <key> <item_name>
+# Set this True to let the model take a first pass instead; duplicate names
+# are rejected automatically (see behaviors/inventory_reader.py).
+INVENTORY_LLM_NAMING = False
+
+# Naming calls allowed per inventory read. A first read against an empty
+# library can surface 20+ new sprites, and naming them all inline would
+# stall the tick — the rest get named on subsequent opens.
+INVENTORY_NAMING_PER_READ = 3
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")   # aistudio.google.com/app/apikey
 GEMINI_MODEL      = "gemini-2.0-flash"   # current free-tier model
