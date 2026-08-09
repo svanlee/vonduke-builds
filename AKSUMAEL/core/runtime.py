@@ -112,6 +112,7 @@ from core                    import self_editor
 from core                    import feature_extractor
 from core                    import policy_blender
 from core                    import training_handler
+from core                    import code_awareness
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
@@ -917,6 +918,19 @@ def run():
             # a live voice/bridge switch back to minecraft must un-gate the
             # FSM even though ACTIVE_ENV still says training.
             _training_mode = attention_manager.get_active_name() == 'training'
+
+            # ── Did my own code change? ────────────────────────────────
+            # A git post-commit hook drops a summary of the commit at
+            # /tmp/aksumael_code_change.json; this consumes it into the
+            # inner monologue and Honcho. See core/code_awareness.py.
+            # Deliberately outside the training gate — a code change is a
+            # fact about this process, not about the Minecraft half of it,
+            # and the drop file would otherwise sit unread for the whole
+            # of a training session.
+            try:
+                code_awareness.check(cognitive.monologue)
+            except Exception as e:
+                print(f'[CODE] change check error: {e}')
 
             # ── Mastermind hive — drain assigned goals, publish status ──
             try:
