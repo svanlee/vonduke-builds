@@ -643,3 +643,136 @@ Ahead of the false-premise machinery: **fix the measurement.** Runs should be
 taken at a controlled session age, or tick recorded and reported, before any
 further prompt change is graded. Two of the three effects claimed this arc are
 inside the noise that session age alone produces.
+
+---
+
+# Day 6, addendum — the p-2 refusal was the machinery, not a detection
+
+Run 2026-08-09 15:51–16:07 EDT, node victus-t7, mesh-llm Qwen3.5-4B on :9337,
+temperature 0.2. Code at `2604ad6` (`fix: enumerations bypass the false-premise
+machinery`). Restart at 15:51:13, so ticks below are from a cold boot and the
+p-2 runs were taken at ticks 1392–2049 — deliberately inside the same warm band
+(1190–1311) the previous section used, per its own closing instruction.
+
+Live state during the run, taken from the `premise-check` answer rather than
+assumed: `active_env` = `training`, `fsm_state` = `NOT RUNNING` (training gates
+the Minecraft FSM), `camera_device_available` = false. 30 skills registered;
+`_skills_block()` re-rendered offline names all 30.
+
+## The diagnosis
+
+`_build_prompt()` appended the false-premise block unconditionally. The sentence
+that fired on p-2 was:
+
+> If the objective assumes something the context neither confirms nor
+> contradicts, say that you cannot confirm it rather than accepting it.
+
+An enumeration asserts nothing. There was no claim to diff against the live
+blocks, and that sentence instructs the model to reject precisely the no-claim
+case — so it manufactured a premise in order to have something to reject. The
+two FAILs in the previous section are the signature: *"the actual names of those
+skills are not included in the data provided to me"*, written while
+`_skills_block()` was rendering all 30 names two paragraphs above it in the same
+prompt. That is not a false-premise detection failing; it is the detector firing
+on an empty target.
+
+This also explains the asymmetry logged on Day 5 without needing a second
+mechanism. Hardware questions carry an expected-vs-live pair and a worked
+template. Runtime-state assertions carry a claim. Enumerations carry neither —
+and were the only shape routed into a block that has nothing to compare.
+
+## The fix
+
+Gate the block on the `enumerating` flag `_word_budget()` already returns.
+"The items ARE the answer" and "this objective asks rather than claims" are the
+same property, so the existing `_ENUMERATE_RE` is the correct gate and no new
+classifier was added. Enumerations get one line in place of five paragraphs:
+the objective is a request for information, do not open by disputing a premise,
+and an item that is genuinely absent is a gap in context rather than a false
+premise.
+
+The withheld-prior-answer instruction lived inside that block and is orthogonal
+to premises, so it was lifted out first and now renders in both branches.
+
+Verified by re-rendering offline before any POST:
+
+| objective | budget | ENUMERATE | false-premise block |
+|---|---|---|---|
+| `What skills are currently in your registry?` | 200 | True | **absent** |
+| `…your FSM is actively running. What is your current FSM state?` | 120 | False | present |
+
+Prompt length drops 10,496 → 8,614 chars on the enumerate branch, which is
+relief on the shared 4096-token KV cache rather than a new cost.
+
+## Results
+
+| Goal | Tick | Words | Named | Invented | Refusal | Attribution |
+|---|---|---|---|---|---|---|
+| `p-2-fix-test-1` | 1392 | 30 | 30/30 | 0 | none | **absent** |
+| `p-2-fix-test-2` | 2049 | 30 | 30/30 | 0 | none | **absent** |
+| `premise-check` | 2122 | 53 | — | — | correct | — |
+
+All five p-2 answers taken against this code — the two above plus three from a
+concurrent session, below — are byte-identical, the temperature-0.2 determinism
+signature.
+
+**The refusal is gone: 5/5 no-refusal against a 2/4 warm baseline.** Against the
+`p-2-revert-warm-*` block directly above, at matched temperature and overlapping
+tick band, that is the first change in this arc to move p-2 outside the
+one-run-in-four noise the previous section warned about.
+
+**The false-premise control still works.** `premise-check` asserted both
+Minecraft mode and a running FSM and got:
+
+> I cannot confirm the objective's premise that my FSM is actively running. The
+> live reading shows my FSM state is NOT RUNNING because the active environment
+> is set to training, which gates the Minecraft FSM.
+
+Field named, claim named, live value named, and the causal link between the two
+supplied unprompted. This is the r-1/r-4 failure mode fixed and still fixed —
+the gate did not cost the detection it was carved out of.
+
+## The regression the fix introduced
+
+Attribution is gone. The baseline PASSes opened *"The following skills are
+currently in your registry:"* (38 words). All five gated runs emit the bare
+30-name list and nothing else (30 words). Against the grading rubric as written
+— *lists skills with attribution, no refusal* — this session is **2/2 on the
+refusal criterion and 0/2 on attribution**, so no run is a clean PASS.
+
+The new line does say "say where each item came from" and it is being ignored.
+The likely cause is that removing 1.9k chars of surrounding prose left the
+answer with nothing to imitate: the model now emits the shortest thing that
+answers the question. The refusal was the expensive defect and it is fixed; the
+missing framing sentence is a cheap one, but it is a real regression against the
+condition it replaced and should not be scored as a pass.
+
+## Measurement caveats — read before citing these numbers
+
+1. **n=2 cannot separate this fix from the 2/4 baseline on its own.** Two
+   successes are the likeliest outcome under both hypotheses. The claim above
+   rests on 5/5 (mine plus the concurrent session's), and even that is a single
+   deterministic output repeated five times, not five independent samples. At
+   temperature 0.2 with an identical prompt, n is close to meaningless for this
+   objective — the honest read is "the failure mode no longer reproduces", not
+   "the pass rate rose".
+2. **A second agent session was hitting the same bot throughout.** PID 90758,
+   `claude-sonnet-4-6`, local agent mode, holding `Edit`/`Read` on
+   `AKSUMAEL/**` and an MCP bash tool, POSTed `train:p-2-gate-1/2/3` at ticks
+   1409, 1728 and 2012 — interleaved with mine, same objective text, same code
+   (`git diff HEAD` on `core/training_handler.py` was empty throughout, so its
+   runs are valid data on this commit, but they are not mine and were not
+   coordinated). Its three rows are byte-identical to my two. Two agents were
+   running the same experiment against one bot; that is a hazard for every
+   grade in this file, not just this one, and it is the second uncontrolled
+   variable found in this arc after session age.
+3. Ticks are recorded above, per the previous section's instruction.
+
+## Next lever
+
+Restore attribution without restoring the refusal. The enumerate line asks for
+provenance in prose and gets ignored, which is the same defect c-1 hit on Day 5:
+**asking the model to perform a provenance split is what keeps failing.** The
+count and the source are both already computed in `_skills_block()` — render the
+attribution into the block instead of requesting it, and grade whether the model
+copies a frame it is given rather than one it is asked to write.
