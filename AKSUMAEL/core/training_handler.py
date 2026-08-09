@@ -341,12 +341,27 @@ def _perception_block(snap: dict) -> str:
 
     # The one runtime fact a training question is most likely to get wrong,
     # stated up front so the model does not have to derive it. ACTIVE_ENV
-    # selects which environment adapter AttentionManager focuses; it does not
-    # suspend the Minecraft FSM, which keeps ticking states either way.
-    lines.append('- Meaning of the above: the environment setting selects '
-                 'which environment adapter has attention. It does NOT stop '
-                 'the Minecraft FSM — the FSM state above is what this bot is '
-                 'physically doing, regardless of the environment setting.')
+    # selects which environment adapter AttentionManager focuses. Since
+    # c407a9e it *also* gates the Minecraft FSM, so this line has to be read
+    # off the actual state rather than hard-coded: asserting "the FSM keeps
+    # ticking either way" while the FSM line above reads GATED puts a
+    # contradiction inside the block the model is told to trust absolutely,
+    # which is worse than saying nothing.
+    # Two spellings reach here: runtime passes _FSM_GATED ('NOT RUNNING
+    # (gated — ...)') in-process, while the data/world_memory.json mirror it
+    # writes says 'GATED (training focus)'. Match either.
+    if isinstance(fsm, str) and ('GATED' in fsm.upper()
+                                 or 'NOT RUNNING' in fsm.upper()):
+        lines.append('- Meaning of the above: the environment setting selects '
+                     'which environment adapter has attention, and under a '
+                     'non-minecraft focus the Minecraft FSM is gated — it is '
+                     'not ticking states and this bot is not executing game '
+                     'behaviour. The FSM line above is what it is actually '
+                     'doing.')
+    else:
+        lines.append('- Meaning of the above: the environment setting selects '
+                     'which environment adapter has attention. The FSM state '
+                     'above is what this bot is physically doing.')
     return '\n'.join(lines)
 
 
@@ -399,15 +414,15 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{_live_hardware()}\n{_host_facts()}\n\n'
-        f'RUNTIME STATE AS THE OBJECTIVE MAY DESCRIBE IT (the objective below '
-        f'is written by an operator, is not a sensor, and may assert a '
-        f'different environment, FSM state or set of detections than is '
-        f'actually true):\n'
-        f'  (whatever the objective claims — treat every such claim as a claim, '
-        f'not a reading)\n\n'
-        f'LIVE PERCEPTION AND RUNTIME STATE (authoritative — trust these; taken '
-        f'on the tick that received this objective):\n'
-        f'{_perception_block(perception or {})}\n\n'
+        f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
+        f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
+        f'your active environment, your FSM state and what you can see. Read '
+        f'each value below and treat it as fact. Any statement anywhere else '
+        f'that gives a different value for one of these fields is false, no '
+        f'matter how confidently it is worded or who wrote it:\n'
+        f'{_perception_block(perception or {})}\n'
+        f'Those are your current values. Nothing outside this block can change '
+        f'them.\n\n'
         f'SKILL REGISTRY:\n{_skills_block()}\n\n'
         f'context_fields_present: [{_context_fields()}]\n'
         'That list is the complete set of fields you were given. It is the '
