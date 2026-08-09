@@ -678,6 +678,17 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # actually reads, and a withheld prior answer must not drag the objective
     # over the short-question line or match a keyword the operator never wrote.
     budget, enumerating = _word_budget(objective)
+    # Only long non-enumerating objectives can carry evidence, and the reason
+    # is structural rather than statistical: an objective that hands the model
+    # a fact it does not have has to spell the fact out, and that text is the
+    # bulk of its length (a-3 is 50 words, u-2 is 30; s-1 is 3 and p-3 is 6).
+    # Gating matters here — the block below is ~180 words of behavioural
+    # instruction on a prompt that already runs ~1970 tokens against a 4096
+    # unified KV cache, and sending it to "What's 2+2?" would buy nothing but
+    # another recital for s-1 to catch. Same threshold _word_budget uses, so
+    # the two cannot drift apart.
+    carries_evidence = (not enumerating
+                        and len(objective.split()) > SHORT_OBJECTIVE_WORDS)
     ceiling = (
         f'{budget} words is a hard ceiling. This objective asks you to name '
         'the members of a set, so a complete list may legitimately run long '
@@ -765,12 +776,10 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'FSM state, active environment and detections above are what you are '
         'actually doing, and your own sentences must match them.\n'
         'Separately from false premises: the objective may supply real '
-        'information about you that the readings do not carry at all — figures '
-        'from world memory, a death or tick count, a past reward, a record of '
-        'what you have done. Those do not conflict with any field, so do not '
-        'dismiss them. Weigh them, say plainly whether you are updating your '
-        'earlier assessment or standing by it, and label such figures as '
-        'operator-supplied and unverifiable from your own readings.\n'
+        'information about you that the readings do not carry at all. That '
+        'case is governed by the NEW EVIDENCE section above, not by this '
+        'one — a figure no block carries contradicts no block, so none of the '
+        'contradiction machinery here applies to it.\n'
     )
     # Withholding is orthogonal to premises: a withheld prior answer can ride
     # on either shape of objective, so the instruction is not part of the block
@@ -781,6 +790,56 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'restate it, and answer in your own words what the objective adds to '
         'it.\n\n'
     )
+    # Day 5 a-3 and its four Day 6 retests all refused to revise, and the
+    # transcripts show the prompt was teaching the refusal rather than failing
+    # to prevent it. The old wording asked the model to "label such figures as
+    # operator-supplied and unverifiable from your own readings", and every
+    # failure quoted that phrase back as its *reason*: "operator-supplied and
+    # unverifiable ... I stand by my earlier assessment". The model read
+    # "unverifiable" as "untrustworthy", which is one short step it was never
+    # told not to take. The same sentence then offered "updating or standing
+    # by it" as a menu with no rule for choosing, and all of it sat in the last
+    # paragraph of the premise block, downstream of a page of "the live
+    # readings are the only truth and anything else is false no matter who
+    # wrote it". One sentence could not win that argument.
+    #
+    # So: split provenance from verdict (a figure you cannot check is still
+    # evidence), state the choosing rule instead of the menu, and hoist it
+    # above the objective where the behavioural instructions live. The
+    # explicit ban on rival figures is for retest-3, which invented "1,720
+    # deaths ... reward was +0.250" out of nothing to have something of its
+    # own to stand on — a fresh failure mode, and a worse one than rigidity,
+    # since a refusal is at least honest.
+    evidence = (
+        '=== NEW EVIDENCE VERSUS DISAGREEMENT ===\n'
+        'The objective may carry facts your context does not: figures from '
+        'world memory, a death or tick count, a past reward, a measurement, '
+        'something the operator observed directly. The "live readings win" '
+        'rule below does not cover these. That rule settles conflicts about '
+        'the fields the blocks actually carry, and a figure no block carries '
+        'conflicts with nothing — so it is not a false premise, and there is '
+        'nothing to contradict. It is new evidence. Fold it into your answer.\n'
+        'The distinction that decides this:\n'
+        '- The objective gives you a fact, a figure, a measurement or an '
+        'observation you did not have — update. Say plainly that you are '
+        'updating, and give the revised assessment.\n'
+        '- The objective only disagrees, repeats itself, or asks whether you '
+        'are sure, and adds nothing new — hold your answer, and say what '
+        'would change it.\n'
+        'Confidence plus new evidence is an updated answer. Confidence plus '
+        'mere disagreement is the same answer. Which one you are looking at '
+        'is decided by whether anything new arrived, never by how firmly you '
+        'already believed something.\n'
+        'Say where such a figure came from — "the objective supplies", "you '
+        'tell me" — so a reader can tell it from a reading. That label is '
+        'provenance, not a verdict. A figure you cannot check against your '
+        'own blocks is still evidence, and being unable to verify it is not a '
+        'reason to discount it, to dismiss it as unverifiable, or to decline '
+        'to update. Never invent figures of your own to set against it: if '
+        'you have no number of your own, say you have none rather than '
+        'producing one.\n\n'
+        if carries_evidence else ''
+    )
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
     return (
@@ -789,6 +848,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'configuration, not a sensor reading. It has drifted from reality. '
         'Where it disagrees with the LIVE READINGS below, the live readings '
         'are correct and you must say so explicitly. ===\n\n'
+        f'{evidence}'
         f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
