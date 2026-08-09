@@ -228,8 +228,8 @@ class InnerMonologue:
         finally:
             self._generating = False
 
-    def _persist_thought(self, thought: str, forced: bool = False):
-        """Write the thought into Honcho, rate-limited.
+    def _persist_thought(self, thought: str, forced: bool = False) -> bool:
+        """Write the thought into Honcho, rate-limited. True if it landed.
 
         The monologue fires every config.MONOLOGUE_EVERY_N_SECONDS (8s).
         Handing Honcho a message that often would keep the deriver
@@ -243,9 +243,11 @@ class InnerMonologue:
         now = time.time()
         every = getattr(config, 'HONCHO_WRITE_EVERY_N_SECONDS', 120)
         if not forced and now - self._last_honcho_write < every:
-            return
+            return False
         if self.honcho.add_message('assistant', thought, self.session_id):
             self._last_honcho_write = now
+            return True
+        return False
 
     def _is_repeating(self) -> bool:
         """True if the last REPEAT_LIMIT thoughts are all the same one."""
@@ -362,15 +364,36 @@ class InnerMonologue:
             threading.Thread(target=self._persist_external, args=(text,),
                              daemon=True, name='monologue-persist').start()
 
+    # Waits before each retry of a persisted external push. Sized to clear
+    # HonchoContext's own 5s/10s/20s failure backoff, during which
+    # add_message() returns False without touching the network — retrying
+    # inside that window would just burn the attempts. Observed live on
+    # 2026-08-09: a commit made *during* a restart pushed its code-change
+    # line while the deriver was still warming, add_messages() timed out at
+    # 10s, and the one event this feature exists to remember was dropped.
+    PERSIST_RETRY_DELAYS = (15.0, 45.0, 120.0)
+
     def _persist_external(self, text: str):
-        """_persist_thought() off the tick loop, failure-tolerant. Honcho
-        being down must never propagate out of a push_external() call —
-        the thought is already on disk and in the overlay by then, and the
-        memory write is the optional half."""
-        try:
-            self._persist_thought(text, forced=True)
-        except Exception as e:
-            print(f'[COGNITIVE] external persist error: {e}')
+        """_persist_thought() off the tick loop, failure-tolerant, retried.
+
+        Honcho being down must never propagate out of a push_external()
+        call — the thought is already on disk and in the overlay by then,
+        and the memory write is the optional half. But a caller that asked
+        for persistence is reporting something that has no other route
+        into the session history, so a transient failure is worth a few
+        widely-spaced retries rather than a shrug."""
+        for i, delay in enumerate((0.0,) + self.PERSIST_RETRY_DELAYS):
+            if delay:
+                time.sleep(delay)
+            try:
+                if self._persist_thought(text, forced=True):
+                    if i:
+                        print(f'[COGNITIVE] external persist landed on retry {i}')
+                    return
+            except Exception as e:
+                print(f'[COGNITIVE] external persist error: {e}')
+        print(f'[COGNITIVE] external persist gave up after '
+              f'{len(self.PERSIST_RETRY_DELAYS) + 1} tries: {text[:60]!r}')
 
     def recent(self, n: int = 5, tagged: bool = False) -> str:
         """The last `n` thoughts, newline-joined.
