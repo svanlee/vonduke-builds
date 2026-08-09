@@ -24,6 +24,10 @@ class RespawnBehavior:
     BLANK_TICKS_THRESHOLD = 5   # consecutive ticks with no HUD element before assuming death
     ZERO_HEALTH_TICKS_THRESHOLD = 3  # consecutive health_pct==0 reads required to corroborate
     RESPAWN_COOLDOWN = 10.0     # seconds between respawn attempts
+    # How recently YOLO must have emitted a HUD box for its *absence* to mean
+    # anything. "No hotbar detected" is only evidence of death if this model
+    # detects hotbars at all — see _hud_signal_live below.
+    HUD_SIGNAL_STALE_TICKS = 300
 
     def __init__(self, executor, goals=None):
         self._executor = executor
@@ -39,6 +43,19 @@ class RespawnBehavior:
         # seconds for the whole run, blind-clicking screen centre and
         # wiping the goal stack each time (2026-08-08).
         self._awaiting_hud_recovery = False
+        # Ticks since YOLO last emitted ANY HUD box, and whether it ever has.
+        # The blank-HUD death signal is an *absence* read, and an absence is
+        # only informative when the presence is reliably observable. In the
+        # 2026-08-08 post-fix run YOLO emitted zero HUD labels across all 377
+        # ticks of the session, so _blank_ticks accumulated permanently and
+        # blank_screen was True on literally every tick — which silently
+        # demoted the "two corroborating signals" design to a single-signal
+        # detector riding on hud_reader's health_pct alone, and produced 6
+        # more false deaths mid-chop with no GUI open. Tracking recency lets
+        # the detector notice that YOLO isn't supplying this signal at all
+        # and stop pretending its silence is evidence.
+        self._tick = 0
+        self._last_hud_label_tick = None
 
     def update(self, objects: list, last_observation: str = '', hud_unreliable: bool = False,
                health_pct: float = None) -> bool:
@@ -88,6 +105,16 @@ class RespawnBehavior:
         claude_sees_death = any(k in obs_lower for k in death_keywords)
 
         has_hud = any(o.get('label', '') in HUD_LABELS for o in objects)
+        self._tick += 1
+        if has_hud:
+            self._last_hud_label_tick = self._tick
+        # Is YOLO's HUD channel actually alive? Only if it has produced a HUD
+        # box at some point AND did so recently. Never-seen => not live, which
+        # is the case that bit us: a model that never boxes the HUD makes
+        # `not has_hud` a constant, not a measurement.
+        hud_signal_live = (self._last_hud_label_tick is not None
+                           and (self._tick - self._last_hud_label_tick)
+                               <= self.HUD_SIGNAL_STALE_TICKS)
         if hud_unreliable:
             # Neither absence signal means anything this tick — clear both,
             # so a GUI session can't bank up zero-health ticks and fire the
@@ -116,9 +143,17 @@ class RespawnBehavior:
                 has_hud or (isinstance(health_pct, (int, float)) and health_pct > 0.0)):
             self._awaiting_hud_recovery = False
 
-        blank_screen = self._blank_ticks >= self.BLANK_TICKS_THRESHOLD
+        blank_screen = (self._blank_ticks >= self.BLANK_TICKS_THRESHOLD
+                        and hud_signal_live)
         health_confirms_death = self._zero_health_ticks >= self.ZERO_HEALTH_TICKS_THRESHOLD
 
+        # With hud_signal_live False the blank+health path can never fire and
+        # claude_sees_death — the one signal that does not derive from "HUD not
+        # on screen" — becomes the sole death trigger. That is the intended
+        # degraded mode, not an outage: it is strictly better to miss a death
+        # (the agent respawns on its own next tick anyway, and the goal stack
+        # survives) than to blind-click screen centre and wipe the stack on a
+        # live agent several times a minute.
         if ((blank_screen and health_confirms_death and not self._awaiting_hud_recovery)
                 or claude_sees_death):
             now = time.time()
@@ -128,7 +163,7 @@ class RespawnBehavior:
                 self._zero_health_ticks = 0
                 self._awaiting_hud_recovery = True
                 print(f'[RESPAWN] death detected (blank={blank_screen}, health_confirms={health_confirms_death}, '
-                      f'claude={claude_sees_death}) — clicking respawn')
+                      f'claude={claude_sees_death}, hud_signal_live={hud_signal_live}) — clicking respawn')
                 self._executor.execute({
                     'key': None,
                     'click': [50.0, 50.0],   # Respawn button is center of death screen (~50% y); 60% was hitting "Title Screen"

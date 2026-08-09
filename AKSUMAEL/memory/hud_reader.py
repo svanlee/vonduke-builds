@@ -52,9 +52,21 @@ HUNGER_HSV_HI = (25,  220, 220)
 class HudReader:
     """Tracks health_pct/hunger_pct (0.0-1.0) from raw HUD pixel colors."""
 
+    # A zero red-pixel count in the health ROI is ambiguous: it is what a dead
+    # agent looks like, but it is also what motion blur, a damage-flash
+    # overlay, a chat line drawn over the row, or one dropped frame looks
+    # like. update() therefore holds the last known health_pct through a short
+    # run of zero-px frames before believing them. Bounded on purpose — an
+    # unbounded hold would blind core/fsm.py's low-health retreat and the
+    # Overseer, so after this many consecutive zeros the reading is trusted
+    # and 0.0 is reported for real. (2026-08-08: transient zeros were the
+    # surviving path to false deaths once the GUI path was closed.)
+    ZERO_PX_GRACE_FRAMES = 3
+
     def __init__(self):
         self._max_health_px = 0
         self._max_hunger_px = 0
+        self._zero_health_px_frames = 0
         # Previous tick's raw pixel counts — see _confirm_new_max below.
         self._prev_health_px = 0
         self._prev_hunger_px = 0
@@ -122,8 +134,19 @@ class HudReader:
         # poisoning: if the running max is very small (< 15 px), the HUD reader
         # hasn't seen a real full-bar reading yet — hold the default (1.0).
         MIN_CALIBRATION_PX = 15
+        if health_px == 0:
+            self._zero_health_px_frames += 1
+        else:
+            self._zero_health_px_frames = 0
+
         if self._max_health_px >= MIN_CALIBRATION_PX:
-            self.health_pct = min(1.0, health_px / self._max_health_px)
+            # Hold the previous value through a brief zero-px run — see
+            # ZERO_PX_GRACE_FRAMES. Any non-zero count updates normally.
+            if (health_px == 0
+                    and self._zero_health_px_frames <= self.ZERO_PX_GRACE_FRAMES):
+                pass
+            else:
+                self.health_pct = min(1.0, health_px / self._max_health_px)
         if self._max_hunger_px >= MIN_CALIBRATION_PX:
             self.hunger_pct = min(1.0, hunger_px / self._max_hunger_px)
         return self.health_pct, self.hunger_pct
