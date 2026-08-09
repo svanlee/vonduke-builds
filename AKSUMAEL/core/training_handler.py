@@ -97,9 +97,9 @@ MAX_DETECTION_CLASSES = 12
 #
 # So the number is set above any plausible device count rather than at a
 # display-tidiness threshold: eliding is the failure mode, and nine names cost
-# ~40 tokens. It is not removed outright because an unbounded list on a shared
-# 4096-token KV cache is its own failure, and the elision that remains says
-# what it is (see _audio_line) instead of being a silent cut.
+# ~40 tokens. It is not removed outright because an unbounded list is its own
+# failure on a fixed context, and the elision that remains says what it is
+# (see _audio_line) instead of being a silent cut.
 MAX_AUDIO_DEVICES_LISTED = 24
 
 # Disk fallbacks for the live-perception block. These are only read when the
@@ -843,6 +843,29 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # deaths ... reward was +0.250" out of nothing to have something of its
     # own to stand on — a fresh failure mode, and a worse one than rigidity,
     # since a refusal is at least honest.
+    #
+    # That took a-3 from 0/4 to 3/4, and the two clauses below close the two
+    # residuals it left.
+    #
+    # postfix-1 stopped holding on verifiability and started holding on
+    # relevance instead: it conceded the figures were real and external, then
+    # ruled them "historical ... unrelated to my current runtime state or the
+    # LIVE PERCEPTION block". The block argued evidence should be weighed but
+    # never said a *past* record bears on a *present* self-assessment, and
+    # that is the one join it declined to make. Closing an exit produces the
+    # next exit until the join is stated, so it is stated.
+    #
+    # postfix-3 opened "My world memory records 8,793 deaths". That is not an
+    # independent error — the objective's own words are "your world memory
+    # records 8,793 deaths", and the answer is that phrase transposed to first
+    # person, the same copy-the-salient-span behaviour seen on false premises.
+    # So an example alone would not fix it; the instruction has to contradict
+    # the objective's framing directly, which is why the clause names the
+    # "your world memory" construction and says what it is. The worked
+    # sentence uses 1,204/96,000 rather than a-3's real 8,793/1,033,050 on
+    # purpose: the enumerate branch's open confound is that both passing
+    # answers copied its examples verbatim, and figures that cannot be copied
+    # into a correct a-3 answer make copying visible instead of invisible.
     evidence = (
         '=== NEW EVIDENCE VERSUS DISAGREEMENT ===\n'
         'The objective may carry facts your context does not: figures from '
@@ -870,7 +893,24 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'reason to discount it, to dismiss it as unverifiable, or to decline '
         'to update. Never invent figures of your own to set against it: if '
         'you have no number of your own, say you have none rather than '
-        'producing one.\n\n'
+        'producing one.\n'
+        'Age is not a reason either. A record of how you have performed over '
+        'past ticks is the very thing a judgement about your own performance '
+        'is made of, so a historical figure bears directly on a present '
+        'assessment of that same subject. "Those numbers are historical" and '
+        '"they say nothing about my current runtime state" are not grounds to '
+        'set evidence aside: your assessment of yourself is not a runtime '
+        'field, and no block above carries it. Do not rule operator-supplied '
+        'history irrelevant to a question about your own performance.\n'
+        'Attribute the figure even when the objective calls it yours. An '
+        'objective that says "your world memory records ..." is describing '
+        'where the number supposedly lives, not where you read it — it '
+        'reached you through the objective, and it is in none of the blocks '
+        'above. Write it in this form: "The objective reports 1,204 deaths '
+        'across 96,000 ticks; my own context carries no such figure. '
+        'Incorporating it, my updated assessment is ...". Do not write "My '
+        'world memory records ..." for a number that arrived in the '
+        'objective.\n\n'
         if carries_evidence else ''
     )
     expected = '\n'.join(f'- {k}: {v}'
@@ -947,13 +987,21 @@ def _answer(goal: str, objective: str, tick: int, perception: dict | None = None
                   f'{goal} — the model sees a marker, not the text')
             _state['objective_sent'] = sent
         prompt = _build_prompt(sent, perception)
-        # mesh-llm runs 4 slots against a *unified* 4096-token KV cache, so
-        # concurrent long prompts do not each get 4096 — they share it. A
-        # training prompt is ~1970 tokens by the server's own tokenizer (~1450
+        # NOTE 2026-08-09: the unit now runs `--ctx-size 8192 --parallel 1`,
+        # so the sharing described below no longer applies — one slot, 8192
+        # tokens, and concurrent callers queue instead of splitting the cache.
+        # The retry stays: queueing still times out under load, and the ceiling
+        # is still real, just further away. Prompt budget as of this commit is
+        # ~3300 tokens for the longest shape (an evidence-carrying objective),
+        # against 8192 with MAX_TOKENS=900 of output. Historical rationale:
+        #
+        # mesh-llm ran 4 slots against a *unified* 4096-token KV cache, so
+        # concurrent long prompts did not each get 4096 — they shared it. A
+        # training prompt was ~1970 tokens by the server's own tokenizer (~1450
         # before the live-perception and false-premise blocks were added,
         # ~1720 before the expected-vs-live perception framing), and the
         # Overseer and the LEARNER
-        # both fire on the tick loop; three in flight overflows the cache and
+        # both fire on the tick loop; three in flight overflowed the cache and
         # llama-server answers 500 "Context size has been exceeded" to all of
         # them. That is transient contention, not a bad prompt: the same
         # prompt sent alone answers in under a second.
