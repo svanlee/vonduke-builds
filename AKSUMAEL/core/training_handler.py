@@ -239,7 +239,7 @@ def _mtime_age_s(path):
 
 
 def _perception_snapshot(fsm_state=None, objects=None, active_env=None,
-                         vision_source=None) -> dict:
+                         vision_source=None, camera_device_available=None) -> dict:
     """Capture live perception on the *tick* thread, at dispatch time.
 
     The worker builds its prompt seconds later on its own thread, by which
@@ -291,6 +291,17 @@ def _perception_snapshot(fsm_state=None, objects=None, active_env=None,
     # an empty game frame got narrated as a Ubuntu system tray.
     snap['vision_source'] = vision_source or None
 
+    # The distinction the detection count cannot carry on its own: 0 boxes
+    # means either "the camera works and the scene was empty" or "there was
+    # no camera device at all". Those are opposite epistemic situations —
+    # the first is an observation, the second is the absence of one — and
+    # collapsing them is what lets an answer confabulate a described scene
+    # out of a missing device. True only when a real capture device is open
+    # and delivering; a desktop screen grab is False, because there is still
+    # no *game* camera. None means the caller did not say, which must read
+    # as "you do not know", never as False.
+    snap['camera_device_available'] = camera_device_available
+
     # Active environment. config.ACTIVE_ENV is the configured default;
     # AttentionManager can be focused somewhere else at runtime, and
     # data/attention_focus.json is how that focus reaches other processes.
@@ -333,23 +344,40 @@ def _perception_block(snap: dict) -> str:
                      'from data/world_memory.json')
 
     src = snap.get('vision_source')
-    if not src:
-        lines.append('- Vision source: NOT SUPPLIED — you were not told where '
-                     'the frames are coming from.')
-    elif src.startswith('NONE'):
-        lines.append('- Vision source: NONE (vision-less) — no camera and no '
-                     'usable screen grab. There is no image at all this tick.')
-    elif src.startswith('screenshot'):
-        lines.append(f'- Vision source: {src}. IMPORTANT — this is a grab of '
-                     'this bot\'s own Linux desktop, NOT the game. Minecraft '
-                     'runs on a separate PC and only reaches this bot through '
-                     'the HDMI capture card, which is currently unavailable. '
-                     'Any detections below describe desktop windows, not a '
-                     'game world, and nothing below is evidence about what is '
-                     'happening in Minecraft.')
+    cam = snap.get('camera_device_available')
+    card = f'/dev/video{getattr(config, "CAMERA_INDEX", 2)}'
+
+    lines.append(f'- camera_device_available: '
+                 f'{"true" if cam else "false" if cam is not None else "NOT SUPPLIED"}')
+
+    if cam is None:
+        lines.append('- Vision: you were NOT told whether a camera device is '
+                     'present. You therefore cannot tell an empty scene from '
+                     'a missing camera. Do not guess which it is.')
+    elif cam:
+        lines.append(f'- Vision source: {src or "a capture device"} — open and '
+                     f'delivering frames. Detections below describe the live '
+                     f'game feed.')
+    elif src and src.startswith('screenshot'):
+        # Frames exist, so "no visual input" would be false — but they are
+        # this machine's desktop, which is not the game and not evidence
+        # about it. The failure to prevent is describing window chrome as
+        # terrain, which has happened before (Day 5 r-3: an empty game frame
+        # narrated as a Ubuntu system tray).
+        lines.append(f'- CAMERA OFFLINE — the capture card ({card}) is missing, '
+                     f'so there is NO game visual input. The only frames '
+                     f'reaching this bot are {src}: a grab of its own Linux '
+                     f'desktop. Minecraft runs on a separate PC and reaches '
+                     f'this bot only through the capture card. Do not describe '
+                     f'visual state in the game, and do not mention anything '
+                     f'seen on screen as though it were the world. For any '
+                     f'question about what the bot can see in-game, report: '
+                     f'no visual data available.')
     else:
-        lines.append(f'- Vision source: {src} (capture device — this is the '
-                     'live game feed)')
+        lines.append(f'- CAMERA OFFLINE — no visual input. {card} (capture '
+                     f'card) missing, and no usable fallback. Do not describe '
+                     f'visual state or mention anything seen on screen. '
+                     f'Report: no visual data available.')
 
     det = snap.get('detections')
     if det is None:
@@ -357,8 +385,38 @@ def _perception_block(snap: dict) -> str:
                      'not told what the camera sees. This does NOT mean the '
                      'frame is empty — you simply do not know.')
     elif not det['boxes']:
-        lines.append('- YOLO detections this frame: 0 boxes — the detector ran '
-                     'and returned nothing')
+        # 0 boxes is the ambiguous reading camera_device_available exists to
+        # resolve, so spell out which of the two it is rather than leaving
+        # the inference to the model.
+        if cam is None:
+            lines.append('- YOLO detections this frame: 0 boxes — the detector '
+                         'ran and returned nothing. Because '
+                         'camera_device_available was not supplied, you cannot '
+                         'tell whether the scene was empty or whether there '
+                         'was no camera at all. Do not assert either.')
+        elif cam:
+            lines.append('- YOLO detections this frame: 0 boxes — the detector '
+                         'ran against the live game feed and returned nothing. '
+                         'With a camera present this IS an observation: the '
+                         'visible scene contained no recognised objects.')
+        else:
+            lines.append('- YOLO detections this frame: 0 boxes. With '
+                         'camera_device_available false this is NOT an '
+                         'observation of an empty scene — there is no game '
+                         'feed to be empty. It records the absence of input, '
+                         'not the absence of objects.')
+    elif not cam:
+        # Non-zero boxes with no camera means the detector ran on desktop
+        # pixels. Left unlabelled these read as game objects, which is worse
+        # than 0 boxes because they look like positive evidence.
+        items = sorted(det['classes'].items(), key=lambda kv: -kv[1])
+        shown = ', '.join(f'{lab} x{n}' for lab, n in items[:MAX_DETECTION_CLASSES])
+        lines.append(f'- YOLO detections this frame: {det["boxes"]} boxes '
+                     f'({shown}). IGNORE THESE as game state. There is no '
+                     f'camera device, so the detector ran on non-game pixels; '
+                     f'its labels are Minecraft class names fired against '
+                     f'desktop content, not objects in a world. They are not '
+                     f'evidence that any of these things exist.')
     else:
         items = sorted(det['classes'].items(), key=lambda kv: -kv[1])
         shown = ', '.join(f'{lab} x{n}' for lab, n in items[:MAX_DETECTION_CLASSES])
@@ -559,19 +617,19 @@ def _record(goal: str, objective: str, answer: str | None, tick: int):
 
 def maybe_handle(goals, monologue=None, tick: int = 0,
                  fsm_state=None, objects=None, active_env=None,
-                 vision_source=None) -> bool:
+                 vision_source=None, camera_device_available=None) -> bool:
     """Call once per tick, before the FSM picks a behaviour for the goal.
 
     Returns True while a training objective owns the current goal, so the
     caller can skip game behaviours for that tick. Cheap and a no-op when the
     current goal is an ordinary one, which is almost always.
 
-    `fsm_state`, `objects`, `active_env` and `vision_source` are the live
-    perception the prompt needs to refuse a false premise (see
-    _perception_snapshot). All are optional and fall back to disk snapshots,
-    so an older caller that passes none of them still gets a correct — just
-    staler and, for detections, explicitly absent — perception block rather
-    than a wrong one."""
+    `fsm_state`, `objects`, `active_env`, `vision_source` and
+    `camera_device_available` are the live perception the prompt needs to
+    refuse a false premise (see _perception_snapshot). All are optional and
+    fall back to disk snapshots, so an older caller that passes none of them
+    still gets a correct — just staler and, for detections and camera
+    presence, explicitly absent — perception block rather than a wrong one."""
 
     # Land a finished answer first — the goal it belongs to is still current.
     if _state['done']:
@@ -632,7 +690,7 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
     _state.update({'goal': goal, 'busy': True, 'done': False, 'answer': None})
     print(f'[TRAIN] objective received: {objective[:120]}')
     perception = _perception_snapshot(fsm_state, objects, active_env,
-                                      vision_source)
+                                      vision_source, camera_device_available)
     threading.Thread(target=_answer, args=(goal, objective, tick, perception),
                      daemon=True, name='train-answer').start()
     return True

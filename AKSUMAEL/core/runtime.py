@@ -953,7 +953,14 @@ def run():
                     fsm_state=(_FSM_GATED if _training_mode else fsm_state),
                     objects=objects,
                     active_env=attention_manager.get_active_name(),
-                    vision_source=pipeline.vision_source)
+                    vision_source=pipeline.vision_source,
+                    # game_vision is precisely "a real capture device is open
+                    # and delivering", which is the question the perception
+                    # block needs answered — a desktop screen grab is False
+                    # here because there is still no game camera. Without it
+                    # a 0-detection tick is indistinguishable from an empty
+                    # scene, and the answer confabulates one.
+                    camera_device_available=pipeline.game_vision)
             except Exception as e:
                 print(f'[TRAIN] handler error: {e}')
 
