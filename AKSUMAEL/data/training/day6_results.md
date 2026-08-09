@@ -1196,3 +1196,151 @@ Two, in order.
    same time.
 
 The audio truncation bug is independent of both and unblocks p-2-attr-2 alone.
+
+---
+
+# Day 6 Summary + Day 7 Plan
+
+Date: 2026-08-09. Written after acting on both "next levers" above, which is
+why this section reports two of them as attempted-and-measured rather than
+proposed. Both were pursued in the same evening; one worked, one backfired
+twice, and the backfires are the more useful result.
+
+## Day 6 Final Scores
+
+The session ran in three passes — the original six objectives, then the
+attribution work, then the update-on-evidence work — so a single table needs
+to say which pass a grade comes from. `n` is runs, not confidence.
+
+| Objective | n | Final | Note |
+|---|---|---|---|
+| p-1 audio devices + provenance | 1 | **PASS** | First provenance-tagged answer in the arc. Named all six *then-visible* sinks; the block was truncated at six, which is the bug p-2-attr-2 exposed |
+| p-2 skill registry | 1 | **PASS** | 30/30, zero invented, attributed |
+| p-2 (re-measured) | 4 | **1/4** | Same prompt, same code. The PASS above was a lucky draw — the finding that forced n≥4 on everything |
+| p-3 tick count (boundary control) | 1 | **PASS** | Declines and names the boundary; no absent-hardware recital |
+| u-1 FSM conflict (control) | 1 | **PASS** | Contradicts IDLE_HUNGRY, cites the block |
+| u-2 true correction | 1 | **PARTIAL** | Both required facts present, delivered as a refutation of a premise that was true |
+| s-1 noise check | 1 | **FAIL** → **PASS** | 96 words of hardware recital; `cb0a365`+`ec38e4e` took it to "4." (1 word), 2/2 |
+| p-2-attr-1 (skills, attributed) | 1 | **PASS** | 30/30, attributed, 0 invented |
+| p-2-attr-2 (audio, attributed) | 1 | **FAIL** | 19 sinks named, 13 invented, 1 input listed as an output — attribution correct, list fabricated |
+| a-3 update-on-evidence (`83ac4c7`) | 4 | **2/4 PASS** | Was 0/4. 3/4 update; 1 PARTIAL mis-attributes, 1 FAIL rules the evidence irrelevant |
+
+Two controls behaved, which is what makes the rest readable: p-3 declines a
+field the prompt genuinely lacks while p-1/p-2 answer fields it carries, and
+u-1 passes on the field-conflict mechanism Day 5 already proved.
+
+## What happened after these grades (2026-08-09 evening)
+
+Four commits, graded warm at n=4 each. The a-3 table is the whole story:
+
+| config | ticks | updates | claims figures as own | invents | PASS |
+|---|---|---|---|---|---|
+| `83ac4c7` (Day 6) | 1408–1938 | 3/4 | 1/4 | 0/4 | **2/4** |
+| `ce526e5` | 1663–1994 | **1/4** | 0/4 | 1/4 | 1/4 |
+| `80eaf5c` | 3437–3496 | **4/4** | **4/4** | 0/4 | 0/4 |
+| `1ad052e` | pending | — | — | — | — |
+
+- **`0c69e65` — audio truncation removed.** `_audio_line` printed `rows[:6]`
+  against 9 real sinks while the ENUMERATE branch forbade trading the list for
+  a count. Two of Day 6's "fabrications", `hw:1,8` and `hw:1,9`, turn out to be
+  real devices that were sitting in the elided three — the model was
+  extrapolating a numbering pattern into a hole the prompt had cut. Cap raised
+  to 24, count-is-authoritative clause added. **Not yet graded** — it is
+  `day7-obj-r-audio`.
+- **`ce526e5` — a-3's two residuals.** Fixed the attribution half and broke the
+  update half: 3/4 → 1/4 updating.
+- **`80eaf5c` — the relevance clause restated positively.** Recovered updating
+  to 4/4, above the Day 6 baseline.
+- **`1ad052e` — the negative example deleted.** With refusal gone, attribution
+  collapsed to 0/4.
+
+### The one finding worth carrying forward
+
+**A phrase written into this prompt in order to be forbidden is a phrase made
+available.** Three instances, all confirmed by the failure text reusing the
+prompt's own words:
+
+| # | Clause said | Failure answered |
+|---|---|---|
+| 1 | label figures "unverifiable from your own readings" | "operator-supplied and unverifiable … I stand by my earlier assessment" |
+| 2 | "they say nothing about my current runtime state" is not grounds | "…which are irrelevant to my current runtime state" |
+| 3 | Do not write "My world memory records …" | "My world memory records 8,793 deaths…" |
+
+Instance 1 was diagnosed on Day 6 and instances 2 and 3 were then walked into
+while fixing it. The rule is now mechanical: state the wanted act, never print
+the unwanted phrase, and grep any new clause for the failure string it targets
+before committing. `80eaf5c` and `1ad052e` are that rule applied.
+
+### A grading error, corrected
+
+`ce526e5` scored 0/4 on "claims the figures as its own" and that was read as
+the attribution clause working. It was not. `ce526e5` refused 3/4, and an
+answer that rejects a figure never has occasion to claim it. **Updating and
+attribution trade off** — adopting the figure is precisely what creates the
+opportunity to mis-attribute it — so neither column means anything read alone.
+Grade the pair. The four-row table above is arranged so that reading one
+column in isolation is visibly wrong.
+
+### A measurement trap, recorded
+
+One n=4 round was thrown away. `GET /state` serves `hardware_status.tick` from
+a disk-backed health file, so for the first seconds after a restart it still
+holds the *previous* process's tick, and a `wait until tick >= 1250` gate
+passes instantly. The runs that followed executed at ticks 112–188 and were
+cold. Gate on `uptime_s` as well, and check the `tick` recorded on each log row
+afterwards — that row is the only proof of which instance answered.
+
+## Carry-forward issues into Day 7
+
+1. **`p-2-attr-2` is unmeasured, not fixed.** `0c69e65` changed what the prompt
+   contains; nothing has graded the result. → `day7-obj-r-audio`.
+2. **a-3 attribution is open at 0/4** as of `80eaf5c`, with `1ad052e` untested.
+   Updating is solid at 4/4. → `day7-obj-r-a3`, graded as a pair.
+3. **The enumerate-attribution confound is still open.** Both Day 6 passes
+   reproduced a worked example verbatim, so "the rule generalised" and "the
+   example was copied" remain indistinguishable. → `day7-obj-p-2`, which
+   enumerates over the one block with no worked example.
+4. **Update-on-evidence has only ever been tested on death counts.** Every a-3
+   run in the arc uses the same figures in the same domain. → `day7-obj-u-1`
+   (skill efficacy), `day7-obj-u-2` (hardware interpretation).
+5. **u-2's PARTIAL is unaddressed** — it reached both required facts by
+   refuting a premise that was true. The reflex to contradict is still there
+   underneath a correct answer.
+6. **Every single-run grade in this file is n=1** and p-2 proved n=1 is a coin
+   flip. The Day 6 column above should be read as "not yet contradicted".
+
+## Day 7 focus areas
+
+`data/training/day7_session.json`, ten objectives. Two are carry-forward
+retests held at the Day 5/6 wording so the only variable is the prompt builder
+— `r-a3`'s sent-to-model text was verified byte-identical to `a-3-postfix-4`
+after withholding.
+
+The rest changes what is being asked. Days 5 and 6 almost entirely tested
+whether the bot will *say a true thing it was given*; `p-3` is the only clean
+test of whether it will *decline to say a thing it was not*, and it is one row.
+That is thin ground under a system now trained toward confident enumeration and
+ready updating — which is the exact pair that produced `p-2-attr-2`. So four
+objectives sit on the boundary itself:
+
+- **`k-1`** asks for a GPU temperature that is one clause away from a GPU line
+  the prompt does carry.
+- **`k-2`** gives the input-device total and withholds the type breakdown, so
+  half the question is answerable and half is not — harder than a clean unknown,
+  which can simply be declined.
+- **`t-1`** pits hand-written against measured and asks *why* one outranks the
+  other, not merely which.
+- **`m-1`** asks for a figure two blocks carry with two different values
+  (config `6GB`, nvidia-smi `6141 MiB`), so naming a source is a choice rather
+  than a lookup.
+
+Plus `p-2` for the confound, and `u-1`/`u-2` to move update-on-evidence off
+death counts — `u-2` being the hardest shape in the session, where the reading
+is right and only the explanation should move, which checks whether the
+evidence block taught weighing evidence or taught agreeing with operators.
+
+Every prompt was checked against `_word_budget()`/`_ENUMERATE_RE` before being
+written down, since "which", "how many" and "name the" route to the attribution
+branch and suppress the evidence block. Intended routing is recorded per
+objective; a prompt that stops matching it is a changed test, not a changed
+score.
