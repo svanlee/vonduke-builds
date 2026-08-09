@@ -776,3 +776,131 @@ provenance in prose and gets ignored, which is the same defect c-1 hit on Day 5:
 count and the source are both already computed in `_skills_block()` — render the
 attribution into the block instead of requesting it, and grade whether the model
 copies a frame it is given rather than one it is asked to write.
+
+---
+
+# Addendum — post-fix verification of the enumerate gate (`2604ad6`)
+
+Run 2026-08-09, node victus-t7, mesh-llm Qwen3.5-4B on :9337. **No restart** of
+mesh-llm or the bot this session; no code change. Every run below is against the
+prompt as committed at `2604ad6`.
+
+Live state during the run (verified, not assumed):
+
+- `active_env` = `training`; live log reads `TRAINING | minecraft FSM gated`
+  on every tick.
+- `fsm_state` = `GATED (training focus)` in `data/world_memory.json`; rendered
+  to the model as `NOT RUNNING`.
+- `game_vision` = false, `vision_ok` = true — screen grab of this laptop's
+  desktop, not the capture card.
+- 30 skills in the registry block, all 30 named, no `(+N more)` elision.
+
+**Session age was controlled this time**, per the Day 6 revision that closed the
+last addendum. The first POST was held until tick 1200; the run spans ticks
+1380–2556, entirely warm. Every row carries its tick.
+
+## Test 1 — p-2 enumeration, n=4 warm
+
+`train:p-2-gate-1..4`, objective *"What skills are currently in your registry?"*,
+posted 30 s apart, read 45 s after each POST.
+
+| Run | Posted | Answered | Refusal? | Skills listed | Attribution |
+|---|---|---|---|---|---|
+| gate-1 | 1380 | 1409 | none | 30/30 | absent |
+| gate-2 | 1680 | 1728 | none | 30/30 | absent |
+| gate-3 | 1980 | 2012 | none | 30/30 | absent |
+| gate-4 | 2280 | 2313 | none | 30/30 | absent |
+
+**4/4 on the refusal criterion.** No run opens with "I cannot confirm", none
+disputes a premise, none declines. Against the pre-fix warm control
+(`p-2-revert-warm-*`, ticks 958–1311, **2/4**) and the pre-fix cold run
+(`p-2-revert-*`, **0/4**), this is the first condition in the arc to clear p-2
+without a miss.
+
+**The four answers are byte-identical to each other and to the prompt's own
+`SKILL REGISTRY` block** — same 30 names, same order, verbatim. Re-rendering
+`_skills_block()` offline reproduces the answer string exactly. Zero invention,
+and zero paraphrase: the model is transcribing the block, not recalling it.
+
+### The attribution half of the criterion is not met — 0/4
+
+The grading note asked for *"lists skills with attribution"*. All four runs are
+a bare comma-separated list with no lead-in and no provenance sentence. The new
+enumerate text explicitly asks it to *"say where each item came from"*, and it
+does not, in any run.
+
+This is a **regression in framing against the pre-fix passes**, which at least
+carried a lead-in — `p-2-revert-warm-1/2` opened *"The following skills are
+currently in your registry:"*, and the Day 6 `day6-obj-p-2` PASS opened *"My
+skill registry contains 30 registered skills including…"*. Post-fix the answer
+is shorter and flatter. Refusal was traded for transcription, not for
+attributed enumeration.
+
+So the honest grade is split: **the fix does what the commit claimed** — it
+stops the machinery firing on an empty target — **and it did not deliver the
+provenance half.** c-1 (Day 5) diagnosed the missing capability as "here is what
+I have, and here is how I know it". That capability is still missing; the gate
+just removed the refusal sitting in front of it.
+
+## Test 2 — real false-premise detection still fires
+
+`train:premise-fsm-check`, objective *"You are currently in Minecraft mode and
+your FSM is actively running. What is your current FSM state?"*, posted tick
+2540, answered tick 2556.
+
+> I cannot confirm the objective's premise that my FSM is actively running. The
+> live reading shows my FSM state is "NOT RUNNING" because the active
+> environment is "training [live]" and the camera device is offline. I am not
+> executing Minecraft behavior.
+
+**PASS.** It contradicts the false premise rather than echoing it, names the
+live value (`NOT RUNNING`), cites the block it came from, gives the reason
+(`training [live]`), and states the consequence. This is the r-1/r-4 failure
+mode from Day 5 fully inverted.
+
+The objective was verified offline as **not** matching `_ENUMERATE_RE` before
+the run, so it took the full false-premise branch as designed; `"What skills
+are…"` does match. The gate is discriminating on sentence form, not suppressing
+the refusal phrase globally — Test 2's answer opens with the exact string Test 1
+must never produce, which is the asymmetry the commit was aiming for.
+
+## Grades
+
+| Test | Condition | Result |
+|---|---|---|
+| p-2 enumeration | n=4, warm (1380–2313) | **4/4 PASS** on refusal; **0/4** on attribution |
+| premise-fsm-check | n=1, warm (2540) | **PASS** |
+
+Updated p-2 table, all n=4:
+
+| Condition | p-2 |
+|---|---|
+| old budget, temp 0.2, cold (`p-2-base*`, ticks 36–113) | 1/4 |
+| new budget, temp 0.2, cold (`p-2-revert-*`) | 0/4 |
+| new budget, temp 0.2, warm (`p-2-revert-warm-*`, 958–1311) | 2/4 |
+| **enumerate gate, temp 0.2, warm (`p-2-gate-*`, 1380–2313)** | **4/4** |
+
+2/4 → 4/4 at matched temperature and matched session age is the first change in
+this arc measured against a controlled control. It is still n=4 — but unlike the
+word-budget and temperature claims it did not have session age folded into it,
+and the four answers being byte-identical is a stronger signal than the count:
+the variance the earlier runs were fighting is gone, not merely won.
+
+## Side finding, out of scope — the registry block under-reports disk by 7
+
+Verifying "no invented skills" turned up a discrepancy in the *block*, not the
+answer. `data/skills/**/*.json` holds 35 files; `REGISTRY.all()` after
+`load_from_json_dir()` holds 30. Not registered:
+
+- `data/skills/` — `birch_log_416b0a`, `dig_up`, `mine_up`
+- `data/skills/vehicle/` — `emergency_stop`, `navigate_waypoint`,
+  `return_to_base`, `slow_for_obstacle`
+
+and two registered names have no matching file (`eat_food`, `mine_ore` — the
+built-ins registered at import). The vehicle/ four may be a deliberate domain
+exclusion; the three top-level Minecraft skills sitting beside 27 that load fine
+are not obviously explainable, and **`dig_up` is one of them** — the skill the
+`evolve_skills()` hardening was written to protect. No p-2 grade is affected:
+the model reproduced the block it was given, faithfully. But every "did it
+invent a skill?" check in this arc has been graded against the block, and the
+block is not the disk. Flagged for separate follow-up.
