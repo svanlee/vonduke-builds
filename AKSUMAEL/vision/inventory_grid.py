@@ -226,8 +226,10 @@ def locate_grid(frame, panel_hint: tuple | None = None) -> InvGrid | None:
     if frame is None or frame.size == 0:
         return None
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
     candidates = [panel_hint] if panel_hint else _panel_candidates(frame)
+    if not candidates:
+        return None
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
 
     for cand in candidates[:3]:
         px, py, pw, ph = cand[:4]
@@ -256,10 +258,10 @@ def locate_grid(frame, panel_hint: tuple | None = None) -> InvGrid | None:
         row_prof = np.percentile(band, 35, axis=1)
 
         col_deltas = [_SLOT_PITCH_GUI * c for c in range(10)]
-        ox, sx, sc_x = _fit_lattice(col_prof, col_deltas, scale_est,
-                                    0.0, 14 * scale_est)
-        oy, sy, sc_y = _fit_lattice(row_prof, _ROW_LINE_GUI, scale_est,
-                                    0.0, 16 * scale_est)
+        ox, sx, _ = _fit_lattice(col_prof, col_deltas, scale_est,
+                                 0.0, 14 * scale_est)
+        oy, sy, _ = _fit_lattice(row_prof, _ROW_LINE_GUI, scale_est,
+                                 0.0, 16 * scale_est)
 
         # x and y come off the same GUI, so a pitch disagreement means one
         # of the two fits locked onto something that is not the lattice.
