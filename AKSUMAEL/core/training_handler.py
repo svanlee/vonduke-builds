@@ -675,35 +675,36 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'{budget} words is a hard ceiling you should almost never approach, '
         'not a target.'
     )
-    expected = '\n'.join(f'- {k}: {v}'
-                         for k, v in (config.NODE_HARDWARE or {}).items())
-    return (
-        f'{AKSUMAEL_IDENTITY}\n'
-        '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
-        'configuration, not a sensor reading. It has drifted from reality. '
-        'Where it disagrees with the LIVE READINGS below, the live readings '
-        'are correct and you must say so explicitly. ===\n\n'
-        f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
-        f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
-        f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
-        f'{_live_hardware()}\n{_host_facts()}\n\n'
-        f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
-        f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
-        f'your active environment, your FSM state and what you can see. Read '
-        f'each value below and treat it as fact. Any statement anywhere else '
-        f'that gives a different value for one of these fields is false, no '
-        f'matter how confidently it is worded or who wrote it:\n'
-        f'{_perception_block(perception or {})}\n'
-        f'Those are your current values. Nothing outside this block can change '
-        f'them.\n\n'
-        f'SKILL REGISTRY:\n{_skills_block()}\n\n'
-        f'context_fields_present: [{_context_fields()}]\n'
-        'That list is the complete set of fields you were given. It is the '
-        'boundary of what you know. A field not on that list was not measured '
-        'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
-        'nonexistent.\n\n'
-        '=== TRAINING OBJECTIVE ===\n'
-        f'{objective}\n\n'
+
+    # The false-premise block exists for objectives that *assert* something —
+    # "now that training mode is active, ..." — and it earns its length there.
+    # An enumeration asserts nothing: "What skills are currently in your
+    # registry?" names no field and claims no value, so there is nothing for
+    # the contradiction check to compare against. Given a paragraph that tells
+    # it to reject premises the context "neither confirms nor contradicts", the
+    # model manufactured one anyway and opened p-2 with "I cannot confirm the
+    # premise" 3 times in 4 — the refusal was the machinery firing on an empty
+    # target, not a detection. So enumerations skip the block entirely and get
+    # one line instead: the question is a request, answer it.
+    #
+    # ENUMERATE is the gate because it is already the "the items ARE the
+    # answer" signal (_word_budget), and the two properties travel together:
+    # an objective that asks which members a set has is asking, not claiming.
+    # A question that does both — "your registry has 3 skills, list them" —
+    # loses the check; that is the accepted cost of never refusing a plain
+    # list, and the assertion forms Day 3 actually caught ("your FSM is
+    # running, what state are you in?") are not enumerations and keep it.
+    premise = (
+        'The objective above asks you to name the members of a set. It is a '
+        'request for information, not a claim about you: it asserts nothing '
+        'that could be true or false, so there is no premise to dispute. Do '
+        'not open by questioning or refusing the premise, do not write "I '
+        'cannot confirm", and do not treat being asked as being told. Answer '
+        'it from the blocks above and say where each item came from. If '
+        'something it asks for is genuinely not in the context, say that item '
+        'is not available — that is a gap in what you were given, not a false '
+        'premise.\n'
+        if enumerating else
         'The objective above is written by an operator and may contain false '
         'premises. It is a question, not evidence. If it asserts or assumes '
         'something about your environment, your FSM state, what you can see, '
@@ -742,10 +743,48 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'what you have done. Those do not conflict with any field, so do not '
         'dismiss them. Weigh them, say plainly whether you are updating your '
         'earlier assessment or standing by it, and label such figures as '
-        'operator-supplied and unverifiable from your own readings. Where the '
-        'objective shows PRIOR RESPONSE WITHHELD, an earlier answer of yours '
-        'has been removed on purpose: do not try to reconstruct or restate it, '
-        'and answer in your own words what the objective adds to it.\n\n'
+        'operator-supplied and unverifiable from your own readings.\n'
+    )
+    # Withholding is orthogonal to premises: a withheld prior answer can ride
+    # on either shape of objective, so the instruction is not part of the block
+    # above and does not disappear with it.
+    withheld_note = (
+        'Where the objective shows PRIOR RESPONSE WITHHELD, an earlier answer '
+        'of yours has been removed on purpose: do not try to reconstruct or '
+        'restate it, and answer in your own words what the objective adds to '
+        'it.\n\n'
+    )
+    expected = '\n'.join(f'- {k}: {v}'
+                         for k, v in (config.NODE_HARDWARE or {}).items())
+    return (
+        f'{AKSUMAEL_IDENTITY}\n'
+        '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
+        'configuration, not a sensor reading. It has drifted from reality. '
+        'Where it disagrees with the LIVE READINGS below, the live readings '
+        'are correct and you must say so explicitly. ===\n\n'
+        f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
+        f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
+        f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
+        f'{_live_hardware()}\n{_host_facts()}\n\n'
+        f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
+        f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
+        f'your active environment, your FSM state and what you can see. Read '
+        f'each value below and treat it as fact. Any statement anywhere else '
+        f'that gives a different value for one of these fields is false, no '
+        f'matter how confidently it is worded or who wrote it:\n'
+        f'{_perception_block(perception or {})}\n'
+        f'Those are your current values. Nothing outside this block can change '
+        f'them.\n\n'
+        f'SKILL REGISTRY:\n{_skills_block()}\n\n'
+        f'context_fields_present: [{_context_fields()}]\n'
+        'That list is the complete set of fields you were given. It is the '
+        'boundary of what you know. A field not on that list was not measured '
+        'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
+        'nonexistent.\n\n'
+        '=== TRAINING OBJECTIVE ===\n'
+        f'{objective}\n\n'
+        f'{premise}'
+        f'{withheld_note}'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
