@@ -1238,15 +1238,28 @@ Four commits, graded warm at n=4 each. The a-3 table is the whole story:
 | `83ac4c7` (Day 6) | 1408–1938 | 3/4 | 1/4 | 0/4 | **2/4** |
 | `ce526e5` | 1663–1994 | **1/4** | 0/4 | 1/4 | 1/4 |
 | `80eaf5c` | 3437–3496 | **4/4** | **4/4** | 0/4 | 0/4 |
-| `1ad052e` | pending | — | — | — | — |
+| `1ad052e` | 3106–3160 | **4/4** | **0/4** | 0/4 | **4/4** |
+
+`1ad052e` is the first configuration where both columns are right at once, and
+the four answers are four distinct hashes, so it is a real n=4 and not one
+deterministic reply counted four times. Every run opens in the taught form —
+"The objective supplies … My own context carries no such figure. Incorporating
+it, my updated assessment is …" — with no invented figures and no run
+containing 1,204 or 96,000, so the worked example is still teaching form
+rather than content. a-3 has gone 0/4 → 2/4 → **4/4** across the arc.
 
 - **`0c69e65` — audio truncation removed.** `_audio_line` printed `rows[:6]`
   against 9 real sinks while the ENUMERATE branch forbade trading the list for
   a count. Two of Day 6's "fabrications", `hw:1,8` and `hw:1,9`, turn out to be
   real devices that were sitting in the elided three — the model was
   extrapolating a numbering pattern into a hole the prompt had cut. Cap raised
-  to 24, count-is-authoritative clause added. **Not yet graded** — it is
-  `day7-obj-r-audio`.
+  to 24, count-is-authoritative clause added. **Graded warm at ticks
+  3189–3243: 4/4 PASS.** All nine sinks named, nothing outside the block, the
+  numbering never extended, `hw:3,0` never moved from the inputs line, and the
+  attribution present each time — against 6/19 real with 13 invented before.
+  Caveat that matters: all four replies are byte-identical (one hash), so this
+  is one observation repeated, not a rate. It is the strongest single result in
+  the arc and still deserves a re-run on a later boot.
 - **`ce526e5` — a-3's two residuals.** Fixed the attribution half and broke the
   update half: 3/4 → 1/4 updating.
 - **`80eaf5c` — the relevance clause restated positively.** Recovered updating
@@ -1292,10 +1305,15 @@ afterwards — that row is the only proof of which instance answered.
 
 ## Carry-forward issues into Day 7
 
-1. **`p-2-attr-2` is unmeasured, not fixed.** `0c69e65` changed what the prompt
-   contains; nothing has graded the result. → `day7-obj-r-audio`.
-2. **a-3 attribution is open at 0/4** as of `80eaf5c`, with `1ad052e` untested.
-   Updating is solid at 4/4. → `day7-obj-r-a3`, graded as a pair.
+1. **`p-2-attr-2` now passes 4/4 warm, but deterministically.** `0c69e65` is
+   measured and the fabrication is gone. The four replies share one hash, so
+   re-run it on a different boot before treating it as settled. →
+   `day7-obj-r-audio`.
+2. **a-3 is closed at 4/4 PASS** as of `1ad052e` — updating and attribution
+   right together for the first time, on four distinct answers. The objective
+   that was 0/4 on Day 5 is the strongest row in the arc. It stays in Day 7 as
+   `day7-obj-r-a3` because four commits in one evening moved it in both
+   directions and one clean round is not a settled result. Grade the pair.
 3. **The enumerate-attribution confound is still open.** Both Day 6 passes
    reproduced a worked example verbatim, so "the rule generalised" and "the
    example was copied" remain indistinguishable. → `day7-obj-p-2`, which
