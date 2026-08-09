@@ -305,6 +305,33 @@ CAMERA_MIN_FRAME_MEAN = 8.0
 CAMERA_REPROBE_SEC   = 300   # 5 min between probe sweeps
 CAMERA_LOG_THROTTLE_SEC = 60 # at most one "no camera" line per minute
 
+# ── Screen grab (X display) ───────────────────────────────────
+# AKSUMAEL is a general agent first and a game player second — Minecraft,
+# FO76 and the driving/flying sims are testing sandboxes, not the point. So
+# "the capture card is gone" should mean "no *game* feed", not "no eyes":
+# core/capture.py falls back to grabbing the X display after every camera
+# index above has failed, and keeps sweeping for the card in the background
+# so the fallback is never permanent.
+#
+# Read this carefully before relying on it: a grab of :0 is the *Linux
+# desktop*, never the game. Minecraft runs on a separate PC and reaches
+# AKSUMAEL only over HDMI through the capture card. That is why
+# CaptureThread tags its source and core/runtime.py gates every Minecraft
+# heuristic on `game_vision` rather than `vision_available` — a desktop
+# frame must never be read as a game frame.
+SCREENSHOT_FALLBACK_ENABLED = True
+SCREENSHOT_DISPLAY = ':0'
+SCREENSHOT_FPS = 20.0   # fallback cadence; a 1920×1080 grab costs ~13ms
+
+# The desktop watch runs *alongside* the capture card rather than instead of
+# it — the card carries the game and this carries AKSUMAEL's own screen, and
+# the LLM vision route wants both at once. Deliberately not fed to YOLO,
+# whose weights are Minecraft classes and which would only emit ore/mob
+# boxes on window chrome. Its consumer ticks in seconds, so it grabs far
+# more slowly than the fallback path above.
+DESKTOP_WATCH_ENABLED = True
+DESKTOP_WATCH_FPS = 4.0
+
 # ── Action Output ─────────────────────────────────────────────
 # "kb2040" = UART → KB2040 → USB HID keyboard+mouse+gamepad (primary)
 # "ch9329" = UART → CH9329 → USB HID keyboard+mouse (backup, PC only)

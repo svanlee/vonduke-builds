@@ -238,7 +238,8 @@ def _mtime_age_s(path):
         return None
 
 
-def _perception_snapshot(fsm_state=None, objects=None, active_env=None) -> dict:
+def _perception_snapshot(fsm_state=None, objects=None, active_env=None,
+                         vision_source=None) -> dict:
     """Capture live perception on the *tick* thread, at dispatch time.
 
     The worker builds its prompt seconds later on its own thread, by which
@@ -282,6 +283,14 @@ def _perception_snapshot(fsm_state=None, objects=None, active_env=None) -> dict:
             counts[lab] = counts.get(lab, 0) + 1
         snap['detections'] = {'boxes': len(labels), 'classes': counts}
 
+    # What the detections above are detections *of*. Since the screen-grab
+    # fallback landed, "YOLO ran and saw N boxes" no longer implies the frame
+    # was the game: with the capture card gone the live frame is a grab of
+    # this machine's Linux desktop. Stating the source keeps the model from
+    # reading window chrome as terrain — the failure already seen once, where
+    # an empty game frame got narrated as a Ubuntu system tray.
+    snap['vision_source'] = vision_source or None
+
     # Active environment. config.ACTIVE_ENV is the configured default;
     # AttentionManager can be focused somewhere else at runtime, and
     # data/attention_focus.json is how that focus reaches other processes.
@@ -322,6 +331,25 @@ def _perception_block(snap: dict) -> str:
     else:
         lines.append('- FSM state: UNKNOWN — not supplied and not readable '
                      'from data/world_memory.json')
+
+    src = snap.get('vision_source')
+    if not src:
+        lines.append('- Vision source: NOT SUPPLIED — you were not told where '
+                     'the frames are coming from.')
+    elif src.startswith('NONE'):
+        lines.append('- Vision source: NONE (vision-less) — no camera and no '
+                     'usable screen grab. There is no image at all this tick.')
+    elif src.startswith('screenshot'):
+        lines.append(f'- Vision source: {src}. IMPORTANT — this is a grab of '
+                     'this bot\'s own Linux desktop, NOT the game. Minecraft '
+                     'runs on a separate PC and only reaches this bot through '
+                     'the HDMI capture card, which is currently unavailable. '
+                     'Any detections below describe desktop windows, not a '
+                     'game world, and nothing below is evidence about what is '
+                     'happening in Minecraft.')
+    else:
+        lines.append(f'- Vision source: {src} (capture device — this is the '
+                     'live game feed)')
 
     det = snap.get('detections')
     if det is None:
@@ -530,18 +558,20 @@ def _record(goal: str, objective: str, answer: str | None, tick: int):
 # ── Tick-thread entry point ────────────────────────────────────
 
 def maybe_handle(goals, monologue=None, tick: int = 0,
-                 fsm_state=None, objects=None, active_env=None) -> bool:
+                 fsm_state=None, objects=None, active_env=None,
+                 vision_source=None) -> bool:
     """Call once per tick, before the FSM picks a behaviour for the goal.
 
     Returns True while a training objective owns the current goal, so the
     caller can skip game behaviours for that tick. Cheap and a no-op when the
     current goal is an ordinary one, which is almost always.
 
-    `fsm_state`, `objects` and `active_env` are the live perception the prompt
-    needs to refuse a false premise (see _perception_snapshot). All three are
-    optional and fall back to disk snapshots, so an older caller that passes
-    none of them still gets a correct — just staler and, for detections,
-    explicitly absent — perception block rather than a wrong one."""
+    `fsm_state`, `objects`, `active_env` and `vision_source` are the live
+    perception the prompt needs to refuse a false premise (see
+    _perception_snapshot). All are optional and fall back to disk snapshots,
+    so an older caller that passes none of them still gets a correct — just
+    staler and, for detections, explicitly absent — perception block rather
+    than a wrong one."""
 
     # Land a finished answer first — the goal it belongs to is still current.
     if _state['done']:
@@ -601,7 +631,8 @@ def maybe_handle(goals, monologue=None, tick: int = 0,
 
     _state.update({'goal': goal, 'busy': True, 'done': False, 'answer': None})
     print(f'[TRAIN] objective received: {objective[:120]}')
-    perception = _perception_snapshot(fsm_state, objects, active_env)
+    perception = _perception_snapshot(fsm_state, objects, active_env,
+                                      vision_source)
     threading.Thread(target=_answer, args=(goal, objective, tick, perception),
                      daemon=True, name='train-answer').start()
     return True

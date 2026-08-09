@@ -678,10 +678,22 @@ def run():
             # pixel- or detection-derived heuristic below is gated on
             # `vision_ok`. CaptureThread re-probes in the background, so this
             # flips back to True on its own if a camera reappears.
-            vision_ok = pipeline.vision_available
+            # Two different questions, and conflating them is what made a
+            # missing capture card mean "no eyes at all":
+            #   frames_ok — is *any* source delivering? (capture card, webcam,
+            #               or a grab of the X display). YOLO and the LLM
+            #               route run off this.
+            #   vision_ok — are those frames the game? Only a real capture
+            #               device counts. Every Minecraft heuristic below is
+            #               gated on this, because a desktop screen grab does
+            #               not blind them — it makes them confidently wrong
+            #               (a desktop is "bright", has no HUD, and shows no
+            #               hotbar, which reads as day/dead/menu-open).
+            frames_ok = pipeline.vision_available
+            vision_ok = pipeline.game_vision
             frame = pipeline.latest_small_frame
             if frame is None:
-                if vision_ok:
+                if frames_ok:
                     # Camera is there but hasn't handed over its first frame
                     # yet (or is between devices) — a genuinely transient wait.
                     tts.say_line('no_frame', priority=True)
@@ -940,7 +952,8 @@ def run():
                     goals, cognitive.monologue, tick,
                     fsm_state=(_FSM_GATED if _training_mode else fsm_state),
                     objects=objects,
-                    active_env=attention_manager.get_active_name())
+                    active_env=attention_manager.get_active_name(),
+                    vision_source=pipeline.vision_source)
             except Exception as e:
                 print(f'[TRAIN] handler error: {e}')
 
@@ -1086,7 +1099,7 @@ def run():
                 if tick % 60 == 0:
                     world_mem.save()
                     _write_health_log(tick, goals.current_goal(), reward.average(),
-                                       cognitive, camera_index=pipeline.camera_index)
+                                       cognitive, vision_source=pipeline.vision_source)
                 if tick % 20 == 0:
                     _yolo_n = len(objects)
                     print(f'[{tick:04d}] {round(time.time() - t0, 2)}s | TRAINING | '
@@ -2079,9 +2092,16 @@ def run():
                 # driving off the GoalStack instead. The inner monologue is
                 # unaffected: it runs on its own cadence from goals and
                 # memory, not from pixels.
+                #
+                # Gated on game_vision, not on "is there a frame": with the
+                # capture card gone the live frame may be a desktop grab,
+                # which is a perfectly real image and exactly the wrong thing
+                # to ask "what should I do in Minecraft?" about. Better to
+                # drive off the GoalStack than to let the vision LLM narrate
+                # a terminal window as if it were the world.
                 elif not vision_ok:
                     action_dict = fsm_action
-                    src_tag = 'FSM-blind'
+                    src_tag = ('FSM-desktop' if frames_ok else 'FSM-blind')
 
                 elif (tick % _llm_interval == 0) or (force_llm_reconsider and (
                         fsm_state != _last_llm_fsm_state
@@ -2699,7 +2719,7 @@ def run():
             # without tailing raw logs — see _write_health_log() below.
             if tick % 60 == 0:
                 _write_health_log(tick, goals.current_goal(), r, cognitive,
-                                   camera_index=pipeline.camera_index)
+                                   vision_source=pipeline.vision_source)
 
             # ── Pace ──────────────────────────────────────────
             time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
@@ -2758,12 +2778,14 @@ HEALTH_LOG_PATH = '/tmp/aksumael_health.txt'
 
 
 def _write_health_log(tick: int, goal: str, last_reward: float, cognitive,
-                       camera_index=None) -> None:
+                       vision_source: str = None) -> None:
     """Plain-text status snapshot for unattended checks (no log tailing needed).
 
-    camera_index is the device CaptureThread actually settled on, or None in
-    vision-less mode — reporting the *configured* index instead would have
-    said "video2: ABSENT" while the bot was happily running off video0."""
+    vision_source is what CaptureThread actually settled on — '/dev/video2',
+    a webcam, 'screenshot fallback (:0)', or 'NONE (vision-less)'. Reporting
+    the *configured* device instead would have said "video2: ABSENT" while
+    the bot was happily running off video0, and would now also hide the fact
+    that the live frames are a desktop grab rather than the game."""
     tty_present   = os.path.exists('/dev/ttyUSB0')
     vision_calls  = get_call_counts()
     claude_calls  = vision_calls['claude'] + cognitive.monologue.claude_call_count
@@ -2772,7 +2794,7 @@ def _write_health_log(tick: int, goal: str, last_reward: float, cognitive,
         f'tick:         {tick}',
         f'goal:         {goal or "none"}',
         f'last_reward:  {last_reward:+.3f}',
-        f'camera:       {f"/dev/video{camera_index}" if camera_index is not None else "NONE (vision-less)"}',
+        f'camera:       {vision_source or "NONE (vision-less)"}',
         f'ttyUSB0:      {"present" if tty_present else "ABSENT"}',
         f'vision_route: {get_last_provider() or "none"} (last tick)',
         f'local_calls:  {vision_calls["local"]}',

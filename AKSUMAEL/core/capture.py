@@ -15,6 +15,7 @@ import queue
 import time
 import textwrap
 import cv2
+import numpy as np
 import config
 
 
@@ -101,6 +102,219 @@ def probe_cameras(quiet: bool = False):
             except Exception:
                 pass
     return None, None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Screen grab — the X display, shaped like a camera.
+#
+# Two distinct jobs, both served by ScreenshotSource:
+#
+#   1. Last resort in the camera chain. When neither the capture card nor any
+#      webcam opens, "no camera" used to mean "no eyes", which is only the
+#      right conclusion for a bot that is *only* a game player. AKSUMAEL is a
+#      general agent first, so it should still be able to see the machine it
+#      is running on.
+#   2. Always-on desktop watch (DesktopCaptureThread below), which runs
+#      *alongside* the capture card rather than instead of it — the card
+#      carries the game, the screen grab carries AKSUMAEL's own desktop, and
+#      the higher-level vision route wants both at once.
+#
+# What this is NOT: the game. Minecraft runs on a separate PC and reaches
+# AKSUMAEL only through the HDMI capture card, so a grab of :0 shows the
+# Linux desktop — terminals, logs, browser — and never the world. That is
+# why CaptureThread tracks `source_kind` separately from `vision_available`:
+# YOLO should keep running on these frames, but every Minecraft heuristic in
+# core/runtime.py is gated on `game_vision` so a desktop frame can never be
+# mistaken for a game frame.
+
+class ScreenshotSource:
+    """An X display exposed through the slice of the cv2.VideoCapture API
+    that CaptureThread actually uses — read(), release(), isOpened(), get().
+
+    Shaping it like a camera keeps the streaming loop in run() identical
+    whether it holds a capture card or a screen grab, so there is exactly one
+    frame path to reason about instead of two.
+
+    read() is rate-limited: a 1920×1080 grab costs ~13ms, so an ungated loop
+    would spin at ~75fps and burn a core to re-photograph a mostly-static
+    desktop. It blocks until the next frame is due instead.
+    """
+
+    def __init__(self, display: str = ':0', fps: float = 20.0):
+        self.display  = display
+        self.label    = f'screenshot fallback ({display})'
+        self._grab    = None
+        self._interval = 1.0 / max(float(fps), 0.1)
+        self._next_due = 0.0
+        self._w = self._h = 0
+        self._closed = False
+
+    # ── cv2.VideoCapture-shaped surface ───────────────────────────────────
+
+    def isOpened(self) -> bool:
+        return self._grab is not None and not self._closed
+
+    def get(self, prop):
+        if prop == cv2.CAP_PROP_FRAME_WIDTH:
+            return float(self._w)
+        if prop == cv2.CAP_PROP_FRAME_HEIGHT:
+            return float(self._h)
+        return 0.0
+
+    def set(self, prop, value):
+        return False   # a screen has no V4L2 properties to negotiate
+
+    def release(self):
+        self._closed = True
+        self._grab   = None
+
+    def read(self):
+        """(True, BGR frame) or (False, None) — same contract as cv2.read()."""
+        if not self.isOpened():
+            return False, None
+        now = time.monotonic()
+        if now < self._next_due:
+            time.sleep(self._next_due - now)
+        self._next_due = time.monotonic() + self._interval
+        frame = self._grab_bgr()
+        return (frame is not None), frame
+
+    # ── Internals ─────────────────────────────────────────────────────────
+
+    def open(self) -> bool:
+        """Bind to the display and prove it hands back a real frame.
+
+        Pillow is the only screen-grab backend present on this rig (no scrot,
+        no mss, no python-xlib), and ImageGrab needs a Pillow built with X11
+        support — hence the import and the trial grab rather than trusting
+        either to work."""
+        try:
+            from PIL import ImageGrab
+        except Exception:
+            return False
+        self._closed = False
+        self._grab   = ImageGrab.grab
+        frame = self._grab_bgr()
+        if frame is None:
+            self.release()
+            return False
+        self._h, self._w = frame.shape[:2]
+        return True
+
+    def _grab_bgr(self):
+        """One frame as a BGR numpy array — the format every camera in this
+        pipeline delivers and everything downstream (YOLO, the HUD reader,
+        the color detector) assumes. PIL hands back RGB, so the channel swap
+        is mandatory, not cosmetic."""
+        try:
+            img = self._grab(xdisplay=self.display)
+        except Exception:
+            return None
+        if img is None:
+            return None
+        arr = np.asarray(img.convert('RGB'))
+        if arr.size == 0:
+            return None
+        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
+
+def probe_screenshot(quiet: bool = False, fps: float = None):
+    """Return an opened ScreenshotSource, or None if the screen is unusable.
+
+    Applies the same "is this a real frame" floor as a camera probe: a
+    blanked or DPMS-off display grabs as solid black, which carries no more
+    information than a capture card with nothing plugged into it."""
+    if not getattr(config, 'SCREENSHOT_FALLBACK_ENABLED', True):
+        return None
+    display = getattr(config, 'SCREENSHOT_DISPLAY', ':0')
+    if fps is None:
+        fps = getattr(config, 'SCREENSHOT_FPS', 20.0)
+    src = ScreenshotSource(display, fps)
+    if not src.open():
+        if not quiet:
+            print(f'[CAMERA] screen grab of {display} unavailable')
+        return None
+    ok, frame = src.read()
+    if not ok or not _frame_is_real(frame):
+        src.release()
+        if not quiet:
+            print(f'[CAMERA] screen grab of {display} is blank — ignoring')
+        return None
+    return src
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class DesktopCaptureThread(threading.Thread):
+    """Always-on grab of AKSUMAEL's own screen, running *concurrently* with
+    whatever CaptureThread is doing.
+
+    The capture card and the desktop are not alternatives — the card carries
+    the game and this carries the machine AKSUMAEL is running on, and the
+    higher-level vision route (core/vision_router.py's LLM calls) wants both
+    available at once. Restricting the bot to one or the other is what made
+    "capture card unplugged" collapse into "no eyes at all".
+
+    Deliberately NOT fed to YOLO. The detector's weights are Minecraft
+    classes; run against window chrome and terminal text they emit
+    low-confidence ore/mob boxes on desktop furniture, which is noise
+    entering the same channel the game detections use. Desktop frames are
+    for the LLM path, which can actually describe what it is looking at.
+
+    Runs at its own (much slower) cadence — config.DESKTOP_WATCH_FPS — since
+    its consumer ticks in seconds, not milliseconds.
+    """
+
+    def __init__(self):
+        super().__init__(name='DesktopCaptureThread', daemon=True)
+        self._lock = threading.Lock()
+        self._raw   = None
+        self._small = None
+        self._stop_evt = threading.Event()
+        self.available = False
+
+    def get_latest_raw(self):
+        with self._lock:
+            return self._raw
+
+    def get_latest_small(self):
+        with self._lock:
+            return self._small
+
+    def stop(self):
+        self._stop_evt.set()
+
+    def run(self):
+        fps = getattr(config, 'DESKTOP_WATCH_FPS', 4.0)
+        retry_sec = getattr(config, 'CAMERA_REPROBE_SEC', 300)
+        while not self._stop_evt.is_set():
+            src = probe_screenshot(quiet=True, fps=fps)
+            if src is None:
+                # No X display, no Pillow, or the screen is blank. Retry on
+                # the same cadence as the camera sweep rather than spinning.
+                self.available = False
+                self._stop_evt.wait(retry_sec)
+                continue
+
+            print(f'[DESKTOP] watching {src.display} @ {fps:g}fps '
+                  f'(LLM vision route only — not fed to YOLO)')
+            self.available = True
+            while not self._stop_evt.is_set():
+                ok, frame = src.read()
+                if not ok:
+                    break
+                fh, fw = frame.shape[:2]
+                scale  = 640 / fw
+                small  = cv2.resize(frame, (640, int(fh * scale)),
+                                    interpolation=cv2.INTER_AREA)
+                with self._lock:
+                    self._raw   = frame
+                    self._small = small
+            src.release()
+            self.available = False
+            with self._lock:
+                self._raw = self._small = None
+
+        print('[DESKTOP] DesktopCaptureThread stopped')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -204,9 +418,29 @@ class CaptureThread(threading.Thread):
         # heuristics at all; written only here.
         self.vision_available = False
         self.active_index     = None   # index actually in use, or None
+        # Which *kind* of source is feeding frames: 'camera' (capture card or
+        # webcam) or 'screenshot' (a grab of the X display). vision_available
+        # says frames are flowing; this says what they are of, and the two are
+        # not interchangeable — see game_vision below.
+        self.source_kind      = None
+        self.source_label     = None   # human-readable, e.g. '/dev/video2'
         self._last_nocam_log  = 0.0    # monotonic ts of the last "no camera" line
 
     # ── Public API ────────────────────────────────────────────────────────
+
+    @property
+    def game_vision(self) -> bool:
+        """True only when frames are coming off a real capture device.
+
+        The distinction that matters to core/runtime.py: `vision_available`
+        answers "is there a frame at all" (YOLO, the LLM route), while this
+        answers "is that frame the game" (the night/brightness push, the ore
+        color detector, the HUD pixel read, death-and-respawn, torch placing,
+        the launcher, the curiosity survey — every heuristic that reads
+        Minecraft meaning into pixels). Feeding those a desktop screen grab
+        would not blind them, which is recoverable; it would make them
+        confidently wrong, which is not."""
+        return self.vision_available and self.source_kind == 'camera'
 
     def get_latest_raw(self):
         """Full-resolution frame, or None before the first frame arrives."""
@@ -240,38 +474,57 @@ class CaptureThread(threading.Thread):
             self._last_nocam_log = now
             print('[CAMERA] No camera available — running in vision-less mode')
 
-    def _configure(self, cap, index: int):
+    def _configure(self, cap, label: str, kind: str):
         """Apply the low-latency capture settings and announce the geometry.
 
         The 1920×1080 request is what the capture card delivers; a webcam
         fallback simply reports back whatever it actually supports (typically
         640×480), which is fine — everything downstream works off the 640-wide
-        `small` frame computed in run()."""
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                              # min lag
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))   # fast decode
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        `small` frame computed in run(). A screen grab has no V4L2 properties
+        to negotiate at all, so it only reports the geometry it found."""
+        if kind == 'camera':
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                              # min lag
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))   # fast decode
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+            codec = 'MJPG'
+        else:
+            codec = 'X11'
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f'[CAPTURE] CaptureThread @ {w}×{h} MJPG /dev/video{index}')
+        print(f'[CAPTURE] CaptureThread @ {w}×{h} {codec} {label}')
 
     def _acquire(self):
-        """Block until a working camera is found or stop() is called.
+        """Block until a working vision source is found or stop() is called.
 
-        Returns (index, cap), or (None, None) if the thread was asked to
-        stop. Between sweeps the thread sleeps in short slices so stop() is
-        still responsive and so the throttled log stays on its own cadence
-        rather than the (much slower) probe cadence."""
+        Order: CAMERA_INDEX, then each configured fallback index, then — only
+        once every camera has failed — a grab of the X display itself.
+        Returns (cap, label, kind, index), or four Nones if the thread was
+        asked to stop. Between sweeps the thread sleeps in short slices so
+        stop() is still responsive and so the throttled log stays on its own
+        cadence rather than the (much slower) probe cadence."""
         first_sweep = True
         while not self._stop_evt.is_set():
             idx, cap = probe_cameras(quiet=False)
             if cap is not None:
-                return idx, cap
+                return cap, f'/dev/video{idx}', 'camera', idx
+
+            # No camera anywhere. Before declaring vision-less, fall back to
+            # the screen this process is running on — a desktop is not the
+            # game, but it is real visual input, and the run() loop keeps
+            # sweeping for the capture card so this never becomes permanent.
+            shot = probe_screenshot(quiet=not first_sweep)
+            if shot is not None:
+                print(f'[CAMERA] no camera among {_candidate_indices()} — '
+                      f'falling back to {shot.label}; still re-probing for the '
+                      f'capture card every '
+                      f'{getattr(config, "CAMERA_REPROBE_SEC", 300)}s')
+                return shot, shot.label, 'screenshot', None
 
             if first_sweep:
                 print(f'[CAMERA] no working device among '
-                      f'{_candidate_indices()} — entering vision-less mode; '
-                      f're-probing every '
+                      f'{_candidate_indices()} and no usable screen grab — '
+                      f'entering vision-less mode; re-probing every '
                       f'{getattr(config, "CAMERA_REPROBE_SEC", 300)}s')
                 self._last_nocam_log = time.monotonic()
                 first_sweep = False
@@ -282,7 +535,7 @@ class CaptureThread(threading.Thread):
             while not self._stop_evt.is_set() and time.monotonic() < deadline:
                 self._stop_evt.wait(5)
                 self._log_no_camera()
-        return None, None
+        return None, None, None, None
 
     def run(self):
         # Outer loop: acquire a camera, stream from it, and — if it ever goes
@@ -290,21 +543,42 @@ class CaptureThread(threading.Thread):
         # background re-probe: vision is restored automatically whenever a
         # device reappears, with no restart needed.
         while not self._stop_evt.is_set():
-            index, cap = self._acquire()
+            cap, label, kind, index = self._acquire()
             if cap is None:
                 break   # stop() was called while probing
 
-            self._configure(cap, index)
+            self._configure(cap, label, kind)
             self.active_index     = index
+            self.source_kind      = kind
+            self.source_label     = label
             self.vision_available = True
 
+            reprobe_sec = getattr(config, 'CAMERA_REPROBE_SEC', 300)
+            next_recheck = time.monotonic() + reprobe_sec
             read_fails = 0
             while not self._stop_evt.is_set():
+                # A screen grab is a stand-in, not a destination. Unlike the
+                # vision-less path — which re-probes precisely because it has
+                # nothing — this source never fails on its own, so without an
+                # explicit sweep the bot would sit on the desktop forever and
+                # never notice the capture card come back.
+                if kind == 'screenshot' and time.monotonic() >= next_recheck:
+                    next_recheck = time.monotonic() + reprobe_sec
+                    _idx, _cap = probe_cameras(quiet=True)
+                    if _cap is not None:
+                        # Hand it straight back and let _acquire() re-open it
+                        # on the next pass, so there is one place that owns
+                        # opening a device instead of two.
+                        _cap.release()
+                        print(f'[CAMERA] /dev/video{_idx} is back — leaving '
+                              f'{label}')
+                        break
+
                 ret, frame = cap.read()
                 if not ret:
                     read_fails += 1
                     if read_fails >= self.READ_FAIL_LIMIT:
-                        print(f'[CAMERA] /dev/video{index} stopped delivering '
+                        print(f'[CAMERA] {label} stopped delivering '
                               f'frames — re-probing')
                         break
                     time.sleep(0.005)
@@ -327,6 +601,8 @@ class CaptureThread(threading.Thread):
             # camera that has been gone for minutes.
             self.vision_available = False
             self.active_index     = None
+            self.source_kind      = None
+            self.source_label     = None
             with self._lock:
                 self._raw   = None
                 self._small = None
@@ -513,6 +789,12 @@ class VideoCapturePipeline:
         self.capture = CaptureThread(device_index)
         self.yolo_t  = YOLOThread(yolo_detector, self.capture, self._dq)
         self.display = DisplayThread(self._dq, labeling_ui)
+        # Independent of self.capture on purpose: the capture card and the
+        # desktop are concurrent inputs, not alternatives. The card carries
+        # the game; this carries the machine AKSUMAEL runs on.
+        self.desktop = (DesktopCaptureThread()
+                        if getattr(config, 'DESKTOP_WATCH_ENABLED', True)
+                        else None)
         self._overlay_text = ''
         self._fsm_text = ''
         self._ctrl_connected = False
@@ -550,9 +832,44 @@ class VideoCapturePipeline:
         return self.capture.vision_available
 
     @property
+    def game_vision(self) -> bool:
+        """True only when the frames flowing are of the game itself.
+
+        `vision_available` above can be True on a desktop screen grab, which
+        is genuinely useful to the LLM route but is not the world — see
+        CaptureThread.game_vision. Minecraft heuristics gate on this."""
+        return self.capture.game_vision
+
+    @property
     def camera_index(self):
-        """Index of the device actually in use, or None in vision-less mode."""
+        """Index of the device actually in use, or None when the source is a
+        screen grab or there is no source at all."""
         return self.capture.active_index
+
+    @property
+    def vision_source(self) -> str:
+        """Human-readable name of the live source, for logs and the manifest:
+        '/dev/video2', 'screenshot fallback (:0)', or 'NONE (vision-less)'."""
+        return self.capture.source_label or 'NONE (vision-less)'
+
+    @property
+    def desktop_available(self) -> bool:
+        """True when the always-on desktop watch is delivering frames."""
+        return self.desktop is not None and self.desktop.available
+
+    @property
+    def latest_desktop_frame(self):
+        """640-wide BGR grab of AKSUMAEL's own screen, or None.
+
+        Available *alongside* the game feed, not instead of it. Intended for
+        the LLM vision route; deliberately never fed to YOLO (see
+        DesktopCaptureThread)."""
+        return self.desktop.get_latest_small() if self.desktop else None
+
+    @property
+    def latest_desktop_raw(self):
+        """Full-resolution desktop grab, or None."""
+        return self.desktop.get_latest_raw() if self.desktop else None
 
     @property
     def quit(self):
@@ -697,16 +1014,21 @@ class VideoCapturePipeline:
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     def start(self):
-        """Start all three threads (non-blocking)."""
+        """Start the capture/YOLO/display threads, plus the desktop watch
+        when enabled (non-blocking)."""
         self.capture.start()
         self.yolo_t.start()
         self.display.start()
+        if self.desktop is not None:
+            self.desktop.start()
 
     def stop(self):
-        """Signal all three threads to exit."""
+        """Signal every thread to exit."""
         self.display.stop()
         self.yolo_t.stop()
         self.capture.stop()
+        if self.desktop is not None:
+            self.desktop.stop()
 
     def release(self):
         """Alias for ScreenCapture.release() compatibility."""

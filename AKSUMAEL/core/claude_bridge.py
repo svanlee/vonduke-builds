@@ -216,6 +216,11 @@ def _state():
     # runtime writes "NONE (vision-less)" when CaptureThread never settled on
     # a device; anything else is a real /dev/videoN it's actually reading.
     vision_ok = bool(camera) and not camera.startswith('NONE')
+    # vision_ok only promises "there is an image". Since the screen-grab
+    # fallback landed it can be True while the frames are a grab of this
+    # machine's Linux desktop rather than the game, so anything asking "can
+    # the bot see Minecraft right now?" has to read game_vision instead.
+    game_vision = vision_ok and not camera.startswith('screenshot')
 
     return {
         'node': _node(),
@@ -247,8 +252,11 @@ def _state():
             'age_s': _age_s(GOALS_PATH),
         },
         'vision_ok': vision_ok,
+        'game_vision': game_vision,
         'hardware_status': {
             'camera': camera or 'unknown',
+            'vision_kind': ('none' if not vision_ok
+                            else 'screenshot' if not game_vision else 'camera'),
             'ttyUSB0': health.get('ttyUSB0', 'unknown'),
             'vision_route': health.get('vision_route', 'unknown'),
             'tick': health.get('tick'),
