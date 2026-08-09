@@ -2203,9 +2203,16 @@ def run():
             # Its primary signal is a blank HUD (no hotbar/health/hunger boxes),
             # which is exactly what vision-less mode looks like every tick —
             # so it can only run when there's a camera to see the HUD with.
+            # _menu_open must be fed in too: an open inventory/chest/pause
+            # screen hides the whole HUD, which reads as death on both the
+            # YOLO and hud_reader signals at once (2026-08-08 — 70 false
+            # deaths in ~1900 ticks, every one during a GUI the bot had
+            # opened itself). Same gate the color detector, skills and the
+            # F3 toggle already use.
             if vision_ok and respawner.update(
                     objects, last_observation=last_action.get('observation', ''),
-                    suppress_blank=(goals.current_goal() in ('dig_up', 'mine_up')),
+                    hud_unreliable=(goals.current_goal() in ('dig_up', 'mine_up')
+                                    or _menu_open),
                     health_pct=world_mem.health_pct):
                 world_mem.record_death()
                 continue

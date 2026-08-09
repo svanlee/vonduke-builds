@@ -31,54 +31,102 @@ class RespawnBehavior:
         self._blank_ticks = 0
         self._zero_health_ticks = 0
         self._last_respawn = 0.0
+        # Set after a respawn click; blocks the blank+zero-health path until
+        # the HUD is actually seen again. A real respawn puts the agent back
+        # in the world, so the HUD returns within a frame or two and this
+        # clears immediately. A false positive (GUI open) never recovers —
+        # which is what let one bad read re-fire every RESPAWN_COOLDOWN
+        # seconds for the whole run, blind-clicking screen centre and
+        # wiping the goal stack each time (2026-08-08).
+        self._awaiting_hud_recovery = False
 
-    def update(self, objects: list, last_observation: str = '', suppress_blank: bool = False,
+    def update(self, objects: list, last_observation: str = '', hud_unreliable: bool = False,
                health_pct: float = None) -> bool:
         """
         Call every tick. Returns True if respawn was attempted.
         objects: YOLO detected objects this tick
         last_observation: Claude's last observation string
-        suppress_blank: ignore the blank-HUD signal (still honors
-            claude_sees_death). Set while DIGCLIMB is aiming straight down
-            (2026-07-21) — that camera pitch reliably drops YOLO's hotbar/
-            health/hunger detections for a few frames even though the HUD
-            is real screen-space overlay and is still on screen, which was
-            false-triggering a respawn (and wiping the goal stack) every
-            pillar-up cycle.
+        hud_unreliable: the HUD is known to be absent-or-unreadable for a
+            reason that is NOT death — resets both absence counters, so the
+            blank+zero-health path cannot fire (claude_sees_death is still
+            honored). Set for two cases:
+              * DIGCLIMB aiming straight down (2026-07-21) — that camera
+                pitch reliably drops YOLO's hotbar/health/hunger detections
+                for a few frames even though the HUD is a real screen-space
+                overlay and is still on screen.
+              * Any GUI screen the bot itself opened — inventory, chest,
+                crafting, the Escape pause menu (2026-08-08). Minecraft
+                hides the entire HUD behind those screens, so BOTH signals
+                below collapse at once: YOLO sees no HUD boxes *and*
+                hud_reader's fixed pixel ROIs sample UI background and
+                return health 0.0. That is bit-for-bit what death looks
+                like here, and it produced 70 false deaths in ~1900 ticks
+                (8761 lifetime) — each one clicking blind at screen centre
+                (inside the open inventory!) and wiping the goal stack to
+                return_to_base. The two signals were never independent:
+                they share the single root cause "HUD not on screen", so
+                requiring both corroborate nothing on their own.
         health_pct: hud_reader's current health reading (0.0-1.0), if
             available. The blank-HUD signal alone is still just a YOLO
             absence read, which can false-trigger for reasons other than
             DIGCLIMB (motion blur, occlusion, a bad frame) — requiring it
             to be corroborated by health_pct==0 for several consecutive
             ticks (a single bad hud_reader sample isn't trusted either)
-            makes the blank-screen path far more conservative. The
+            makes the blank-screen path more conservative. The
             claude_sees_death fallback is untouched — it's a separate,
             already-reliable text signal (2026-07-21).
         """
         obs_lower = last_observation.lower()
-        death_keywords = ('you died', 'respawn', 'game over', 'death screen', 'score')
+        # Phrases that appear ONLY on the death screen. Bare 'respawn' and
+        # bare 'score' used to be in here and are far too loose: after a
+        # respawn the runtime injects "IMPORTANT: you just respawned. Return
+        # to base" into the observation history (core/runtime.py), so the
+        # model echoing that back re-triggered death detection off its own
+        # recovery text — a self-sustaining loop (2026-08-08).
+        death_keywords = ('you died', 'death screen', 'game over',
+                          'respawn button', 'click respawn', 'score:')
         claude_sees_death = any(k in obs_lower for k in death_keywords)
 
         has_hud = any(o.get('label', '') in HUD_LABELS for o in objects)
-        if not has_hud and not suppress_blank:
-            self._blank_ticks += 1
-        else:
+        if hud_unreliable:
+            # Neither absence signal means anything this tick — clear both,
+            # so a GUI session can't bank up zero-health ticks and fire the
+            # instant it closes and the HUD needs a frame to be re-detected.
             self._blank_ticks = 0
-
-        if health_pct is not None and health_pct <= 0.0:
-            self._zero_health_ticks += 1
-        else:
             self._zero_health_ticks = 0
+        else:
+            if not has_hud:
+                self._blank_ticks += 1
+            else:
+                self._blank_ticks = 0
+
+            if health_pct is not None and health_pct <= 0.0:
+                self._zero_health_ticks += 1
+            else:
+                self._zero_health_ticks = 0
+
+        # Clear the post-respawn latch as soon as the HUD is demonstrably back.
+        # Checked against health_pct as well as YOLO: a positive health read
+        # means hud_reader's pixel ROIs are sampling a real health bar again,
+        # which proves recovery even if YOLO's HUD classes (which this model
+        # emits only sporadically) never fire. Without that second path a
+        # model that never boxes the HUD would latch shut permanently and
+        # real deaths would stop being detected.
+        if self._awaiting_hud_recovery and (
+                has_hud or (isinstance(health_pct, (int, float)) and health_pct > 0.0)):
+            self._awaiting_hud_recovery = False
 
         blank_screen = self._blank_ticks >= self.BLANK_TICKS_THRESHOLD
         health_confirms_death = self._zero_health_ticks >= self.ZERO_HEALTH_TICKS_THRESHOLD
 
-        if (blank_screen and health_confirms_death) or claude_sees_death:
+        if ((blank_screen and health_confirms_death and not self._awaiting_hud_recovery)
+                or claude_sees_death):
             now = time.time()
             if now - self._last_respawn > self.RESPAWN_COOLDOWN:
                 self._last_respawn = now
                 self._blank_ticks = 0
                 self._zero_health_ticks = 0
+                self._awaiting_hud_recovery = True
                 print(f'[RESPAWN] death detected (blank={blank_screen}, health_confirms={health_confirms_death}, '
                       f'claude={claude_sees_death}) — clicking respawn')
                 self._executor.execute({
