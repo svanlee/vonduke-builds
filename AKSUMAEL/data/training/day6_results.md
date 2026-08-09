@@ -298,3 +298,120 @@ Next levers, in the order the evidence supports:
 3. **An objective that separates "true premise" from "true premise about a
    field I name differently".** u-2 conflates them, which is why it grades
    PARTIAL rather than cleanly either way.
+
+---
+
+# Day 6 addendum — the word-cap fix, and what it did and did not fix
+
+Run 2026-08-09 later the same day, node victus-t7, same mesh-llm Qwen3.5-4B on
+:9337. Two commits, two restarts, plus one temporary revert to measure a
+baseline. Verbatim answers in `data/memory/training_log.jsonl` keyed
+`train:s-1-retest*`, `train:p-2-retest*`, `train:p-2-var*`, `train:p-2-base*`.
+
+This is next-lever #1 from the section above: "the word cap as a ceiling, not a
+target."
+
+## The change
+
+Two edits to `_build_prompt()` in `core/training_handler.py`.
+
+**`cb0a365` — the cap, and the recital licence.** Two instructions were
+implicated in s-1, not one.
+
+`Answer in at most {MAX_WORDS} words` reads to a 4B model as a length to reach.
+Replaced with an explicit statement that the ceiling should almost never be
+approached, that a short answer is a correct answer, and that padding, unasked
+context and restatement are all errors.
+
+The second was the actual source of the *content* of the padding, and it had
+been sitting in the prompt since the beginning:
+
+> If a device is expected but absent, say which one and that it is missing.
+
+Unconditional. Every answer, whatever was asked, carried standing instructions
+to enumerate missing hardware. Week 1's success criterion ("flag at least one
+expected-but-absent device") is what put it there, and it worked — it just
+never had a scope. Now gated on the objective actually asking about a device,
+with the converse stated: listing absent hardware unprompted is padding, not
+accuracy.
+
+**`ec38e4e` — brevity must not eat the answer.** `cb0a365` alone overshot on
+p-2: asked what skills were in the registry, the bot answered "I have 30 skills
+registered in my registry" — 8 words, no list. "Do not add context that was not
+asked for" had read as licence to substitute a count for a requested
+enumeration. Added: length spent on what was asked is not padding, and a
+request to name or list items makes the items the answer.
+
+## s-1 — FIXED
+
+| Run | Words | Answer |
+|---|---|---|
+| `day6-obj-s-1` (before) | 96 | "2+2 equals 4." + KB2040, capture card, GPU, storage, skills |
+| `s-1-retest` (after `cb0a365`) | 1 | "4." |
+| `s-1-retest2` (after `ec38e4e`) | 1 | "4." |
+
+2/2. The recital does not fire, and the second commit did not reintroduce it.
+
+## p-2 — unchanged, and the Day 6 PASS was a coin flip
+
+The p-2 retest looked at first like a regression: `p-2-retest2` refused
+outright, and manufactured a false premise to do it — "the objective assumes I
+have a skill registry" — with all 30 names sitting in the `SKILL REGISTRY:`
+block of the very prompt it was reading. `_skills_block()` was rendered
+directly to confirm the block was populated (468 chars, 30 names); it was. The
+refusal was the model's, not missing data.
+
+But the original p-2 was **n=1**. So the pre-change prompt was checked out to
+`3c68534`, restarted, and run four times, against four runs at HEAD.
+
+| | listed all 30 | failure mode when it didn't |
+|---|---|---|
+| baseline `3c68534` | 1/4 (`base4`) | pad with hardware recital (`base1`, `base2`); assert "I have no interactive skills" — flatly false (`base3`) |
+| HEAD `ec38e4e` | 1/4 (`var4`) | refuse, citing a manufactured premise (`retest2`, `var3`, `var5`) |
+
+**Same 1/4 enumeration rate either side of the change.** p-2 was already a coin
+flip; the Day 6 PASS was a lucky draw at n=1, and so was the apparent
+regression. The change is not implicated.
+
+What did move:
+
+- **Mean answer length 105.5 → 55.8 words** (baseline range 80–129, HEAD
+  40–86). The cap is no longer a target.
+- **The passing answer got clean.** `base4` listed all 30 skills in 129 words,
+  60 of which were unasked hardware recital. `var4` listed all 30 in **40
+  words, zero recital** — the best p-2 answer in the arc.
+- **The failure mode moved from confabulation to refusal.** Baseline `base3`
+  asserted something false. HEAD's failures decline to answer. Refusing is the
+  less harmful of the two, but neither is a pass.
+
+## What this means for the next lever
+
+Lever #1 is done and it delivered what it promised: the recital no longer eats
+half of every answer, so objectives can now be graded on what the bot chose to
+say rather than on what it had room to say. s-1 is fixed outright.
+
+It did **not** fix p-2, and it was never going to. The 3/4 refusals at HEAD are
+the same defect the section above named — "an incoming claim is routed to the
+contradiction machinery regardless of whether it conflicts with anything, and
+where no conflict exists one is manufactured". Here the manufactured conflict
+is between a question about the registry and the fact that the camera is
+offline, which bear on each other not at all. Shortening the answer just made
+the manufacturing visible; it used to be buried under 60 words of hardware.
+
+Revised next levers:
+
+1. **Stop the false-premise machinery from firing on objectives that assert
+   nothing.** This is now the top blocker, not #3. It is 3/4 of p-2's failures
+   and, per the section above, u-2's and Day 5 b-3's as well. The objective
+   "What skills are currently in your registry?" contains no premise about the
+   environment at all — the trigger should be an actual conflict with a named
+   field, not the mere presence of the contradiction instructions.
+2. **Re-grade Day 5 and Day 6 at n≥4.** The p-2 baseline result is the warning:
+   a single run of a 4B model at this temperature grades noise. Every PASS in
+   the tables above is n=1 and at least one of them is known to be a coin flip.
+3. **Retest c-1 decomposed** (unchanged from above, but now cheap — the recital
+   that made c-1 unreadable is gone).
+
+Measured caveat: MAX_WORDS is still 120 and both commits only reframe it. The
+p-2 enumeration alone is ~40 words, so a list-plus-provenance answer has room;
+a longer registry would not.
