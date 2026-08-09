@@ -14,6 +14,11 @@ import numpy as np
 import config
 
 TRAIN_LOCK = pathlib.Path('/tmp/aksumael_training.lock')
+
+# What the training handler's live-perception block reports for the FSM while
+# attention is focused on 'training'. Not a State member on purpose — the FSM
+# is not in a state, it is not running at all, and the prompt should say so.
+_FSM_GATED = 'NOT RUNNING (gated — attention is focused on training, so the Minecraft FSM does not tick)'
 PRESERVED_GOALS_PATH = pathlib.Path('data/preserved_goals.json')
 
 # Goals eligible for re-injection by _restore_preserved_goals() on restart.
@@ -922,10 +927,19 @@ def run():
             # tick's (the FSM ticks further down this loop) — one tick of lag,
             # versus the several-second-stale disk snapshot the handler falls
             # back to without it.
+            #
+            # Under training focus the FSM never ticks, so fsm_state would sit
+            # at None forever and the handler would silently fall back to the
+            # data/world_memory.json snapshot — reporting "FSM state right now:
+            # EXPLORE" from whatever the last Minecraft run left there. Pass
+            # the gated state explicitly instead: "not ticking" is a fact about
+            # the runtime, and the perception block must not launder a frozen
+            # disk value as the live one.
             try:
                 training_handler.maybe_handle(
                     goals, cognitive.monologue, tick,
-                    fsm_state=fsm_state, objects=objects,
+                    fsm_state=(_FSM_GATED if _training_mode else fsm_state),
+                    objects=objects,
                     active_env=attention_manager.get_active_name())
             except Exception as e:
                 print(f'[TRAIN] handler error: {e}')
@@ -1064,7 +1078,13 @@ def run():
             # sweep, curriculum orbit — read None as "safe to run" and would
             # start driving the camera. Hence the full skip.
             if _training_mode:
+                # axon/hub.py is a separate process and reads FSM state from
+                # data/world_memory.json for voice Q&A — leave it the gated
+                # marker rather than the value the last Minecraft run froze
+                # there, for the same reason as _FSM_GATED above.
+                world_mem.fsm_state = 'GATED (training focus)'
                 if tick % 60 == 0:
+                    world_mem.save()
                     _write_health_log(tick, goals.current_goal(), reward.average(),
                                        cognitive, camera_index=pipeline.camera_index)
                 if tick % 20 == 0:
