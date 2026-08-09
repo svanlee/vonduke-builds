@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import config
+from behaviors import inventory_reader
 from behaviors.inventory_reader import InventoryReader, _clean_label, _read_failed
 from vision.inventory_grid import locate_grid
 from vision.sprite_matcher import (CANON_PX, PAD_GUI, SEARCH_PX, SpriteLibrary,
@@ -56,6 +57,19 @@ def seeded_lib(tmp_path, gui_frame, grid):
         search = grid.crop(gui_frame, slot, pad_gui=PAD_GUI, out_px=SEARCH_PX)
         lib.match_or_add(search, canon, source='test')
     return lib
+
+
+@pytest.fixture
+def reader_lib(monkeypatch, seeded_lib):
+    """Point the reader's process-wide library at a throwaway one.
+
+    InventoryReader goes through a module-level singleton rooted at the
+    committed assets/inv_templates. Without this the reader tests write
+    their hit counts straight into that checked-in index.
+    """
+    monkeypatch.setattr(inventory_reader, '_LIBRARY', seeded_lib)
+    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
+    return seeded_lib
 
 
 class FakeExecutor:
@@ -176,8 +190,7 @@ def test_duplicate_label_is_detectable(seeded_lib):
 
 # ── Reader behaviour ───────────────────────────────────────────
 
-def test_read_reports_every_filled_slot(monkeypatch, gui_frame):
-    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
+def test_read_reports_every_filled_slot(reader_lib, gui_frame):
     ex = FakeExecutor()
     reader = InventoryReader(ex, capture_fn=lambda: gui_frame)
     result = reader.read(force=True)
@@ -186,8 +199,7 @@ def test_read_reports_every_filled_slot(monkeypatch, gui_frame):
     assert ex.keys == ['e', 'escape']
 
 
-def test_read_with_slots_gives_positions(monkeypatch, gui_frame):
-    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
+def test_read_with_slots_gives_positions(reader_lib, gui_frame):
     reader = InventoryReader(FakeExecutor(), capture_fn=lambda: gui_frame)
     slots = reader.read_with_slots(force=True)
     for item, info in slots.items():
@@ -196,12 +208,11 @@ def test_read_with_slots_gives_positions(monkeypatch, gui_frame):
         assert reader.has(item)
 
 
-def test_failed_read_keeps_the_previous_cache(monkeypatch):
+def test_failed_read_keeps_the_previous_cache(reader_lib):
     """A frame with no GUI must not erase what the crafting logic knows."""
     frame = cv2.imread(os.path.join(REPO, 'mc_screen.png'))
     if frame is None:
         pytest.skip('mc_screen.png missing')
-    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
     ex = FakeExecutor()
     reader = InventoryReader(ex, capture_fn=lambda: frame)
     reader._cache = {'cobblestone': {'count': 3, 'slot': 5}}
@@ -211,8 +222,7 @@ def test_failed_read_keeps_the_previous_cache(monkeypatch):
     assert ex.keys == ['e', 'e']
 
 
-def test_no_camera_keeps_the_cache_and_presses_nothing(monkeypatch):
-    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
+def test_no_camera_keeps_the_cache_and_presses_nothing(reader_lib):
     ex = FakeExecutor()
     reader = InventoryReader(ex, capture_fn=lambda: None)
     reader._cache = {'stick': {'count': 1, 'slot': 0}}
@@ -221,9 +231,8 @@ def test_no_camera_keeps_the_cache_and_presses_nothing(monkeypatch):
     assert ex.keys == []
 
 
-def test_genuinely_empty_inventory_clears_the_cache(monkeypatch, gui_frame, grid):
+def test_genuinely_empty_inventory_clears_the_cache(reader_lib, gui_frame, grid):
     """An empty inventory is a real answer, unlike a failed read."""
-    monkeypatch.setattr(config, 'INVENTORY_LLM_NAMING', False)
     frame = gui_frame.copy()
     for slot in range(36):
         x, y, w, h = grid.slot_box(slot)
