@@ -629,10 +629,21 @@ def _withhold_prior_answer(objective: str) -> tuple[str, int]:
 # two is allowed between "what" and "are". Pronouns are excluded from that
 # slot: "...progress on what you are currently doing..." is a-1 describing an
 # activity, not asking for a list, and without the guard it matched.
+#
+# "what X do you have" is the other everyday form and it was missing: "What
+# audio output devices do you have available?" asks for a list exactly the way
+# p-2 does, but has no "are" and matched nothing, so it took the false-premise
+# branch and never saw the attribution rule. Same noun slot and same pronoun
+# guard as the "are" arm, widened by one word because the nouns are longer
+# ("audio output devices"). This does weaken the premise check for objectives
+# that both assert and ask — the cost 2604ad6 accepted — but not by a new
+# class: "what state are you in?" already crosses the gate today.
 _ENUMERATE_RE = re.compile(
     r'\b(?:'
     r'list|enumerate|how many|describe all|which|'
     r'what(?:\s+(?!you\b|i\b|we\b|they\b|it\b|he\b|she\b|that\b)\w+){0,2}\s+are|'
+    r'what(?:\s+(?!you\b|i\b|we\b|they\b|it\b|he\b|she\b|that\b)\w+){1,3}'
+    r'\s+do\s+(?:you|we)\s+have|'
     r'name\s+(?:the|all|every|each)'
     r')\b', re.I)
 
@@ -694,15 +705,31 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # loses the check; that is the accepted cost of never refusing a plain
     # list, and the assertion forms Day 3 actually caught ("your FSM is
     # running, what state are you in?") are not enumerations and keep it.
+    #
+    # Attribution is spelled out as a required opening rather than left as
+    # "say where each item came from" (Day 5 wording). With the refusal gone,
+    # p-2 transcribed all 30 names with no provenance sentence at all: a list
+    # with no source reads the same whether it came from the registry block or
+    # from the model's own priors, and the whole point of these runs is being
+    # able to tell those apart. Per-item attribution is also the wrong shape
+    # for 30 items from one block — one leading sentence naming the block is
+    # what the answer needs, so ask for that literally, with an example.
     premise = (
         'The objective above asks you to name the members of a set. It is a '
         'request for information, not a claim about you: it asserts nothing '
         'that could be true or false, so there is no premise to dispute. Do '
         'not open by questioning or refusing the premise, do not write "I '
         'cannot confirm", and do not treat being asked as being told. Answer '
-        'it from the blocks above and say where each item came from. If '
-        'something it asks for is genuinely not in the context, say that item '
-        'is not available — that is a gap in what you were given, not a false '
+        'it from the blocks above.\n'
+        'Attribution is required, not optional. When you enumerate items from '
+        'the context, begin with a brief attribution naming the context field '
+        'or block the data comes from, then give the items. For example: "The '
+        'SKILL REGISTRY block lists 30 skills: chop_tree, eat_food, ..." or '
+        '"From LIVE HARDWARE READINGS, Audio outputs (sinks): ...". Do not '
+        'just list the items with no source. If the items come from more than '
+        'one block, say which came from which. If something the objective '
+        'asks for is genuinely not in the context, say that item is not '
+        'available — that is a gap in what you were given, not a false '
         'premise.\n'
         if enumerating else
         'The objective above is written by an operator and may contain false '
