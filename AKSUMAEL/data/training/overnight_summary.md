@@ -1,7 +1,9 @@
 # Overnight Training Summary — Days 9–21
 **Written:** 2026-08-10 04:15 EDT | **Node:** victus-t7 (kernel hostname `robocar-hub`)
 
-Thirteen sessions, 107 graded rows, 315 reps. Days 15–21 ran as one uninterrupted arc
+Thirteen sessions, 109 graded rows. Days 15–21 alone account for 181 answered reps
+(25/24/24/24/33/24/27, the Day 15 count net of the one empty answer the outage produced).
+Days 15–21 ran as one uninterrupted arc
 inside a single process lifetime that began 2026-08-09 22:29:02 and was never restarted,
 so those seven sessions are directly comparable with no cold/warm confound.
 
