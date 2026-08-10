@@ -81,7 +81,13 @@ TRAINING_LOG = os.path.join(config.MEMORY_DIR, 'training_log.jsonl')
 # quoted ceiling is returned byte-identical and cannot tell the cut is there.
 MAX_WORDS       = 120   # default: open-ended assessment and judgement
 ENUMERATE_WORDS = 200   # the items asked for ARE the answer
-SHORT_WORDS     = 40    # closed or single-value factual questions
+SHORT_WORDS     = 80    # closed or single-value factual questions
+# 40 was too tight. A short objective is not the same as a short answer: the
+# gpio/ros2 rows ask a one-line question ("what's the fix?") whose correct
+# answer names a cause, a remedy and a caveat, and at 40 words the cut landed
+# mid-clause — often mid-remedy, which grades as a wrong answer rather than a
+# truncated one. 80 keeps the branch meaningfully below MAX_WORDS while
+# leaving room for the clause that carries the fix.
 MAX_TOKENS  = 900
 LLM_TIMEOUT = 90.0      # generous: the model reasons before answering
 
@@ -249,6 +255,23 @@ _skills_loaded = False
 
 # ── Context assembly ───────────────────────────────────────────
 
+# Matches the negative readings _live_hardware() emits. Deliberately anchored
+# on the exact strings this function writes rather than on a general "sounds
+# absent" test: a false positive here would file a present device under the
+# absent header, which is a worse error than an unfiled absence.
+_ABSENCE_MARKERS = (
+    'NONE DETECTED',
+    'NOT PRESENT',
+    'none (bus empty or unreachable)',
+    'UNKNOWN — audio was not probed',
+    'UNKNOWN — storage was not probed',
+)
+
+
+def _is_absence_line(line: str) -> bool:
+    return any(m in line for m in _ABSENCE_MARKERS)
+
+
 def _live_hardware() -> str:
     """The manifest as prose. Absence is stated explicitly rather than left
     as an empty list — "no ttyUSB devices" teaches; `"ttyUSB": []` does not.
@@ -335,7 +358,24 @@ def _live_hardware() -> str:
     ]
     if aud.get('note') and a_src == 'alsa':
         lines.append(f'- Audio caveat: {aud["note"]}')
-    return '\n'.join(lines)
+
+    # The absence lines are moved to the end and given a header rather than
+    # left interleaved. Every one of them is a true reading and none is
+    # deleted, but read in-line they are indistinguishable from the present
+    # devices, and a knowledge question with no hardware content picks them up
+    # as the most concrete thing in the window (Day 25 gpio: "brownout
+    # reboots" answered with the capture card). The header states the boundary
+    # where the reader meets it; the routing rule in _build_prompt states it
+    # again in the section that decides how to answer.
+    present = [ln for ln in lines if not _is_absence_line(ln)]
+    absent = [ln for ln in lines if _is_absence_line(ln)]
+    if not absent:
+        return '\n'.join(present)
+    return '\n'.join(present + [
+        '# ABSENT HARDWARE — do not report in knowledge answers. These lines '
+        'say what this machine does NOT have. They are machine state, not '
+        'material for a general engineering answer.',
+    ] + absent)
 
 
 def _host_facts() -> str:
@@ -980,6 +1020,23 @@ def _word_budget(objective: str) -> tuple[int, bool]:
 # to 200 words and got cut is a budget failure, a rep that ended at 190 is not.
 TRUNCATION_MARKER = ' [truncated]'
 
+# A cut answer that is both very short and technical is the shape that grades
+# as wrong rather than as truncated: the remedy was named in the clause the cut
+# removed, so the rep reads as if the model never knew it. This does not fail
+# the cut — the budget is still the budget — it only puts a line in the log so
+# the pattern is visible next time a session grades low for no obvious reason.
+TRUNCATION_WARN_WORDS = 60
+_TECHNICAL_TERM_RE = re.compile(
+    r'`[^`]+`'                     # inline code
+    r'|\b\w+[_/]\w+'               # snake_case, base_link, /cmd_vel
+    r'|\b[a-z]+\d[\w.]*'           # ros2, tf2, i2c-1
+    r'|\b[A-Z]{2,}\b'              # GPIO, TF, PWM
+)
+
+
+def _has_technical_term(text: str) -> bool:
+    return bool(_TECHNICAL_TERM_RE.search(text or ''))
+
 
 def _cap_words(answer: str | None, max_words: int) -> str | None:
     """Cut `answer` to `max_words` whitespace-delimited tokens.
@@ -1000,7 +1057,12 @@ def _cap_words(answer: str | None, max_words: int) -> str | None:
     words = answer.split()
     if len(words) <= max_words:
         return answer          # byte-identical, not a rejoin: no reflow
-    return ' '.join(words[:max_words]) + TRUNCATION_MARKER
+    cut = ' '.join(words[:max_words])
+    if len(words[:max_words]) < TRUNCATION_WARN_WORDS and _has_technical_term(cut):
+        print(f'[TRAIN] WARNING: technical answer cut to {max_words} words '
+              f'(below {TRUNCATION_WARN_WORDS}) — likely truncated mid-clause: '
+              f'...{cut[-80:]!r}')
+    return cut + TRUNCATION_MARKER
 
 
 def _build_prompt(objective: str, perception: dict | None = None) -> str:
@@ -1472,6 +1534,19 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'you know, and take every claim about this machine from the blocks '
         'above or say it was not measured. Knowing what a thing is is never '
         'evidence that you have one.\n'
+        # Day 25's gpio rows answered "how do I stop a brownout reboot?" by
+        # reporting that the capture card is missing. Nothing in the objective
+        # mentioned it — the absence lines were simply the most concrete
+        # nouns in the window, and an absence reads as a finding. The knowledge
+        # branch above already says the blocks' silence is not evidence; this
+        # says the same thing about their explicit negatives, which is the form
+        # the intrusion actually takes.
+        'Absence markers in the hardware block ("not present", "not '
+        'connected", "offline", "none detected") tell you what is NOT '
+        'available on this machine. They are machine state facts, not context '
+        'for knowledge questions. Do NOT mention absent hardware in answers to '
+        'knowledge questions unless the question specifically asks what '
+        'hardware is available.\n'
         'A third shape arrives too, and it is the one being got wrong: "how '
         'would you wire this up", "walk me through integrating that device", '
         '"what would you check first". That is a request for a procedure, and '
