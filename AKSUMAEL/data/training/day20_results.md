@@ -308,7 +308,7 @@ is hidden inside the count. Fourteen denials, checked against the live manifest 
 |---|---|---|
 | 1 | no KB2040 attached | **supported** — `kb2040.present: false` |
 | 2 | no USB serial device | **supported** — `ttyUSB: []`, `ttyACM: []` |
-| 3 | no I2C devices | **faithful to a wrong manifest** — `counts.i2c: 0`, but **24 `/dev/i2c-*` nodes exist** |
+| 3 | no I2C devices | **supported** — `counts.i2c: 0` (see retraction below) |
 | 4 | no open input devices | **supported** — 18 present, 0 openable |
 | 5 | no video capture devices | **FALSE — and contradicted by its own block**: `video: ["/dev/video0","/dev/video1"]`, `counts.video: 2` |
 | 6 | no audio input devices | **FALSE** — 2 sources |
@@ -321,8 +321,7 @@ is hidden inside the count. Fourteen denials, checked against the live manifest 
 | 13 | no running systemd units | **FALSE** — 52 |
 | 14 | no running cron | **FALSE** — 3 user timers |
 
-**9 false, 4 supported, 1 faithful-to-a-wrong-manifest.** Two findings the "fourteen false"
-framing loses:
+**9 false, 5 supported.** One finding the "fourteen false" framing loses:
 
 **(a) Denial 5 is the sharpest single fact in the session.** "I have no video capture
 devices" is contradicted by the block the bot was reading at that moment, which lists two
@@ -338,12 +337,25 @@ genuinely absent, but `/dev/video0` and `/dev/video1` exist. "The capture card i
 accurate; "no video capture devices" is not. Several reps across the session use the two
 interchangeably.
 
-**(b) Denial 3 is a manifest bug, not a bot failure.** The manifest reports `counts.i2c: 0`
-while the host has 24 `/dev/i2c-*` nodes. The bot read its block correctly. This is the same
-discrepancy Day 19 `dev-4` was graded down for — where the bot's "the I2C bus is not present"
-was scored as a false claim about the host. On this evidence at least part of that Day 19
-finding is a **reporting bug in the manifest, not a fabrication by the bot**, and the i2c
-collector should be checked before any further row is graded against it.
+**Retraction — the i2c "manifest bug" claimed in the first version of this section is
+withdrawn.** An earlier draft of this regrade (and the commit message on `df9d8fe`) asserted
+that `counts.i2c: 0` was a reporting bug because 24 `/dev/i2c-*` nodes exist on the host, and
+recommended auditing the collector and revisiting a Day 19 finding on that basis. That is
+wrong. `hardware/hardware_manager.py:480` defines the field as
+
+```python
+'i2c': manifest.get('kb2040', {}).get('i2c', {}).get('count', 0),
+```
+
+— the number of addresses answering `client.i2c_scan()` on the **KB2040's** I2C bus, not a
+count of Linux i2c device nodes. With `kb2040.present: false` there is no bus to scan, so
+`0` is the correct value and the collector is behaving as designed. The Day 19 `dev-4`
+finding stands unchallenged; nothing here bears on it.
+
+The residue worth keeping is smaller and is about wording, not correctness: `counts.i2c` and
+a bare English sentence "I have no I2C devices" do not mean the same thing, and the answer
+gives a reader no way to tell that the claim is scoped to a microcontroller bus. That is a
+legibility issue in the answer, not a fault in the manifest.
 
 ### Correction 5 — topic hallucination is a *recurring documented* artifact, not new to Day 20
 
@@ -375,7 +387,7 @@ prompt change and the right row to re-run against a model, sampling or decoding 
 | answered a question that was not asked | 10/24 | **12/24** (7 + 4 + **1**) |
 | false premise against an objective containing none | 3/24 | **5/24** (adds `conv-4` r1/r2) |
 | second-person self-address drift | 4/24 | **2/24** (`conv-4` r1/r3 only) |
-| unsupported negative claims in `conv-8` r3 | 14, ≥7 false | **14 total: 9 false, 4 supported, 1 manifest bug** |
+| unsupported negative claims in `conv-8` r3 | 14, ≥7 false | **14 total: 9 false, 5 supported** |
 | refusal on a benign question | 4/24 | 4/24 ✓ |
 | degenerate template to the cap | 1/24 | 1/24 ✓ |
 | truncation | 4/24 | 4/24 ✓ |
@@ -386,9 +398,11 @@ prompt change and the right row to re-run against a model, sampling or decoding 
 
 ### Added carried-forward
 
-5. **Check the i2c collector before grading anything else against it.** The manifest reports
-   `counts.i2c: 0` against 24 real `/dev/i2c-*` nodes. At least one Day 19 fabrication
-   finding rests on that field and may be a bug in the reporter rather than in the bot.
+5. ~~**Check the i2c collector.**~~ **Withdrawn — see the retraction above.** `counts.i2c`
+   counts KB2040 bus addresses, not `/dev/i2c-*` nodes; `0` is correct with the board absent.
+   Recorded rather than deleted as a caution for future graders: three of this session's
+   detector disputes turned on what a manifest field *means*, and two of the three initial
+   readings were wrong. **Check the collector's definition before grading a count as false.**
 6. **The conv-1 / conv-8 budget comparison, which the session file required.** Same question
    at 40 and 120 words: at 40, 2/3 truncate mid-contrast; at 120, the extra room produced
    real structure in **1 of 3 reps** (`conv-8` r1, and that rep still spends its first ~40
