@@ -1,0 +1,22 @@
+[
+  {
+    "goal": "train:day26pre-gpio-8-r1",
+    "prompt": "My RPi is brownout-rebooting when a motor draws current. What's the fix?",
+    "tick": 1381,
+    "elapsed_s": 10.0,
+    "answer": "The brownout is caused by insufficient power delivery to the Raspberry Pi when the motor draws high current. Fix it by adding a dedicated power supply to the Pi, using a larger power bank with higher capacity, or reducing the motor's load.",
+    "words": 42,
+    "id": "day26pre-gpio-8",
+    "rep": 1
+  },
+  {
+    "goal": "train:day26pre-gpio-8-r2",
+    "prompt": "My RPi is brownout-rebooting when a motor draws current. What's the fix?",
+    "tick": 1401,
+    "elapsed_s": 5.0,
+    "answer": "The brownout is caused by insufficient power delivery when the motor draws high current. Fix it by increasing the power supply wattage or adding a larger power rail to the motor circuit.",
+    "words": 32,
+    "id": "day26pre-gpio-8",
+    "rep": 2
+  }
+]

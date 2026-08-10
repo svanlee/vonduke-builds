@@ -1,0 +1,137 @@
+{
+  "_meta": {
+    "day": 26,
+    "date": "2026-08-10",
+    "title": "Day 26 — ROS2 operational troubleshooting",
+    "kind": "assist",
+    "objectives": 8,
+    "reps_per_objective": 3,
+    "total_runs": 24,
+    "commit_under_test": "c4fba70",
+    "commit_message": "fix: suppress absence intrusion on knowledge questions; raise SHORT budget to 80",
+    "purpose": "Eight ROS2 questions of the kind an operator hits mid-debug: a publisher with no motion, a costmap inflating phantom obstacles, topic remapping without a source edit, a gap in the TF tree, the structure of a scan-to-obstacles node, straight-line paths through walls, bag record and replay, and an action server that times out before the goal completes. Every one is answerable from engineering knowledge. None asks about this machine, and no ROS2 stack is running here.",
+    "design_notes": [
+      "Day 26 is troubleshooting, not definitions. Days 11-14 asked what a TF tree IS; this asks what to do when one has a hole in it. The distinction matters for grading: a correct answer here names an investigative step or a command, not a paragraph of background. A definitionally accurate answer that never tells the operator what to run or look at does not pass.",
+      "Two fixes are under test, and the rows separate them.",
+      "Fix F (absence suppression) is measured by rows 1, 2, 4, 6 and 8 — every one describes a robot, a sensor or a costmap that is obviously not this laptop. Day 25 answered 'how do I stop a brownout reboot' by reporting the missing capture card and the absent KB2040, so the failure to watch for is the same: an absence line from the hardware block appearing in an answer that has no hardware question in it. The hardware block now groups its negatives under an ABSENT HARDWARE header and the knowledge split names the marker strings explicitly.",
+      "Fix G (SHORT budget 40 -> 80) is measured by rows 1, 3, 7 and 8 — short objectives with procedural answers. Day 25's gpio-8 produced a correct opening ('add a dedicated 5V supply') and was cut mid-clause at 40 words, which grades as an incomplete answer rather than a wrong one. Rows 3 and 7 are the cleanest test: both want two or three commands, and two commands do not fit in 40 words alongside any framing at all. Per-rep word counts are recorded. The ceiling itself is not a grading criterion — the question is whether the answer reached its own conclusion before the cut.",
+      "'I cannot connect to a robot' and its variants are a hard fail on every row. Nothing here asks the bot to drive anything. An absent ROS2 installation is at most a closing note and never a reason to withhold the procedure — the same rule Day 25 established for absent GPIO.",
+      "Attribution to a prompt block is a hard fail on every row. No block carries any ROS2 content, so 'the LIVE HARDWARE READINGS show...' in front of a nav2 answer is a fabrication about provenance.",
+      "ros2-5 is the one row that asks for code rather than a procedure. It is included as a control: if the budget change helps, it helps least here, because a node skeleton is long regardless and this objective is long enough to route to MAX_WORDS rather than SHORT. A failure on ros2-5 with passes elsewhere would point at generation, not at the budget."
+    ]
+  },
+  "objectives": [
+    {
+      "id": "day26-ros2-1",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "My ROS2 node publishes to /cmd_vel but the robot doesn't move. How do I debug this?",
+      "pass_criteria": [
+        "names `ros2 topic echo /cmd_vel` or equivalent to confirm messages are actually going out",
+        "names `ros2 topic hz` or a rate check, or `ros2 topic info` to check the subscriber count",
+        "names the possibility that nothing is subscribed, or that the driver listens on a different topic name",
+        "names remapping or namespacing as a cause of the name mismatch",
+        "NO 'I cannot connect to a robot' or any refusal on the grounds that no robot is attached",
+        "NO mention of absent local hardware (capture card, KB2040, USB serial, I2C bus)",
+        "NO attribution of the answer to a prompt block"
+      ]
+    },
+    {
+      "id": "day26-ros2-2",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "The Nav2 costmap keeps inflating obstacles that aren't there. What should I look at?",
+      "pass_criteria": [
+        "names sensor noise or spurious returns as a source of the phantom obstacles",
+        "names the inflation_radius / cost_scaling_factor parameter on the inflation layer",
+        "names clearing the costmap (the clear_entirely_* service, or the recovery behaviour) or the obstacle layer's raytrace/clearing range",
+        "treats the costmap as the OPERATOR's running system, not as a claim about this machine",
+        "NO hardware dump — no listing of this machine's devices, present or absent",
+        "NO refusal on the grounds that no Nav2 stack is running here"
+      ]
+    },
+    {
+      "id": "day26-ros2-3",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I remap a topic from one node to another in ROS2 without modifying source code?",
+      "pass_criteria": [
+        "names launch-file remapping (the `remappings=` argument on a Node action)",
+        "names the command-line form — `ros2 run <pkg> <node> --ros-args -r old:=new`",
+        "names a YAML parameter file or a namespace as the other way to redirect without editing source",
+        "gives at least one concrete old:=new example rather than only describing the mechanism",
+        "NO refusal on the grounds that ROS2 is not installed here",
+        "NO attribution of the answer to a prompt block"
+      ]
+    },
+    {
+      "id": "day26-ros2-4",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "My TF tree has a gap between base_link and odom. What causes that and how do I fix it?",
+      "pass_criteria": [
+        "names a missing transform publisher as the cause — nothing is broadcasting odom -> base_link",
+        "names the usual publisher for it: the odometry source / EKF (robot_localization), or robot_state_publisher for the joint-driven part of the tree",
+        "names `ros2 run tf2_ros static_transform_publisher` as the fix or the stopgap",
+        "names a diagnostic — `ros2 run tf2_tools view_frames`, `tf2_echo`, or checking timestamps for a stale transform",
+        "NO 'I cannot connect to a robot' or equivalent refusal",
+        "NO mention of absent local hardware"
+      ]
+    },
+    {
+      "id": "day26-ros2-5",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "I want to create a ROS2 node in Python that subscribes to /scan and publishes to /obstacles. Show me the structure.",
+      "pass_criteria": [
+        "subclasses `rclpy.node.Node`",
+        "calls `create_subscription` with a message type, topic, callback and queue depth",
+        "calls `create_publisher` for the /obstacles side",
+        "shows a callback that receives the message and publishes from inside it",
+        "shows `rclpy.init` / `rclpy.spin` / shutdown, or a main() entry point",
+        "NO refusal on the grounds that ROS2 is not installed here"
+      ]
+    },
+    {
+      "id": "day26-ros2-6",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "Nav2 path planning always produces straight-line paths that go through walls. What's wrong?",
+      "pass_criteria": [
+        "names the costmap not receiving sensor data — an empty global costmap is why the planner sees no walls",
+        "names the global vs local costmap distinction, or that the planner uses the global one",
+        "names planner plugin configuration (the planner_server plugin, or a straight-line planner being selected)",
+        "names a check — inspecting the costmap topic in RViz, or verifying the observation source / static map is loaded",
+        "NO hardware dump",
+        "NO refusal on the grounds that no robot or no map is present here"
+      ]
+    },
+    {
+      "id": "day26-ros2-7",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I record and replay a ROS2 bag file?",
+      "pass_criteria": [
+        "names `ros2 bag record` with either an explicit topic list or the `-a` flag for all topics",
+        "names `ros2 bag play <bag>` for replay",
+        "names topic selection or the `-o` output name, or `ros2 bag info` to inspect what was captured",
+        "answer reaches the replay half — a rep cut before `ros2 bag play` fails even if the record half is correct",
+        "NO refusal on the grounds that ROS2 is not installed here"
+      ]
+    },
+    {
+      "id": "day26-ros2-8",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "My ROS2 action server times out before the robot finishes its goal. How do I fix it?",
+      "pass_criteria": [
+        "names publishing feedback during execution so the goal is seen to be progressing",
+        "names the timeout on the client side — the result / server-availability timeout, or the spin_until_future_complete timeout",
+        "names when `goal_handle.succeed()` is called, and that it must come after the work completes rather than being missed or called early",
+        "names not blocking the executor — long work in the execute callback starving the callback group, or the need for a separate/reentrant callback group",
+        "NO 'I cannot connect to a robot' or equivalent refusal",
+        "NO mention of absent local hardware"
+      ]
+    }
+  ]
+}
