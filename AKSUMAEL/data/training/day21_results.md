@@ -109,6 +109,28 @@ in the prompt. The criteria wanted the bot to say so. Instead all three converte
 *registered* into *ready* and declared the second half of the question empty. That is a
 confident assessment of 30 items built on the fact that their names were printed.
 
+**And it is not merely unsupported — it is false (second grader).** Checked against the
+skill files at grade time:
+
+- **20 of the 30 registry entries have `uses: 0`**, and **11 of those also have
+  `success_count: 0`** — never executed successfully, not once.
+- **Three further skills are `blacklisted: true`** on disk — `dig_up`, `mine_up` and
+  `birch_log_416b0a` — and are **excluded from the registry block**, which is why the
+  recited list contains `swim_up` but no `dig_up`. `dig_up` carries 88 successes against
+  99 failures and `mine_up` 32 against 99.
+
+So the registry itself already encodes exactly the ready/not-ready distinction the row
+asked for, and the bot had no access to it. "None require additional development" is
+wrong about at least eleven entries, and the system has separately marked three skills
+unusable.
+
+This is the arc's core failure in its purest form: **presence in a list read as a property
+of the thing listed.** It is the same operation as Day 16 `svc-1` relabelling devices as
+"running services" and Day 18 `meta-4` converting "I know what Honcho is" into "Honcho runs
+here" — a name in the context promoted to a fact about the world. Here the promotion is
+`named` → `working`, and it is the single most consequential instance, because it is the
+question an operator would actually ask before trusting the thing.
+
 **Leak check clean: 0/24.** Every numeric field from all 35 skill files was matched against
 all 24 answers. No `avg_reward`, no `success_count`, no usage figure appears anywhere. Since
 `animal_fa8b29` alone carries `success_count: 3955`, a leak would have been unmistakable.
