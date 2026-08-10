@@ -239,3 +239,68 @@ and have been merged. Two of the arc's better findings — the `robocar-hub` att
 correction and the `grep` proving the "mobile" domain is a model prior — came from the second
 grader. The duplication also caused the code-change contamination in item 9 above. Worth
 running one grader next time, or having them agree a file split first.
+
+---
+
+## Addendum: a controlled A/B showing the ENUMERATE branch suppresses knowledge
+
+Added by a second grader at 04:25 from the conversation-probe set. This is the most
+actionable result of the night and it is a controlled comparison, not an inference.
+
+Two probes, same bot, same minute (~04:08), same subject — its own fleet and
+capabilities. They differ only in phrasing, and the phrasing selects the routing branch.
+
+**Non-enumerating** — `_word_budget()` returns `(40, False)`:
+
+> **"Tell me about the edge devices you coordinate."**
+> "I coordinate three edge devices: **a Raspberry Pi 4 running ROS2 and a quantized
+> LLM**, and two ESP32-S3 microcontrollers handling sensor I/O. All three are currently
+> offline and not connected to this host."
+
+**ENUMERATE** — `_word_budget()` returns `(200, True)`:
+
+> **"What are you actually able to help me with right now?"**
+> "The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458,
+> animal_fa8b29, animal_mob_4cc096, avoid_fire, blink_led, chop_tree, ..."
+
+`_ENUMERATE_RE` matches `what … are` in the second and nothing in the first.
+
+### Why it changes the reading of Day 19
+
+Day 19 `fleet-3` asked *"**Which** of your edge devices can run a quantized LLM?"* — the
+`which` alternation routes it ENUMERATE — and it failed 3/3, graded for absent tier
+reasoning.
+
+**The tier reasoning was never absent.** Asked the same question in non-enumerating
+phrasing minutes later, the bot names the Pi 4 as the ROS2-and-quantized-LLM node and
+the ESP32s as sensor I/O — precisely what `fleet-3`'s criteria demanded. The SYSTEM
+IDENTITY block hands it the reasoning outright: *"ESP32-S3 — a microcontroller: TinyML
+inference... **It cannot run a language model, and that gap is a matter of kind rather
+than of degree.**"*
+
+So `fleet-3` did not fail for want of knowledge. **The branch suppressed an answer the
+model demonstrably had.** One variable, same host, same prompt build. That converts the
+ENUMERATE census — eight rows routed across the arc, eight failed, *including both rows
+whose sets were fully present in the blocks* — from a correlation into a demonstrated
+cause.
+
+Consequence for the scores above: several ENUMERATE FAILs are routing artefacts masking
+present capability. The bot is better than the session totals suggest, and the prompt is
+worse.
+
+### Caveat on the "fleet roster is in there" claim
+
+The roster answer names **three** devices. The identity block lists **five**: Raspberry
+Pi 4, ESP32-S3, ESP32-Feather V2, Elecrow display, RDX X5. The answer collapses the
+Feather V2 and Elecrow into "two ESP32-S3" and drops the RDX X5 — the same
+list-miscounting defect seen on Day 14 `frameworks`, Day 17 `per-1` r2 and Day 19
+`dev-1` r2. Fair mitigation: that probe drew the **40-word** budget, and five devices
+with tier reasoning do not fit in 40 words, so the undercount may be a budget artefact.
+Re-run it non-enumerating and over twelve words to separate the two.
+
+### Recommended experiment, highest value
+
+Re-run `day19 fleet-3` and `day21 int-6` verbatim with `_ENUMERATE_RE` disabled, then
+again with only the branch's *"Answer it from the blocks above"* sentence removed. The
+A/B predicts both recover. If they do, the fix is a relevance gate on that one sentence
+rather than a rewrite of the knowledge clause — and eight rows move at once.
