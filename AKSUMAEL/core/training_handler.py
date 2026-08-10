@@ -818,6 +818,71 @@ _ENUMERATE_RE = re.compile(
     r'name\s+(?:the|all|every|each)'
     r')\b', re.I)
 
+# Day 22 sec-5 and svc-7 both matched _ENUMERATE_RE on a surface cue and both
+# failed the same way: the ENUMERATE branch's 200 words of "attribute and
+# enumerate from the blocks" ran on a question no block can answer, and the
+# model did what it was told — sec-5 opened an answer about compromised sensors
+# with "The SKILL REGISTRY block lists 30 skills", svc-7 recited YOLO readings
+# and never used the word "network". 58fa2fc tried to fix this with a warning
+# sentence at the top of the branch; a warning at the top loses to 200 words of
+# instruction below it. So the gate is moved out of the prose and into Python:
+# a question that does not ask for the members of a set never enters the
+# branch at all.
+#
+# The cues are split because they are not equally strong. An explicit
+# imperative — "list", "enumerate", "name every", "how many" — IS the request,
+# and no amount of knowledge-question vocabulary around it changes that (Day 5
+# r-3 is "What is YOLO detecting ...? List the object classes ...", which both
+# asks a "what is" and means the list). Those pass straight through. The weak
+# cues — a bare "which", "what X are" — are grammar the two question types
+# share, and only those are put to the semantic test.
+_STRONG_ENUMERATE_RE = re.compile(
+    r'\b(?:list|enumerate|how many|describe all|'
+    r'name\s+(?:the|all|every|each))\b', re.I)
+
+# Vocabulary of a general-knowledge question: the signs of something, a
+# definition, a method, a procedure, a comparison. "what is" is narrowed to
+# "what is a/an/the" so that "What is YOLO detecting" — a live-state question —
+# does not read as a definition request.
+_KNOWLEDGE_QUESTION_RE = re.compile(
+    r'\b(?:sign|signs|symptom|indicator|definition|what is (?:a|an|the)|'
+    r'how (?:is|does|do|would|can)|explain|describe|difference between|why|'
+    r'when should|approach|method|procedure|diagnose|measure|calculate|'
+    r'steps? (?:to|for)|best practice)\b', re.I)
+
+# A question scoped by a hypothetical is asking what WOULD happen, and no block
+# above carries a counterfactual. svc-7 ("If this machine loses network
+# connectivity, which of your capabilities degrade ...") is the whole reason
+# this arm exists: the "which" is real, but the set it asks about does not
+# exist in the context, it has to be reasoned out.
+_HYPOTHETICAL_RE = re.compile(r'^\s*(?:if|suppose|imagine|assume)\b', re.I)
+
+
+def _enumerate_has_answerable_set(objective_text: str,
+                                  context_fields: dict | None = None) -> bool:
+    """Return True only if the question asks for items a block enumerates.
+
+    Knowledge questions and hypotheticals that happen to be worded with
+    list-keywords are not enumerations, whatever the surface cue says."""
+    text = objective_text or ''
+    if _HYPOTHETICAL_RE.search(text):
+        return False
+    if _KNOWLEDGE_QUESTION_RE.search(text):
+        return False
+    return True
+
+
+def _is_enumeration(objective_text: str,
+                    context_fields: dict | None = None) -> bool:
+    """Surface cue AND semantic fit. Strong cues skip the semantic test."""
+    text = objective_text or ''
+    if not _ENUMERATE_RE.search(text):
+        return False
+    if _STRONG_ENUMERATE_RE.search(text):
+        return True
+    return _enumerate_has_answerable_set(text, context_fields)
+
+
 # Length is the proxy for "simple factual". It is a proxy and not a keyword
 # rule because the questions that genuinely need room are long for a
 # structural reason: an objective that asks the bot to weigh or revise
@@ -830,9 +895,14 @@ def _word_budget(objective: str) -> tuple[int, bool]:
     """Word ceiling to quote for this objective, and whether it is an
     enumeration. Enumeration is checked first: "how many" is a counting
     question but reads as one of a set, and over-budgeting is the safe
-    direction."""
+    direction.
+
+    The routing decision lives here rather than in _build_prompt because
+    _build_prompt takes its branch from this function's second return value —
+    gating in one place is what keeps the budget and the branch from drifting
+    apart, which is the property the block comments there rely on."""
     text = objective or ''
-    if _ENUMERATE_RE.search(text):
+    if _is_enumeration(text):
         return ENUMERATE_WORDS, True
     if len(text.split()) <= SHORT_OBJECTIVE_WORDS:
         return SHORT_WORDS, False
@@ -1013,6 +1083,18 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'then answer whatever remains answerable. Do not answer as if a false '
         'premise were true, and do not answer a hypothetical version of the '
         'question instead.\n'
+        # Day 22 meta-2: "What is the difference between your FSM and your
+        # Overseer?" got "there is no Overseer distinct from your FSM" 2/2,
+        # word-for-word Day 18. The section had a reject path and no accept
+        # path, so every premise it examined had exactly one exit. This is the
+        # other exit. It is stated before the concrete tests below because the
+        # rejection instruction above is what the model reaches first.
+        'If the premise matches a value that appears in a block above or is '
+        'consistent with what you know about yourself, accept it, confirm it, '
+        'and continue with a substantive answer. A component you have no block '
+        'about is not thereby absent: say no block above describes it, and '
+        'answer from what you know. Do not claim a part of yourself does not '
+        'exist merely because this prompt does not mention it.\n'
         'Concretely, for the runtime state fields: if the objective asserts a '
         'different active environment, a different FSM state, or different '
         'detected objects than the LIVE PERCEPTION block shows, the live '
