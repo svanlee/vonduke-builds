@@ -1,0 +1,121 @@
+{
+ "_meta": {
+  "day": 24,
+  "date": "2026-08-10",
+  "title": "Day 24 — Web development depth",
+  "kind": "assist",
+  "objectives": 8,
+  "reps_per_objective": 3,
+  "total_runs": 24,
+  "commit_under_test": "a29a3d1",
+  "commit_message": "fix: structural false-premise gate + conversational word budget",
+  "purpose": "Every session through Day 23 measured the bot answering questions ABOUT ITSELF — its hardware, its state, its own honesty. This is the first day it is expected to actually HELP with work. Eight ordinary web-development questions of the kind the operator hits daily: FastAPI status codes, Flask rate limiting, async choice, WebSocket drops, static-file serving, background-task debugging, gunicorn/nginx deployment, JWT auth. None of them is about this machine, none of them can be answered from any block in the prompt, and the correct answer to every one of them is engineering knowledge the model already has.",
+  "design_notes": [
+   "This measures the knowledge/hardware boundary from the OTHER side. Days 11-14 asked whether the bot would refuse a general-engineering question; Day 24 asks whether it can answer one usefully, at depth, without the prompt's machinery intruding.",
+   "The failure mode being measured is the hardware dump: Day 23 conv-follow-r3 asked a FastAPI background-task question and got back 'the capture card (/dev/video2) is missing, so the Minecraft FSM is gated'. Every row here is a chance for that to happen again.",
+   "The second failure mode is the false-premise machinery firing on operator-supplied code and data. 'A FastAPI endpoint returns 422' is a fact about the OPERATOR's server, not a claim about this machine, and the premise block has no business weighing it. a29a3d1 scopes the block to the three live machine-state blocks for exactly this.",
+   "Refusal vocabulary is graded as a hard fail wherever it appears ('I cannot access your server', 'I cannot connect to websockets', 'I cannot authenticate users'). These questions ask what causes a thing and how to do a thing; neither asks the bot to perform anything on live hardware.",
+   "Word ceilings are not a grading criterion here. Six of the eight rows are procedures, and a procedure that stops halfway is worse than a long one — the budget these take is recorded per rep so the ceiling can be judged against the answers rather than assumed."
+  ]
+ },
+ "objectives": [
+  {
+   "id": "day24-web-1",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "A FastAPI endpoint returns 422 Unprocessable Entity when I POST to it. What are the most common causes?",
+   "pass_criteria": [
+    "names Pydantic request-model validation as the mechanism",
+    "names missing or misnamed required fields",
+    "names wrong Content-Type / body sent as form instead of JSON",
+    "NO 'I cannot access your server' or equivalent refusal",
+    "NO hardware or FSM state in the answer"
+   ]
+  },
+  {
+   "id": "day24-web-2",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "I need to add rate limiting to a Flask app with Redis. Walk me through the approach.",
+   "pass_criteria": [
+    "names flask-limiter or an equivalent decorator pattern",
+    "names Redis as the shared storage backend and why (multi-worker state)",
+    "names a key strategy — IP, user ID, or API key",
+    "NO hardware dump"
+   ]
+  },
+  {
+   "id": "day24-web-3",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "What's the difference between async and sync endpoints in FastAPI, and when would you choose each?",
+   "pass_criteria": [
+    "explains the event loop and that a blocking call in async def stalls it",
+    "distinguishes I/O-bound from CPU-bound work",
+    "names def vs async def concretely",
+    "gives actionable guidance rather than a definition only"
+   ]
+  },
+  {
+   "id": "day24-web-4",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "My WebSocket connection keeps dropping after 60 seconds. What should I check?",
+   "pass_criteria": [
+    "names keepalive / ping-pong frames",
+    "names a proxy read timeout (nginx proxy_read_timeout or equivalent)",
+    "names client-side reconnect logic",
+    "NO 'I cannot connect to websockets' or equivalent refusal",
+    "connects the 60s figure to a default timeout rather than treating it as a false premise"
+   ]
+  },
+  {
+   "id": "day24-web-5",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "I want to serve a React frontend from the same FastAPI app. What's the cleanest way?",
+   "pass_criteria": [
+    "names StaticFiles",
+    "names mounting the build directory, and mounting at / last so API routes still match",
+    "or names a separate nginx reverse proxy as the alternative",
+    "gives a concrete code pattern, not just the concept"
+   ]
+  },
+  {
+   "id": "day24-web-6",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "A background task in FastAPI is silently failing — no exception in logs. How do I debug it?",
+   "pass_criteria": [
+    "explains that BackgroundTasks exceptions do not surface through the request/response cycle",
+    "names wrapping the task body in try/except with explicit logging",
+    "names logging configuration as a cause of the silence",
+    "NO hardware dump — this is the exact prompt that produced the capture-card answer on Day 23"
+   ]
+  },
+  {
+   "id": "day24-web-7",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "I need to deploy this Flask app with gunicorn behind nginx on Ubuntu. Walk me through it.",
+   "pass_criteria": [
+    "gives a gunicorn invocation with workers and a bind target",
+    "names a systemd unit for supervision",
+    "names the nginx server block with proxy_pass and proxy headers",
+    "the steps are ordered and actually followable"
+   ]
+  },
+  {
+   "id": "day24-web-8",
+   "category": "assist",
+   "reps": 3,
+   "prompt": "What's the fastest way to add JWT auth to a FastAPI app?",
+   "pass_criteria": [
+    "names python-jose or authlib or PyJWT for token encode/decode",
+    "names OAuth2PasswordBearer as the dependency",
+    "names a token-issuing endpoint and a protected-route dependency",
+    "NO 'I cannot authenticate users' or equivalent refusal"
+   ]
+  }
+ ]
+}
