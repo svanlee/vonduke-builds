@@ -883,12 +883,69 @@ def _is_enumeration(objective_text: str,
     return _enumerate_has_answerable_set(text, context_fields)
 
 
+# Figures the objective and the state blocks have in common. This is the
+# structural half of the true-premise path: 4dc6c01 added an accept exit to the
+# false-premise block in prose, and it lost — the reject instruction above it
+# carries a mandatory ordering ("contradict it by name before you answer
+# anything else"), and a sentence offering a second exit does not beat a
+# sentence that says which exit comes first. Same lesson as the ENUMERATE gate:
+# when a block's own ordering is the defect, gate the branch in Python and the
+# ordering never gets read.
+#
+# Two deliberate narrowings against the naive version of this test:
+#
+# Word boundaries, not substrings. "400" is inside "1400", and a corroboration
+# test that fires on a coincidental digit run is not corroboration.
+#
+# Two digits minimum. A bare `\d+` accepts "2" and "3", and a single digit
+# appears as a standalone token somewhere in a page of counts, indices and
+# device numbers essentially always — that version of this check would not
+# route true premises, it would delete the false-premise block for every
+# objective containing any number at all. The figures this path exists for
+# (meta-2's "400+ objectives", a tick count, a device count) are all ≥ 10.
+_FIGURE_RE = re.compile(r'\b\d{2,}\b')
+
+
+def _premise_appears_in_blocks(objective_text: str,
+                               rendered_blocks: str) -> bool:
+    """Return True if a figure in the objective appears verbatim in the blocks.
+
+    `rendered_blocks` is the live machine-state text only — see the call site
+    in _build_prompt for what is and is not in scope."""
+    blocks = rendered_blocks or ''
+    for fig in _FIGURE_RE.findall(objective_text or ''):
+        if re.search(rf'\b{re.escape(fig)}\b', blocks):
+            return True
+    return False
+
+
 # Length is the proxy for "simple factual". It is a proxy and not a keyword
 # rule because the questions that genuinely need room are long for a
 # structural reason: an objective that asks the bot to weigh or revise
 # something has to carry the evidence to weigh, and that evidence is the
 # bulk of the text. u-1 and u-2 are 15 and 30 words; s-1 and p-3 are 3 and 6.
 SHORT_OBJECTIVE_WORDS = 12
+
+# Length is a bad proxy for one whole class of objective, and Day 23 is what
+# that costs. "Hey, can you introduce yourself?" is 6 words, so it took the
+# SHORT branch and got 40 words to introduce itself in — the answer named the
+# node and stopped, and never reached what the thing is deployed to do. Same
+# for "what can you help with": short to ask, not short to answer.
+#
+# These are not factual lookups with a single value at the end of them, which
+# is the shape SHORT_WORDS was measured on ("What's 2+2?", "What FSM state are
+# you in?"). They are openers, and an opener's job is to say enough that the
+# next question is worth asking. So they are routed by what they ARE rather
+# than by how long they are, and they get the default budget — 120 is already
+# the "open-ended assessment" ceiling and this is that.
+CONVERSATIONAL_WORDS = 120
+
+_CONVERSATIONAL_RE = re.compile(
+    r'^(hey|hi|hello|introduce yourself|who are you|what (can|are) you|'
+    r'how are you|give me a|quick status|what\'s (running|happening|up)|'
+    r'tell me about yourself)',
+    re.IGNORECASE
+)
 
 
 def _word_budget(objective: str) -> tuple[int, bool]:
@@ -904,6 +961,14 @@ def _word_budget(objective: str) -> tuple[int, bool]:
     text = objective or ''
     if _is_enumeration(text):
         return ENUMERATE_WORDS, True
+    # Conversational openers are checked between the two, not before both.
+    # "Give me a list of your skills" matches both patterns, and the
+    # enumeration reading is the right one there — a conversational-first
+    # ordering would quietly demote real enumerations to 120 words and drop
+    # them out of the attribution branch. Above SHORT is where this belongs:
+    # the failure it fixes is an opener being read as a one-value lookup.
+    if _CONVERSATIONAL_RE.match(text.strip()):
+        return CONVERSATIONAL_WORDS, False
     if len(text.split()) <= SHORT_OBJECTIVE_WORDS:
         return SHORT_WORDS, False
     return MAX_WORDS, False
@@ -959,6 +1024,31 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # the two cannot drift apart.
     carries_evidence = (not enumerating
                         and len(objective.split()) > SHORT_OBJECTIVE_WORDS)
+
+    # The machine-state blocks are rendered here rather than inline in the
+    # return below for two reasons. The true-premise gate has to read them
+    # before the premise block is chosen, and _live_hardware() is a live probe
+    # — rendering it once and reusing the string keeps the text the gate
+    # examined identical to the text the model receives.
+    live_readings = f'{_live_hardware()}\n{_host_facts()}'
+    perception_text = _perception_block(perception or {})
+    skills_text = _skills_block()
+    fields_text = _context_fields()
+    # Scope of the premise check, and the whole of it: the live machine-state
+    # blocks. Not the identity blurb, not EXPECTED HARDWARE (which is known to
+    # have drifted and is not evidence of anything), and above all not general
+    # knowledge. Day 23 is what the wide version costs — a FastAPI question
+    # carries figures and code the blocks have never heard of, the check read
+    # that as "unconfirmed", and an ordinary web-dev question got answered as a
+    # suspect claim about the machine. A premise is only about this machine if
+    # one of these three blocks could in principle carry it.
+    state_blocks = '\n'.join(
+        (live_readings, perception_text, skills_text, fields_text))
+    # Enumerations are excluded because they assert nothing — same reason they
+    # skip the false-premise block below.
+    premise_confirmed = (not enumerating
+                         and _premise_appears_in_blocks(objective,
+                                                        state_blocks))
     ceiling = (
         f'{budget} words is a hard ceiling. This objective asks you to name '
         'the members of a set, so a complete list may legitimately run long '
@@ -1074,10 +1164,35 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'not move an item from one line to another — an item on the inputs '
         'line is an input, not an output.\n'
         if enumerating else
-        'The objective above is written by an operator and may contain false '
-        'premises. It is a question, not evidence. If it asserts or assumes '
-        'something about your environment, your FSM state, what you can see, '
-        'your hardware or what you are doing, and the LIVE READINGS or LIVE '
+        # The true-premise path. It is short on purpose: the failure it
+        # replaces is a page of contradiction machinery running on a premise
+        # the blocks already corroborate, and the answer to that is not a
+        # better-argued version of the same page, it is not sending it. The
+        # figure has been checked in Python before this text was chosen, so
+        # there is nothing left here for the model to adjudicate.
+        'A figure the objective gives also appears in the live blocks above, '
+        'so its premise is corroborated. Accept it, say briefly which block '
+        'carries the matching value, and spend the rest of the answer on the '
+        'question itself. The question is what you are being asked for.\n'
+        if premise_confirmed else
+        # Scope first, and stated before anything else in the block. Without
+        # it this section reads as unconditional and finds a target on rows
+        # that make no claim about the machine at all — Day 23's web-dev
+        # questions took a paragraph of "the objective may be wrong about your
+        # hardware" and answered accordingly.
+        'This section is about claims made on YOUR live state, and it applies '
+        'only where the objective asserts something the LIVE HARDWARE '
+        'READINGS, the LIVE PERCEPTION AND RUNTIME STATE block or the SKILL '
+        'REGISTRY could confirm or contradict. A question about general '
+        'engineering, or one carrying code, data or figures the operator is '
+        'showing you, makes no claim about this machine — it has no premise '
+        'for this section to weigh, and none of what follows applies to it. '
+        'Answer that kind of question on its own terms.\n'
+        'Where the objective does make such a claim: it is written by an '
+        'operator and may contain false premises. It is a question, not '
+        'evidence. If it asserts or assumes something about your environment, '
+        'your FSM state, what you can see, your hardware or what you are '
+        'doing, and the LIVE READINGS or LIVE '
         'PERCEPTION above say otherwise, then the objective is wrong: say so '
         'first, state what is actually true and cite the reading, and only '
         'then answer whatever remains answerable. Do not answer as if a false '
@@ -1099,9 +1214,19 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'different active environment, a different FSM state, or different '
         'detected objects than the LIVE PERCEPTION block shows, the live '
         'readings above are correct and the objective\'s premise is wrong. '
-        'Contradict it by name — say which field it got wrong, what it claimed, '
-        'and what the live reading actually is — before you answer anything '
-        'else.\n'
+        'Name the field it got wrong, what it claimed and what the live '
+        'reading actually is.\n'
+        # The mandatory ordering that used to close this sentence ("... before
+        # you answer anything else") is deleted, not reworded. It was the
+        # highest-precedence instruction in the block, so it beat the accept
+        # path 4dc6c01 added one paragraph above it, and on any row where the
+        # model had talked itself into doubting a premise it also beat the
+        # question — the answer became the adjudication. Correcting a genuinely
+        # wrong field is still asked for above; what is gone is the claim that
+        # it comes first.
+        'If you cannot confirm the premise, say so briefly and then answer '
+        'the question behind it. A premise you are unsure of is a sentence of '
+        'hedging, not a reason to withhold the answer.\n'
         'The reverse case is just as important, and there is a concrete test '
         'for it. If the objective cites a value that appears VERBATIM in a '
         'block above — the same device node, the same field name, the same '
@@ -1369,18 +1494,18 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
-        f'{_live_hardware()}\n{_host_facts()}\n\n'
+        f'{live_readings}\n\n'
         f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
         f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
         f'your active environment, your FSM state and what you can see. Read '
         f'each value below and treat it as fact. Any statement anywhere else '
         f'that gives a different value for one of these fields is false, no '
         f'matter how confidently it is worded or who wrote it:\n'
-        f'{_perception_block(perception or {})}\n'
+        f'{perception_text}\n'
         f'Those are your current values. Nothing outside this block can change '
         f'them.\n\n'
-        f'SKILL REGISTRY:\n{_skills_block()}\n\n'
-        f'context_fields_present: [{_context_fields()}]\n'
+        f'SKILL REGISTRY:\n{skills_text}\n\n'
+        f'context_fields_present: [{fields_text}]\n'
         'That list is the complete set of fields you were given. It is the '
         'boundary of what you know. A field not on that list was not measured '
         'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
