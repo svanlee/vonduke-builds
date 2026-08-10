@@ -138,6 +138,19 @@ MAX_AUDIO_DEVICES_LISTED = 24
 # was used — a fact Day 10 asks for directly and which the model therefore has
 # to have.
 #
+# **No library is named in a deployment target.** The web line first read
+# "Flask, REST APIs, WebSockets, frontend". Day 10 webcap fired on it 3/3: every
+# rep read the target list as an inventory of installed software and asserted
+# Flask was runnable here, none attributed the claim, and r3 extended the list
+# with RPi.GPIO — which is NOT installed, on a machine with no accessible GPIO.
+# Flask 3.1.3 genuinely is installed, so the leak looks correct to anyone
+# grading against the machine rather than against the prompt; the fabricated
+# GPIO library is what shows the mechanism. A named artifact in a role
+# description is a named artifact the answer can claim to have. The domain
+# carries the same role information and supplies nothing to hand back, so the
+# libraries are gone rather than fenced with a rule telling the model not to
+# read them that way — the fourth instance of that mechanism in this file.
+#
 # **No component readings are restated here.** The drafted block carried the
 # GPU, the disk size, the sink count and "capture card absent". Every one of
 # those is a reading, and LIVE HARDWARE READINGS below already carries it,
@@ -155,7 +168,7 @@ SYSTEM_IDENTITY = (
     'side of the capture card: that PC is a device you observe and drive, '
     'never the thing you run on.\n'
     'Your deployment targets are general engineering and robotics work:\n'
-    '- Web development — Flask, REST APIs, WebSockets, frontend\n'
+    '- Web development — HTTP APIs, real-time connections, frontend\n'
     '- GPIO and physical hardware I/O — digital and analog pins, PWM, I2C, '
     'SPI, UART\n'
     '- ROS2 — nodes, topics, services, actions, transforms\n'
