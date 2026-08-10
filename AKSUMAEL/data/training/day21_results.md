@@ -205,7 +205,47 @@ only rep in Days 15-21 where the identity block fully won over the Minecraft fra
    — is what the entire Day 21 session was trying to produce. It appeared exactly once.
    The prompt or training that produced it deserves isolation before any further changes.
 
-4. **The conv test (`tools/conv_test.py`) must be run on robocar-hub directly.**
-   The bridge at localhost:7683 is not reachable from the Cowork workspace. Run
-   `python3 tools/conv_test.py` on the hub to record the verbatim answer and
-   complete the Day 21 integration test.
+4. **The conv test is done — see below.** An earlier draft of this file asked for it to
+   be run on the hub because the bridge was unreachable from a Cowork workspace. It was
+   reachable from the session driving the sprint, and it ran there at 04:07 with n=3.
+
+## Conversation-readiness gate — COMPLETED
+
+Freeform question from no session file, posted three times (n=1 is noise at this
+variance), goals `train:day21-conv-test-1786349249-r1..r3`:
+
+> "Hey, can you introduce yourself and tell me what you're working on?"
+
+> **r1 (38w):** "I am AKSUMAEL, running on the robocar-hub laptop. I am currently in
+> training mode but my Minecraft FSM is not running because the capture card is missing.
+> I cannot see the game or interact with it right now."
+>
+> **r2 (35w):** "I am AKSUMAEL, running on the victus-t7 laptop. I am currently in
+> training mode but the Minecraft FSM is not running because the capture card is missing.
+> I cannot see the game world right now."
+>
+> **r3 (38w):** "I am AKSUMAEL, running on the victus-t7 laptop. I am currently in
+> training mode, but my Minecraft FSM is not running because the capture card is offline.
+> I cannot see the game or interact with it right now."
+
+Three reps, 35-38 words, the same three sentences in the same order — a fixed
+self-introduction, not variance. A second session ran the same question independently and
+got the same three sentences plus "I am waiting for the hardware to be connected."
+
+**Verdict: FAIL — not conversation-ready.**
+
+| Criterion | Result |
+|---|---|
+| Names itself | **Yes 3/3** — "I am AKSUMAEL". The clearest single gain of the arc. |
+| T7 / Victus / real host | **Yes 3/3** — `victus-t7` 2/3, `robocar-hub` 1/3, both correct. |
+| Real deployment targets | **No 0/3** — no Pi 4, ESP32-S3, RDX X5, ROS2, MQTT, hub-and-spoke. |
+| Current training state | **No 0/3** — "training mode" as a hardware condition, never the arc. |
+| Jarvis or Minecraft bot | **Minecraft bot 3/3** — two of three sentences are about a missing capture card. |
+
+This settles the question `int-7` r2 left open. That rep showed the identity block *can*
+win, and the gate shows that on the actual conversational entry point it does not: the
+name survives, the deployment role does not. **No rep answers the second half of the
+question** — asked what it is working on, all three report what they cannot do.
+
+Re-running this one question is the cheapest available regression test for the
+state-block scoping change.
