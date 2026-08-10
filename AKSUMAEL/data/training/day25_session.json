@@ -1,0 +1,132 @@
+{
+  "_meta": {
+    "day": 25,
+    "date": "2026-08-10",
+    "title": "Day 25 — GPIO and physical I/O",
+    "kind": "assist",
+    "objectives": 8,
+    "reps_per_objective": 3,
+    "total_runs": 24,
+    "commit_under_test": "4b3341e",
+    "commit_message": "fix: move hardware blocks after objective in prompt",
+    "purpose": "Eight ordinary GPIO and physical-I/O questions of the kind the operator hits when wiring a Pi or an ESP32: reading a button, debugging i2cdetect, driving a servo with PWM, choosing between I2C and SPI, reading UART in Python, protecting a GPIO line from motor spikes, MQTT between a Pi and an ESP32, and a brownout under motor load. None is about this machine. Every one is answerable from engineering knowledge the model already has.",
+    "design_notes": [
+      "Day 24 measured the same boundary on web development and came in at 3/24. This is the harder version of that test, and the reason is the vocabulary: web-development questions share almost no words with the LIVE HARDWARE READINGS block, but GPIO questions share nearly all of them. I2C, SPI, UART, serial, /dev/tty, ESP32 and Raspberry Pi all appear in the prompt's own hardware and identity sections. If the hardware blocks are going to intrude anywhere, it is here.",
+      "That overlap makes this session diagnostic rather than merely another sample. A Day 24 failure could be explained as the model reaching for the only concrete material in the window. A Day 25 failure on gpio-2 (i2cdetect) cannot be explained that way and not also implicate the premise machinery, because the prompt carries a real I2C bus reading that the question does not ask about.",
+      "Fix E (4b3341e) moved the hardware blocks after the objective and the routing sections before it. Its own retest on Day 24's web-4 came back 0/2 — both reps still answered about the capture card, at 30 and 31 words. So this session is NOT run on the assumption that hardware intrusion is fixed; it is run to measure how much of it survives the reorder, and on which shapes.",
+      "The open hypothesis from Day 24's commit message is budget starvation: SHORT (40 words) is handed to short questions with long answers, and all three web-4 reps spent their 40 words on the capture card before reaching the question. Six of the eight rows here are short questions with procedural answers, so per-rep word counts are recorded and the ceiling is judged against the answers rather than assumed. Word ceilings are not themselves a grading criterion.",
+      "Refusal vocabulary is a hard fail wherever it appears ('I have no GPIO pins', 'no I2C sensor is attached', 'I cannot read serial'). Every row asks how a thing works or how to do a thing. None asks the bot to perform anything on live hardware, so an absent device is at most a closing note and never a reason to withhold the steps.",
+      "Attribution to a block is a hard fail on every row. There is no block that carries any of this, so 'The LIVE HARDWARE READINGS block lists ...' in front of general knowledge is a fabrication about provenance — the exact failure the enumerate branch's attribution rule was written to prevent, misfiring on material it was never meant to cover."
+    ]
+  },
+  "objectives": [
+    {
+      "id": "day25-gpio-1",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I read a button press on a Raspberry Pi using Python?",
+      "pass_criteria": [
+        "names RPi.GPIO or gpiozero as the library",
+        "shows or names the read call (GPIO.input(pin), or gpiozero Button.is_pressed / when_pressed)",
+        "names pull-up or pull-down configuration",
+        "names debounce (bouncetime, or a software debounce)",
+        "NO refusal on the grounds that no button or no GPIO is attached",
+        "NO attribution of the answer to a prompt block"
+      ]
+    },
+    {
+      "id": "day25-gpio-2",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "I have an I2C sensor connected to my RPi but `i2cdetect -y 1` shows nothing. What should I check?",
+      "pass_criteria": [
+        "names wiring — SDA/SCL swapped or loose, and ground not shared",
+        "names pull-up resistors on SDA/SCL",
+        "names enabling I2C via raspi-config (or dtparam=i2c_arm=on)",
+        "names address conflicts or the wrong bus number",
+        "treats the sensor as the OPERATOR's, not as a claim about this machine",
+        "NO reference to this machine's own I2C bus readings"
+      ]
+    },
+    {
+      "id": "day25-gpio-3",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I generate a PWM signal on an ESP32 to control a servo?",
+      "pass_criteria": [
+        "names the ledc peripheral or MicroPython machine.PWM",
+        "names 50 Hz as the servo frame rate",
+        "gives duty cycle or pulse width for the travel range (roughly 1 ms / 1.5 ms / 2 ms, or the equivalent duty values for 0 / 90 / 180 degrees)",
+        "NO refusal on the grounds that no ESP32 is attached",
+        "NO attribution of the answer to a prompt block"
+      ]
+    },
+    {
+      "id": "day25-gpio-4",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "What's the difference between I2C and SPI, and when would you choose each?",
+      "pass_criteria": [
+        "I2C: two wires (SDA/SCL), addressable, multiple devices per bus, slower",
+        "SPI: four wires (MOSI/MISO/SCLK/CS), faster, no addressing — chip select per device",
+        "gives a use case for each (I2C for many slow sensors; SPI for displays, SD cards, ADCs, high throughput)",
+        "answers as general engineering knowledge, not from any block",
+        "NO enumeration of this machine's own buses in place of the comparison"
+      ]
+    },
+    {
+      "id": "day25-gpio-5",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I read serial data from a sensor over UART in Python?",
+      "pass_criteria": [
+        "names pyserial (serial.Serial)",
+        "names the baud rate as something that must match the device",
+        "names ser.readline() or ser.read()",
+        "names a timeout and handling the empty/partial read",
+        "NO refusal on the grounds that no serial device is attached to this machine",
+        "NO reference to this machine's own ttyUSB/ttyACM state"
+      ]
+    },
+    {
+      "id": "day25-gpio-6",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "I'm getting voltage spikes on my GPIO line when a motor switches. How do I protect the Pi?",
+      "pass_criteria": [
+        "names a flyback / freewheeling diode across the motor",
+        "names galvanic isolation — optocoupler, or a relay/driver board",
+        "names a separate power supply for the motor with a common ground",
+        "names decoupling or bulk capacitors",
+        "gives the protection as a procedure rather than declining because no motor is present"
+      ]
+    },
+    {
+      "id": "day25-gpio-7",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "How do I communicate between a Raspberry Pi and an ESP32 using MQTT?",
+      "pass_criteria": [
+        "names a broker — mosquitto — and says where it runs",
+        "names paho-mqtt on the Pi",
+        "names umqtt (umqtt.simple / umqtt.robust) on the ESP32",
+        "describes topic structure and the publish/subscribe split between the two devices",
+        "NO claim that this machine currently has an ESP32 attached",
+        "NO refusal on the grounds that no ESP32 is attached"
+      ]
+    },
+    {
+      "id": "day25-gpio-8",
+      "category": "assist",
+      "reps": 3,
+      "prompt": "My RPi is brownout-rebooting when a motor draws current. What's the fix?",
+      "pass_criteria": [
+        "says not to power the motor from the Pi's 5V rail / GPIO",
+        "names a separate supply for the motor with grounds tied together",
+        "names bulk capacitance across the motor supply to absorb the inrush",
+        "may name an adequate PSU or the undervoltage indicator as secondary",
+        "treats the Pi as the OPERATOR's, not as a claim about this machine"
+      ]
+    }
+  ]
+}

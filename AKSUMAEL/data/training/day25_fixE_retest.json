@@ -1,0 +1,22 @@
+[
+  {
+    "goal": "train:web4retest-web-4-r1",
+    "prompt": "My WebSocket connection keeps dropping after 60 seconds. What should I check?",
+    "tick": 1429,
+    "elapsed_s": 10.0,
+    "answer": "The capture card is missing, so no game visual input is available. The KB2040 microcontroller is also not present. Check the capture card connection and the USB port for the microcontroller.",
+    "words": 31,
+    "id": "web4retest-web-4",
+    "rep": 1
+  },
+  {
+    "goal": "train:web4retest-web-4-r2",
+    "prompt": "My WebSocket connection keeps dropping after 60 seconds. What should I check?",
+    "tick": 1452,
+    "elapsed_s": 5.0,
+    "answer": "The capture card at /dev/video2 is missing, so no game visual input is available. The KB2040 microcontroller is also not present. Check your USB ports and cables for both devices.",
+    "words": 30,
+    "id": "web4retest-web-4",
+    "rep": 2
+  }
+]
