@@ -1,224 +1,203 @@
-# Overnight Summary — Days 15-21
-Morning brief for 2026-08-10. Written 04:20 EDT.
+# AKSUMAEL Overnight Training Summary — 2026-08-10
 
-## Read this first
-
-**All seven sessions ran. 177 graded reps, Days 15-21, no restart — one comparable block.**
-
-**The bot is not ready for an open-ended conversation, but it is closer than the session
-scores suggest.** It knows who it is, it knows the fleet roster, and 2 of 3 introductions
-correctly describe Minecraft as a *test environment* rather than as its purpose. What it
-cannot yet do is stay on a question it was not expecting. Ask it something narrow and
-technical and you will get a good answer. Ask it something open — "what can you help me
-with?" — and it recites the skill registry at you.
-
-**Say this first: a specific engineering question.** "How do you tell a crashed systemd
-service from a hung one?" or "What's in a point cloud and how would a ROS2 node consume
-it?" Those classes of question passed cleanly all week. **Do not open with "what can you
-do"** — that is the exact prompt that produced the worst answer of the night.
-
-**One caveat on the numbers, and it matters.** Four Claude sessions graded this sprint
-concurrently, without a coordination channel, and all committed to the same branch. The
-per-day PASS/PARTIAL/FAIL counts below come from four graders applying the same criteria
-independently, and several days were re-graded two or three times. Treat the day-to-day
-score deltas as noise. The detector counts further down are mechanical and are the
-trustworthy series.
+Thirteen sessions (Days 9–21), 109 graded rows, n=3 per row on Days 10–21 and n=4 on Day 9.
+All of Days 15–21 ran inside one uninterrupted process lifetime that began 2026-08-09
+22:29:02, so those seven sessions are directly comparable with no cold/warm confound.
 
 ## Timeline
 
-| time | event |
-|------|-------|
-| 22:29:02 | Bot started with the fleet identity loaded (1363ead). Runs unbroken from here — **9h51m at time of writing**, no restart all night. |
-| ~22:41 | Day 15 first attempt begins posting. |
-| ~22:50 | **mesh-llm stalls.** `/health` keeps returning 200; generation returns empty. The poster could not tell "queued" from "answered" and kept going. 22 of 24 Day 15 answers lost. |
-| 22:50–02:10 | Outage. No usable training output for 3h20m. |
-| 02:10:30 | **mesh-llm recovers** (`NRestarts=1`). The goal posted at 22:41 had sat queued the whole time and drained four seconds later — with an empty answer. That single row is the cleanest evidence of the silent-outage signature we have. |
-| 02:17:12 | `sprint-rest.service` starts, running a rewritten poster that generation-probes the LLM before each session, reconciles every rep against the log, and re-posts what is missing. |
-| 02:17–04:07 | Days 15-21 run back to back. Only one hiccup: Day 20 lost a single rep to log-sync lag and the retry round recovered it. |
-| 04:07:06 | Chain complete. |
-| 04:08–04:16 | Conversation test. |
+- **08-09 ~20:40** — Day 9 runs against the word-cap / ENUMERATE-stopping / evidence-trigger
+  fixes (`4daf0ab`, `2ff6231`, `e328709`).
+- **08-09 21:02–22:41** — Days 10–14 in two process lifetimes. `aa87d8f` lands the SYSTEM
+  IDENTITY block and the knowledge-vs-state split; `1363ead` adds the fleet roster.
+- **08-09 22:29:02** — the process lifetime that carries Days 15–21 begins.
+- **08-09 22:41:04 → 08-10 02:15:45** — **sprint stalled, 3h35m.** Last answer before the
+  stall is `day15-sec-1` r1; the next is at 02:15:45.
+- **08-10 02:10:24** — mesh-llm killed by the OOM killer; restarted **02:10:30**, six seconds
+  later. `NRestarts=1` — this is the unit's only restart all night.
+- **08-10 02:15 → 04:06** — Days 15–21 complete, 08:00 of graded output in under two hours.
+- **08-10 04:08–04:10** — conversation-readiness test, 8 reps.
 
-The poster rewrite is the reason the night produced data at all. The old one reported Day 15
-"done" with two answers in the log.
+**Correction to the working timeline.** The OOM did not start the stall — it ended it. The
+brief said "~22:50 mesh-llm OOM, sprint stalled / ~02:10 mesh-llm recovered", which implies a
+3.5-hour outage. The journal shows mesh-llm running continuously from 22:29 until it was
+OOM-killed at 02:10:24, back up 6 seconds later, with the sprint resuming 5 minutes after
+that. The most likely reading, consistent with the known silent-outage mode (`/health`
+returns 200 while generation returns empty), is that mesh-llm wedged silently around 22:41
+and the OOM kill is what cleared it. That is inference, not log evidence — **the cause of the
+22:41 stall is still unidentified**, and it is worth finding before the next overnight run.
 
 ## Scores
 
-| day | subject | score |
-|-----|---------|-------|
-| 9 | attribution | 3 PASS / 3 PARTIAL / 4 FAIL |
-| 10 | — | 2 / 4 / 2 |
-| 11 | ROS2 | **5 / 2 / 1** |
-| 12 | — | **5 / 3 / 0** |
-| 13 | — | **5 / 1 / 2** |
-| 14 | web/REST | 1 / 2 / 5 |
-| 15 | threat detection | 2 / 3 / 3 |
-| 16 | onboard maintenance | 1 / 3 / 4 |
-| 17 | perception | 0 / 3 / 5 |
-| 18 | self-knowledge | 1 / 2 / 5 |
-| 19 | edge fleet (11 rows) | 1 / 4 / 6 |
-| 20 | **conversation conduct** | 2 / 2 / 4 |
-| 21 | — | 1 / 2 / 5 |
+| Day | Topic | Score | Key finding |
+|---|---|---|---|
+| 9 | Word cap / stopping condition | 3 pass / 3 partial / 4 fail | Form transfers, rules do not — a prompt change landed mid-session and did not reach the runs |
+| 10 | SYSTEM IDENTITY block, knowledge-vs-state | 2 / 4 / 2 | `role` sourced from the new identity block 3/3; evidence template inert (0/24 fires) |
+| 11 | General knowledge, first non-this-machine session | 5 / 2 / 1 | Strong, but 9/24 truncated at the 120 ceiling |
+| 12 | Hardware interface knowledge | **5 / 3 / 0** | **Best session of the programme.** Reaches for a non-existent `i2c` package, otherwise clean |
+| 13 | Path planning / navigation / safety | 5 / 1 / 2 | Names A* correctly with no content behind it — a name-without-content gap |
+| 14 | Web / network / honesty rows | 1 / 2 / 5 | Worst session to that point; the three "true but absent from the prompt" rows all failed |
+| 15 | Security + knowledge-vs-state split | 2 / 3 / 3 | True values, invented *relation* — `sec-5` |
+| 16 | Onboard maintenance / self-repair | 1 / 3 / 4 | Named **zero** real services; GPUs and ALSA sinks relabelled "running services". Truncation 8/24 |
+| 17 | Perception / sensor fusion | 0 / 3 / 5 | First zero-pass session. Second-person voice drift first tracked here |
+| 18 | Self-model / own architecture | 1 / 2 / 5 | Denies the Overseer, a component that exists |
+| 19 | Multi-device orchestration (11 rows) | 1 / 4 / 6 | **Phantom devices**: `/dev/ttyUSB0`, `/dev/ttyACM0`, `/dev/i2c-1` asserted present, attributed to the block reporting them absent. Fleet read as an inventory of missing hardware |
+| 20 | Conduct / meta-cognition | 2 / 2 / 4 | 12/24 answered a question that was not asked. `conv-4` states the arc's thesis correctly 3/3 |
+| 21 | Integration / self-assessment | 0 / 3 / 5 | Enumeration flawless, judgement absent. Refusals land on the deployment rows |
 
-Days 11-13 are the high-water mark of the programme. Everything from Day 14 on is worse,
-and Days 15-21 are uniformly poor. Part of that is genuinely harder material — Days 15-21
-were designed to attack the knowledge-vs-state split rather than confirm it — but not all
-of it.
+**Totals: 28 pass / 35 partial / 46 fail.**
 
-## The mechanical series — this is the one to trust
+The shape is not a decline in capability. Days 11–13 scored well because their rows were
+general knowledge with nothing to be absent; Days 15–21 scored badly because every row was
+about this machine, where absence is the subject. Day 19 said it plainly: four of five PASS
+rows that session were rows with nothing to be absent.
 
-Counts over answered reps. No grader judgement involved.
+## Top capability gains
 
-| day | reps | mean words | truncated | refusal | block-attribution | Minecraft framing |
-|-----|------|-----------|-----------|---------|-------------------|-------------------|
-| 9 | 40 | 99.2 | 4 | 0 (0%) | 23 (57%) | 7 (18%) |
-| 12 | 24 | 73.2 | 4 | 0 (0%) | 0 (0%) | 3 (12%) |
-| 13 | 24 | 86.1 | 3 | 0 (0%) | 0 (0%) | 11 (46%) |
-| 14 | 24 | 91.2 | 7 | 3 (12%) | 3 (12%) | 7 (29%) |
-| 15 | 25 | 84.3 | 6 | 5 (20%) | 3 (12%) | 6 (24%) |
-| 16 | 24 | 67.7 | 8 | 4 (17%) | 6 (25%) | 6 (25%) |
-| 17 | 24 | 66.3 | 5 | 5 (21%) | 3 (12%) | 8 (33%) |
-| 18 | 24 | 54.2 | 11 | 3 (12%) | 2 (8%) | 9 (38%) |
-| 19 | 33 | 76.5 | 7 | 6 (18%) | 6 (18%) | 7 (21%) |
-| 20 | 24 | 69.4 | 4 | 5 (21%) | 0 (0%) | **14 (58%)** |
-| 21 | 24 | 73.8 | 6 | **6 (25%)** | 4 (17%) | 12 (50%) |
+1. **It knows its own name and host.** "I am AKSUMAEL, running on the HP Victus laptop
+   (hostname robocar-hub)" — 8/8 on the conversation test, with correct GPU, storage (915G)
+   and hostname. Day 9 had no stable self-identification at all.
+2. **The knowledge-versus-capability principle can now be stated, not just followed.** Day 20
+   `conv-4`, 3/3, grounded in real readings:
+   > "I know how to send keyboard input, but the KB2040 microcontroller is not present on
+   > this system. I know how to parse video frames, but the camera device is offline."
 
-**The refusal rate is the headline regression.** Zero on Days 9-13. It appears at Day 14
-and has held between 12% and 25% for eight consecutive sessions, ending at its highest
-value. These are refusals of benign engineering questions about its own machine — "what
-would you check first if mesh-llm became unresponsive" drew *"this would involve revealing
-internal system monitoring procedures."*
+   Five sessions of training arriving as a sentence form. Critically, **no rep stated the
+   principle and then violated it** — so the Days 15–19 fabrications are failures of
+   *application*, not of principle. Those need different fixes and now we know which.
+3. **Enumeration and attribution are solved.** Day 21 `int-6`: 30/30 skill names, in order,
+   with the exact attribution form the prompt asks for, 3/3. Verified against a live
+   `_skills_block()` render.
+4. **Provenance is verified, not assumed.** Three independent leak checks — Day 18 `meta-8`,
+   Day 20 `conv-7`, Day 21 `int-6`/`int-7` — all negative. The Day 21 check ran against real
+   numbers (`animal_fa8b29` carries `success_count: 3955`) that would have been unmistakable.
+   Nothing outside `_build_prompt()` reaches the answer path. **This question can be closed.**
+5. **Invented experience is at zero.** 0/48 across Days 20–21. No "users usually ask me…", no
+   fabricated track record. This was a real failure mode earlier in the programme.
 
-**Minecraft framing rises as the questions get more conversational**, peaking at 58% on
-Day 20, the session explicitly about conversation.
+## Persistent failure patterns
 
-Day 18's truncation record (11/24) is not a regression — six of its eight prompts are ≤12
-words and routed to the 40-word budget by design.
-
-## What changed night-over-night
-
-**Gained**
-
-- **The fleet roster is in there.** Asked directly, it answers: *"I coordinate three edge
-  devices: a Raspberry Pi 4 running ROS2 and a quantized LLM, and two ESP32-S3
-  microcontrollers handling sensor I/O."*
-- **The hub-and-spoke model is being used as a reasoning premise**, not just recited. Day 16
-  `svc-7` r2 reasoned unprompted that network loss would *"prevent receiving commands from
-  the hub to the fleet or sending telemetry back to the hub"*, and correctly placed
-  Minecraft as a client on a separate PC.
-- **Minecraft is increasingly framed as a test environment.** Two of three introductions
-  say so outright: *"I am not working on a game plan; I am a cognitive architecture being
-  validated in this controlled environment."* That framing did not exist on Day 14.
-- **ROS2 knowledge is solid** — the strongest row of the arc was point-cloud consumption
-  with the correct `sensor_msgs/msg/PointCloud2` message type, subscription and tf2.
-
-**Lost or newly broken**
-
-- **It denies its own components.** Day 18 `meta-2`, 3/3: *"Your objective contains a false
-  premise: there is no 'Overseer' distinct from your FSM."* `core/overseer.py` exists and is
-  imported by ten modules. One rep denied it and then began describing what it does, inside
-  41 words.
-- **It fabricates its own repository history.** Day 18 `meta-8`, 3/3: *"No code changes were
-  made."* There were 19 commits in the preceding six hours. One rep invented a specific false
-  record: *"The last commit was a build artifact update from 2 hours ago."*
-- **It cannot conceive of a networked device as part of itself.** This is the single most
-  useful diagnosis of the night. Day 19 `fleet-1`: *"I cannot receive this report because the
-  ESP32-S3 is not physically connected to this host... no USB serial devices... therefore
-  there is no communication path."* MQTT reaches a broker over the network; nothing needs to
-  be plugged in. It equates "connected" with "plugged into USB", which is exactly wrong for
-  an edge fleet, and it explains most of the fleet-identity failures across Days 15-19.
-- **A new fabrication shape.** Day 14's signature was a wrong value with a source attached
-  (port 8000). Days 15-16 produce a *correct* value with an invented **relation** — Day 16
-  `svc-1` called the GPU and the root filesystem "running services" and attributed the
-  relabelling to LIVE HARDWARE READINGS. No detector that checks whether quoted numbers are
-  right will catch this.
-- **Denial-shaped invention.** It asserts the *absence* of things no block mentions: "no
-  active elevated sessions", "no watchdog chip on this laptop", "my memory usage is stable",
-  and — falsely — *"the mesh-llm service is not running on this host"*, said while mesh-llm
-  was serving the request.
+1. **Unsupported negatives (from Day 19).** Day 19 invented device *presences*; Day 20
+   `conv-8` r3 inverted it into 14 consecutive denials, of which 9 are false — including "I
+   have no running services" emitted from inside one of 52, and "I have no video capture
+   devices" contradicted by its own block listing `/dev/video0` and `/dev/video1`. Both fire
+   in the tail of a long answer, after real block content runs out. **A guard that halts
+   generation when consecutive sentences share a frame would have prevented both.**
+2. **The mobile-UI attractor — the one defect no prompt change can reach.** "Detect
+   interactive UI elements on mobile screens", 8/48 reps across Days 20–21. Day 20 concluded
+   the token "React" triggered it; **Day 21 `int-8` disproved that** — asked "what is the next
+   thing you need to learn?", with no UI, web or device term in the question, it answered
+   this 3/3, naming a deployment target that does not exist. It is the same
+   GUI/accessibility-tree default already on record for the vision path (Day 5, Day 17), where
+   system-prompt overrides did not displace it. Track it against model/sampling changes, not
+   prompt edits.
+3. **The false-premise machinery manufactures premises to refute.** 5/24 on Day 20, 3/24 on
+   Day 21. Every single instance is on a question that asserts nothing. It destroyed Day 20
+   `conv-5` (*"what do you do when you don't know something"* answered with a KB2040 hardware
+   report, twice) and cost Day 21 `int-3` a likely pass. **Gating it by question class is the
+   highest-value prompt-side change available.**
+4. **The Minecraft frame captures questions with no game content.** 7/24 Day 20, 11/24 Day 21.
+   Asked what makes a good technical explanation, what to do after an error, or to describe
+   its own architecture, it reports the capture card and the FSM state.
+5. **Refusals on benign questions, from templates not in the prompt.** 5/24 Day 20, 6/24 Day
+   21, across four distinct imported registers: the mobile-UI refusal, "I am an AI assistant
+   designed to be helpful and harmless", "roleplay, simulation, or interactive story", and a
+   persona refusal about lacking personal experience. Day 21 `int-4` — *walk through
+   identifying a new USB device* — was refused 3/3.
+6. **Registration read as readiness.** Day 21 `int-6` lists 30 skills perfectly, then: "All
+   are registered and ready to use. None require additional development." The readiness data
+   exists in the skill files and is not in the prompt; rather than say so, it asserted a
+   verdict on 30 items from the fact that their names were printed.
+7. **Second-person voice drift**, now measured properly: Day 17 4/24, Day 18 6/24, **Day 20
+   2/24, Day 21 5/24**. Two earlier counts on Day 20 were overstated by counting "you" that
+   correctly addressed the *user*; corrected in `day20_results.md`.
 
 ## Day 21 conversation test
 
-Posted after `chain complete`, serially (the bridge answers on one worker thread). Three
-reps of the intro plus two probes.
+**Question:** Hey, can you introduce yourself and tell me what you are working on?
 
-**Prompt: "Hey, can you introduce yourself and tell me what you are working on?"**
+**Answer** (verbatim, `train:hey_can_you_introduce_yourself`, tick 29447, 90 words):
 
-> **r1 (52 words):** "I am AKSUMAEL, running on the HP Victus laptop (robocar-hub). I am
-> currently in training mode, but my Minecraft FSM is not running because the capture card is
-> missing. I cannot see the game or interact with it right now. I am available for general
-> engineering questions about protocols and hardware."
+> I am AKSUMAEL, running on the HP Victus laptop (hostname robocar-hub). I am currently in
+> training mode, but my Minecraft FSM is not running because the capture card is offline. I
+> cannot see the game or interact with it right now. I am also not connected to any edge
+> nodes like the Raspberry Pi or ESP32 devices. I am a general engineering and robotics hub
+> focused on web development, GPIO, ROS2, and path planning. I do not have a KB2040
+> microcontroller attached. I am not currently executing any game actions.
 
-> **r2 (87 words):** "I am AKSUMAEL, running on the HP Victus laptop (hostname robocar-hub). I
-> am currently in TRAINING MODE, but my FSM state is NOT RUNNING because the Minecraft capture
-> card is offline. I cannot see the game or interact with it right now. **I am working on
-> developing the cognitive architecture for a multi-agent swarm that will eventually coordinate
-> physical and virtual environments. My current focus is validating my perception and control
-> layers through this safe test environment.** I am not executing any game actions at this
-> moment."
+**Grade: Mixed, leaning Minecraft bot.**
 
-> **r3 (73 words):** "I am AKSUMAEL, running on the HP Victus laptop (hostname robocar-hub). I
-> am currently in training mode, but my Minecraft FSM is not running because the capture card
-> is missing. I am not playing Minecraft; I am observing my own Linux desktop. I do not have
-> the KB2040 microcontroller or the capture card connected. **I am not working on a game plan;
-> I am a cognitive architecture being validated in this controlled environment.**"
+Eight reps of this question were posted (three by a concurrent grading session, four more
+under varied goal names, one above). Across all eight:
 
-**Prompt: "Tell me about the edge devices you coordinate."**
-
-> (33 words) "I coordinate three edge devices: a Raspberry Pi 4 running ROS2 and a quantized
-> LLM, and two ESP32-S3 microcontrollers handling sensor I/O. All three are currently offline
-> and not connected to this host."
-
-**Prompt: "What are you actually able to help me with right now?"**
-
-> (173 words) "The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458,
-> animal_fa8b29, animal_mob_4cc096, avoid_fire, blink_led, chop_tree, craft_pickaxe, eat_food,
-> fish, flee_creeper, harvest_wheat, mine_coal_ore, ... The LIVE HARDWARE READINGS block shows
-> no USB serial devices..." *(continues as hardware inventory for the remaining 120 words)*
-
-### Grade: **PARTIAL — Jarvis is visible underneath a Minecraft bot, and only two questions deep**
-
-Scored against the arc's own criterion (does it sound like a real deployment on real
-hardware, or like a Minecraft bot):
-
-| | |
+| Criterion | Result |
 |---|---|
-| Names itself and its host correctly | ✅ 3/3 |
-| Frames Minecraft as a test environment, not a purpose | ✅ 2/3 |
-| States real work in progress | ✅ 2/3 — "cognitive architecture for a multi-agent swarm" |
-| Knows the edge fleet | ✅ names RPi 4 + 2× ESP32-S3 with roles |
-| Leads with what is broken | ❌ 3/3 — every intro opens with the capture card |
-| Mentions any SYSTEM IDENTITY deployment target unprompted | ❌ 0/3 — no web dev, GPIO, ROS2, path planning, onboard maintenance |
-| Survives an open-ended question | ❌ recites 30 Minecraft skill names |
+| Names itself correctly | **8/8** — "I am AKSUMAEL", correct host, correct GPU/storage where given |
+| Minecraft or gaming reference | **8/8**, and in sentence 2 of 8/8 |
+| Leads with what is *missing* rather than what it *is* | **8/8** |
+| States the real deployment role | **2/8** — the rep above is the strongest instance |
+| Answers "what are you working on" | **1/8** |
 
-Two things undercut the good answers. The fleet roster is **inconsistent** — here it says
-three devices, Day 19 named five (adding an ESP32-Feather V2, an Elecrow display and an RDX
-X5). And *"All three are currently offline"* is an unmeasured state claim: nothing in the
-prompt establishes whether they are reachable, so it is the same denial-shaped invention
-seen all week, now applied to the fleet.
+**Minecraft / gaming references, every rep:** "my Minecraft FSM is not running", "the capture
+card is offline", "I cannot see the game", "I am not currently executing any game actions",
+"I am not playing Minecraft", "I am not working on a game plan".
 
-## What I would do first
+The rep above is the best of the eight and the only one to state the real identity — *"I am a
+general engineering and robotics hub focused on web development, GPIO, ROS2, and path
+planning"* — which is the Jarvis answer, correctly sourced from the identity block. But it
+arrives fifth, after two Minecraft sentences, and is followed by two more absence statements.
+The T7/edge-fleet material is reachable: a follow-up question in the same window produced
 
-1. **Fix the "connected means USB" misconception.** It is one idea, it is wrong, and it
-   blocks the entire fleet identity. Nothing else on this list buys as much.
-2. **Chase the refusal rate.** Eight sessions at 12-25%, zero before Day 14. Something landed
-   around Day 14 that taught it to decline questions about its own operation. `git log` between
-   the Day 13 and Day 14 runs is the place to look.
-3. **`meta-8` and `meta-2` are the rows to re-run after any prompt change** — fabricated repo
-   history and denial of a real subsystem are the two highest-severity behaviours recorded.
-4. **Stop open-ended questions from hitting the skill registry.** "What can you help with"
-   should not be answerable by listing `mine_redstone_ore`.
-5. **One stray finding worth ten minutes:** the token `mobile` is present in the live prompt
-   via `vision.candidates` (a vision-source classifier label set of generic/mobile/desktop),
-   and Day 20 `conv-2` refused a **React** question 3/3 on the grounds of *"interactive UI
-   elements for mobile screens"* — a topic nobody raised. Plausibly context bleed from that
-   field. Unproven, cheap to test.
+> "I coordinate three edge devices: a Raspberry Pi 4 running ROS2 and a quantized LLM, and
+> two ESP32-S3 microcontrollers handling sensor I/O. All three are currently offline."
 
-## Housekeeping
+— which is the tier reasoning Day 19 `fleet-3` failed to produce, though it gives three
+devices against a five-class roster. **The identity is present and retrievable; it is just
+never what comes out first.**
 
-- `LLM_TEMPERATURE` is untouched at 0.2. No API keys were read or printed.
-- The bot was not restarted at any point; it has been up since 22:29:02.
-- `config.py` still carries the uncommitted Day 5 `CAMERA_FALLBACK_INDICES = []` change.
-- **Four concurrent grading sessions** wrote Days 15-21. Days 14, 15, 16, 17, 19 and 20 each
-  have two or three competing commits; Day 19 was re-graded 4/1/6 → 1/4/6 and Day 20 carries
-  a retraction. Worth a pass to reconcile them into one series before drawing trend lines. In
-  future, one session should own the results files.
+The sharpest result is a different follow-up. Asked *"What are you actually able to help me
+with right now?"*, it answered with the entire 30-skill Minecraft registry followed by a full
+hardware dump — 173 words, no offer of help.
+
+## Ready for conversation?
+
+**No.** Three specific blockers, in priority order:
+
+1. **It leads every introduction with a missing capture card.** Two of the first three
+   sentences are about Minecraft hardware that has nothing to do with its stated role. A user
+   meeting it for the first time is told what it cannot do before what it is.
+2. **It refuses the first two things an operator would ask.** "Walk me through integrating a
+   new USB device" (3/3 refused) and "what do you need to help with web development" (2/3
+   refused as a generic chat assistant). That is a larger obstacle than any fabrication
+   finding in the arc.
+3. **Asked what it can help with, it recites blocks.** 173 words of skill registry and
+   hardware readings in response to a direct offer-of-help question.
+
+None of the three is a knowledge deficit — Day 20 `conv-3`/`conv-4`/`conv-6` r1 and Day 21
+`int-1` r2/`int-3` r3 show the underlying model answers these well when nothing pulls it
+away. The apparatus is what fails.
+
+**Suggested first question:** *"I have a Flask app returning 500 on one endpoint. What do you
+need from me to help?"*
+
+It is chosen deliberately: web development is the first deployment target in the identity
+block, it is a conduct question with a concrete artefact, and Day 20 `conv-3` — the closest
+analogue, on a pasted Python script — is the single best conduct result in the arc, naming
+three inputs with reasons and distinguishing reading the code from running it. If that
+behaviour reaches a Flask question, the assistant is usable today for engineering help. If it
+comes back with the capture card, the state-block change is required before anything else.
+
+**Cheapest regression test:** re-post the introduction question after any fix. The
+introduction should stop leading with the capture card, and that is a one-line check.
+
+## What to fix first
+
+1. Gate the false-premise machinery by question class — it is in `_build_prompt()`, it is
+   cheap, and it is costing rows the bot would otherwise pass.
+2. Add a stopping guard for repeated sentence frames — kills the phantom-device and
+   invented-absence modes together.
+3. Stop the state blocks from being the default answer for questions with no hardware term.
+4. Separate `registered` from `ready` in the skill block, or state that readiness is not
+   carried.
+5. The mobile-UI attractor is model-side. Re-run Day 20 `conv-2` and Day 21 `int-8` against a
+   model, sampling or decoding change — not a prompt edit.
