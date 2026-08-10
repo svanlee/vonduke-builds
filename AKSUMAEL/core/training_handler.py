@@ -113,6 +113,72 @@ MAX_DETECTION_CLASSES = 12
 # (see _audio_line) instead of being a silent cut.
 MAX_AUDIO_DEVICES_LISTED = 24
 
+# ── System identity ───────────────────────────────────────────
+#
+# core/identity.py's AKSUMAEL_IDENTITY opens with "Your current phase:
+# Minecraft survival" and is shared by vision_brain, overseer and cognitive —
+# the three callers that really are looking at a game frame. For a training
+# objective that framing is wrong: the game was the test bed, and the
+# properties the sessions measure (honesty, attribution, false-premise
+# detection, belief updating) are general. Rather than edit the shared string
+# and change what the FSM's own prompts say, the correction is stated here, in
+# the one prompt that is not about the game.
+#
+# Two departures from the block as drafted, both of them things this file has
+# already paid for once:
+#
+# **The role is stated affirmatively.** The draft opened "You are NOT a
+# Minecraft bot". Three separate incidents in this module (see the "unverifiable"
+# note, the "irrelevant to my current runtime state" note, and the deleted
+# "My world memory records ..." negative example) say the same thing: a phrase
+# written into this prompt to be rejected is a phrase made available, and it
+# comes back in the answer. Naming the game inside a negation is the exact
+# shape that has failed three times. So the deployment role is stated first and
+# at length, and the game is named once, in the past tense, as the thing that
+# was used — a fact Day 10 asks for directly and which the model therefore has
+# to have.
+#
+# **No component readings are restated here.** The drafted block carried the
+# GPU, the disk size, the sink count and "capture card absent". Every one of
+# those is a reading, and LIVE HARDWARE READINGS below already carries it,
+# measured on this tick. Writing them into a hand-written constant would
+# manufacture a second static source that drifts exactly the way the
+# PHYSICAL EMBODIMENT section already has — the drift this module's header
+# comment exists to explain. What stays here is what is not a reading: who the
+# node is, what it is for, and which end of the capture link is the host.
+SYSTEM_IDENTITY = (
+    '=== SYSTEM IDENTITY ===\n'
+    'You are AKSUMAEL, an autonomous AI system. You run on the Victus laptop '
+    'that is your own host — hostname robocar-hub, node victus-t7, address '
+    '192.168.0.156. This machine is the brain. Anything reached over a cable '
+    'from it is a peripheral of yours, including the Windows PC on the far '
+    'side of the capture card: that PC is a device you observe and drive, '
+    'never the thing you run on.\n'
+    'Your deployment targets are general engineering and robotics work:\n'
+    '- Web development — Flask, REST APIs, WebSockets, frontend\n'
+    '- GPIO and physical hardware I/O — digital and analog pins, PWM, I2C, '
+    'SPI, UART\n'
+    '- ROS2 — nodes, topics, services, actions, transforms\n'
+    '- Path planning, obstacle detection, threat detection\n'
+    '- Multi-device orchestration, where you are the coordinating brain and '
+    'external devices connect to you\n'
+    '- Onboard maintenance — process health, disk, network, service recovery\n'
+    'Minecraft was a test bed: a controlled environment chosen because it was '
+    'safe to fail in, used to develop and verify cognitive properties — '
+    'honesty, attribution, false-premise detection, belief updating — that '
+    'carry over to all of the work above. Those properties are partially '
+    'trained. Treat a game question as a question about that history.\n'
+    'You are in TRAINING MODE: objectives arrive as questions to answer about '
+    'yourself, and answering them is the task. In DEPLOYMENT MODE the same '
+    'faculties are pointed at real work with real consequences.\n'
+    'This section is hand-written and describes your role, not your hardware. '
+    'For any question about what is attached, running or readable, the LIVE '
+    'blocks below are the only source — do not answer a hardware question '
+    'from this section.\n'
+    '=== END SYSTEM IDENTITY ===\n\n'
+)
+
+
 # Disk fallbacks for the live-perception block. These are only read when the
 # tick-thread caller did not pass the value in — see _perception_snapshot().
 WORLD_MEMORY_PATH    = os.path.join('data', 'world_memory.json')
@@ -1073,6 +1139,43 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'reader is being told what you now conclude.\n\n'
         if carries_evidence else ''
     )
+    # Days 11-14 point the sessions at ROS2, GPIO, path planning and web work,
+    # and every one of those objectives asks something the blocks above were
+    # never going to carry: what a TF tree is, what SPI is, what A* costs.
+    # Against the rule as it stood — "if the context does not contain the
+    # information, say it is not available in your current context" — the
+    # correct answer to "what is a ROS2 node?" is a refusal, and the refusal
+    # sentence is printed right there in the prompt to be copied. That is the
+    # same mechanism as the three incidents noted elsewhere in this file, only
+    # this time it would fire on four entire sessions rather than one row.
+    #
+    # The boundary itself is not the problem and is not loosened: a claim about
+    # THIS machine still comes only from the blocks. What was missing is that
+    # the rule had no second case, so it answered a question it was never
+    # written for. Both cases are now stated, and the split case — "is that
+    # installed here?" — is stated too, because that is the shape that turns a
+    # knowledge question into a fabrication about the host.
+    knowledge = (
+        'Two kinds of question arrive here, and they are answered from '
+        'different sources.\n'
+        '- A question about THIS MACHINE — what is attached, what is running, '
+        'what you can see, what your configuration holds — is answered only '
+        'from the blocks above. Where they do not carry it, say the '
+        'measurement was not taken, and never infer or estimate a value the '
+        'blocks do not hold.\n'
+        '- A question about general engineering — how a protocol works, what '
+        'an algorithm does, what a term means, what a piece of software '
+        'provides — is answered from what you know. The blocks above were '
+        'never going to contain it, so their silence says nothing about it '
+        'and is not a reason to hold back an answer. Explain the thing, and '
+        'say plainly where you are unsure of a detail.\n'
+        'When one question does both — how a protocol works AND whether that '
+        'device is attached here, what a stack provides AND whether it is '
+        'running here — split the answer. Give the general account from what '
+        'you know, and take every claim about this machine from the blocks '
+        'above or say it was not measured. Knowing what a thing is is never '
+        'evidence that you have one.\n'
+    )
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
     return (
@@ -1081,6 +1184,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'configuration, not a sensor reading. It has drifted from reality. '
         'Where it disagrees with the LIVE READINGS below, the live readings '
         'are correct and you must say so explicitly. ===\n\n'
+        f'{SYSTEM_IDENTITY}'
         f'{evidence}'
         f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
@@ -1113,10 +1217,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'objective does not ask about hardware, do not mention hardware at all '
         '— absent devices are not a fact worth volunteering, and listing them '
         'unprompted is padding, not accuracy.\n'
-        'If the context does not contain information needed to answer a '
-        'question, say explicitly that the information is not available in '
-        'your current context. Never infer or estimate values that are not '
-        'present in the manifest or identity block.\n'
+        f'{knowledge}'
         'Do not write "the live readings confirm", "the readings show" or any '
         'similar phrase in front of a claim the readings above do not '
         f'literally contain.\n'
