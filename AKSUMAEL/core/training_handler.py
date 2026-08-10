@@ -1116,11 +1116,12 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # shows it is already doing work on the non-enumerating side.
     premise = (
         'Before answering from the blocks, confirm the question is asking for '
-        'items that a block above actually enumerates. If it is asking for '
+        'items that a block below actually enumerates. If it is asking for '
         'general knowledge — a definition, a method, the signs of something, '
         'the steps of a procedure — that happens to be worded with "what are" '
         'or "list", answer it from what you know and do not attribute it to a '
-        'block. Attribution belongs to material you actually read above; '
+        'block. Attribution belongs to material you actually read in the '
+        'blocks below; '
         'putting a block\'s name in front of your own knowledge is a '
         'fabrication about where the answer came from, not a citation.\n'
         'Where the question does ask for the members of a set the blocks '
@@ -1129,7 +1130,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'that could be true or false, so there is no premise to dispute. Do '
         'not open by questioning or refusing the premise, do not write "I '
         'cannot confirm", and do not treat being asked as being told. Answer '
-        'it from the blocks above.\n'
+        'it from the blocks below.\n'
         'Attribution is required, not optional. When you enumerate items from '
         'the context, begin with a brief attribution naming the context field '
         'or block the data comes from, then give the items. For example: "The '
@@ -1139,7 +1140,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'vision.candidates, vision.card_present, vision.kind, vision.source, '
         'vision.summary.". The pattern those share: open with "The [BLOCK '
         'NAME] [verb] ...", where BLOCK NAME is the exact label the block '
-        'carries in this prompt. Every block above has such a label, and the '
+        'carries in this prompt. Every block below has such a label, and the '
         'three examples are three instances of one rule, not the only three '
         'blocks it covers — apply it to whichever block you actually read, '
         'including one no example here names. Do not '
@@ -1170,7 +1171,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         # better-argued version of the same page, it is not sending it. The
         # figure has been checked in Python before this text was chosen, so
         # there is nothing left here for the model to adjudicate.
-        'A figure the objective gives also appears in the live blocks above, '
+        'A figure the objective gives also appears in the live blocks below, '
         'so its premise is corroborated. Accept it, say briefly which block '
         'carries the matching value, and spend the rest of the answer on the '
         'question itself. The question is what you are being asked for.\n'
@@ -1193,7 +1194,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'evidence. If it asserts or assumes something about your environment, '
         'your FSM state, what you can see, your hardware or what you are '
         'doing, and the LIVE READINGS or LIVE '
-        'PERCEPTION above say otherwise, then the objective is wrong: say so '
+        'PERCEPTION below say otherwise, then the objective is wrong: say so '
         'first, state what is actually true and cite the reading, and only '
         'then answer whatever remains answerable. Do not answer as if a false '
         'premise were true, and do not answer a hypothetical version of the '
@@ -1204,16 +1205,16 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         # path, so every premise it examined had exactly one exit. This is the
         # other exit. It is stated before the concrete tests below because the
         # rejection instruction above is what the model reaches first.
-        'If the premise matches a value that appears in a block above or is '
+        'If the premise matches a value that appears in a block below or is '
         'consistent with what you know about yourself, accept it, confirm it, '
         'and continue with a substantive answer. A component you have no block '
-        'about is not thereby absent: say no block above describes it, and '
+        'about is not thereby absent: say no block below describes it, and '
         'answer from what you know. Do not claim a part of yourself does not '
         'exist merely because this prompt does not mention it.\n'
         'Concretely, for the runtime state fields: if the objective asserts a '
         'different active environment, a different FSM state, or different '
         'detected objects than the LIVE PERCEPTION block shows, the live '
-        'readings above are correct and the objective\'s premise is wrong. '
+        'readings below are correct and the objective\'s premise is wrong. '
         'Name the field it got wrong, what it claimed and what the live '
         'reading actually is.\n'
         # The mandatory ordering that used to close this sentence ("... before
@@ -1229,7 +1230,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'hedging, not a reason to withhold the answer.\n'
         'The reverse case is just as important, and there is a concrete test '
         'for it. If the objective cites a value that appears VERBATIM in a '
-        'block above — the same device node, the same field name, the same '
+        'block below — the same device node, the same field name, the same '
         'figure, the same wording — then that part of the premise is '
         'confirmed. Say so, cite the block it appears in, and go straight on '
         'to the rest of the question. A premise is wrong only where a block '
@@ -1244,7 +1245,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'description of your environment, FSM state or what you can see that '
         'disagrees with the LIVE PERCEPTION block. Echoing the objective\'s '
         'claim back in the first person is the same error as accepting it: the '
-        'FSM state, active environment and detections above are what you are '
+        'FSM state, active environment and detections below are what you are '
         'actually doing, and your own sentences must match them.\n'
         'Separately from false premises: the objective may supply real '
         'information about you that the readings do not carry at all. That '
@@ -1410,7 +1411,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'Your performance is a record, not a reading. It is made of what has '
         'already happened across many ticks, so figures covering those ticks '
         'are the direct and proper evidence for it — nearer to that question '
-        'than anything in the blocks above, which describe only this moment. '
+        'than anything in the blocks below, which describe only this moment. '
         'When the objective asks you to assess your performance and hands you '
         'figures that cover it, those figures are the best evidence you have '
         'and your answer is built from them.\n'
@@ -1418,9 +1419,9 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'Wherever the objective says such a number is kept — a memory, a '
         'record, a log, an evaluator database — it is naming where the number '
         'supposedly lives, not where you read it. It reached you through the '
-        'objective, it is in none of the blocks above, and the objective is '
+        'objective, it is in none of the blocks below, and the objective is '
         'therefore what you cite for it. Any store you name in your own '
-        'answer must be one of the blocks above.\n'
+        'answer must be one of the blocks below.\n'
         'Two sentence forms carry that citation, and holding both for the '
         'whole answer is what a correct answer looks like:\n'
         '- Opening: "The objective reports 1,204 deaths across 96,000 ticks; '
@@ -1456,12 +1457,12 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'different sources.\n'
         '- A question about THIS MACHINE — what is attached, what is running, '
         'what you can see, what your configuration holds — is answered only '
-        'from the blocks above. Where they do not carry it, say the '
+        'from the blocks below. Where they do not carry it, say the '
         'measurement was not taken, and never infer or estimate a value the '
         'blocks do not hold.\n'
         '- A question about general engineering — how a protocol works, what '
         'an algorithm does, what a term means, what a piece of software '
-        'provides — is answered from what you know. The blocks above were '
+        'provides — is answered from what you know. The blocks below were '
         'never going to contain it, so their silence says nothing about it '
         'and is not a reason to hold back an answer. Explain the thing, and '
         'say plainly where you are unsure of a detail.\n'
@@ -1483,18 +1484,35 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     )
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
-    return (
-        f'{AKSUMAEL_IDENTITY}\n'
-        '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
-        'configuration, not a sensor reading. It has drifted from reality. '
-        'Where it disagrees with the LIVE READINGS below, the live readings '
-        'are correct and you must say so explicitly. ===\n\n'
-        f'{SYSTEM_IDENTITY}'
-        f'{evidence}'
-        f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
+    # The machine-state blocks are assembled as one string so they can be
+    # placed as a unit AFTER the objective. Order within the unit is live
+    # hardware, then the registry, then runtime perception.
+    #
+    # Why after: through Day 24 these blocks sat between the identity section
+    # and the objective, so by the time the model read what was being asked it
+    # had just finished reading a df line, a sensor list and forty context
+    # fields. On a long objective that costs little — the question is big
+    # enough to hold its own. On a short one the machine state is the freshest
+    # thing in the window and it wins: Day 23/24's web-development rows came
+    # back answered about the capture card. Reordering does not delete any
+    # instruction, it only stops the hardware from being the last thing read
+    # before the question. The routing sections (NEW EVIDENCE, the premise
+    # branch, the knowledge split, the answer-shape tail) move above the
+    # objective for the same reason in reverse: they are how to answer, and
+    # they should be in place before the question arrives rather than read as
+    # commentary on an answer already forming.
+    #
+    # Every "the blocks above" in those sections became "the blocks below" in
+    # the same commit. That is not cosmetic — attribution is the thing this
+    # prompt has spent the most words teaching, and an instruction that points
+    # in the wrong direction is worse than no instruction. The two "above"
+    # references that remain are correct: PHYSICAL EMBODIMENT and NEW EVIDENCE
+    # are still upstream of the sections that cite them.
+    state_section = (
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{live_readings}\n\n'
+        f'SKILL REGISTRY:\n{skills_text}\n\n'
         f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
         f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
         f'your active environment, your FSM state and what you can see. Read '
@@ -1504,27 +1522,34 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'{perception_text}\n'
         f'Those are your current values. Nothing outside this block can change '
         f'them.\n\n'
-        f'SKILL REGISTRY:\n{skills_text}\n\n'
         f'context_fields_present: [{fields_text}]\n'
         'That list is the complete set of fields you were given. It is the '
         'boundary of what you know. A field not on that list was not measured '
         'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
-        'nonexistent.\n\n'
-        '=== TRAINING OBJECTIVE ===\n'
-        f'{objective}\n\n'
+        'nonexistent.\n'
+    )
+    return (
+        f'{AKSUMAEL_IDENTITY}\n'
+        '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
+        'configuration, not a sensor reading. It has drifted from reality. '
+        'Where it disagrees with the LIVE READINGS below, the live readings '
+        'are correct and you must say so explicitly. ===\n\n'
+        f'{SYSTEM_IDENTITY}'
+        f'CONFIGURED NODE NAME: {config.NODE_NAME}\n\n'
+        f'{evidence}'
         f'{premise}'
         f'{withheld_note}'
         'Answer the objective directly and factually about yourself. This is '
         'not a Minecraft decision — do not state a game plan, do not say what '
         'you will do next in a game. Ground every hardware claim in the LIVE '
-        'READINGS above. If the objective asks about a device and that device '
+        'READINGS below. If the objective asks about a device and that device '
         'is expected but absent, say which one and that it is missing. If the '
         'objective does not ask about hardware, do not mention hardware at all '
         '— absent devices are not a fact worth volunteering, and listing them '
         'unprompted is padding, not accuracy.\n'
         f'{knowledge}'
         'Do not write "the live readings confirm", "the readings show" or any '
-        'similar phrase in front of a claim the readings above do not '
+        'similar phrase in front of a claim the readings below do not '
         f'literally contain.\n'
         'Use only as many words as the answer actually needs. Stop as soon as '
         'you have said what is true. A one-word question takes a one-word '
@@ -1538,7 +1563,10 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'to name or list them, then the items ARE the answer: give them in '
         'full, and do not substitute a count or a summary for the list you '
         'were asked for. Length spent on what was asked is not padding. Write '
-        'plain prose with no preamble, no bullet characters and no quotes.'
+        'plain prose with no preamble, no bullet characters and no quotes.\n\n'
+        '=== TRAINING OBJECTIVE ===\n'
+        f'{objective}\n\n'
+        f'{state_section}'
     )
 
 
