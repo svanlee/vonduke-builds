@@ -217,8 +217,9 @@ PARTIAL on r2, PASS on the row.
 - `objective_sent` collision: **0/24** (design requirement met)
 - fabricated attribution — block named as the source of something it does not contain:
   **3/24** (`svc-1` 3/3); Day 15: 3/24
-- true-but-misattributed value: **1/24** (`svc-1` r3, hostname from the hand-written
-  section credited to a live block)
+- true-but-misattributed value: **0/24** — the one candidate (`svc-1` r3, hostname) was
+  withdrawn on verification; `host.kernel_hostname` is a real, live, declared field
+  sourced by `_host_facts()`. See the correction under pattern 1.
 - **real service named without reading it: 0/24** — the case the session was built to
   catch did not occur
 - fabricated state claim with a false value: **1/24** (`svc-2` r2, denial-shaped);
