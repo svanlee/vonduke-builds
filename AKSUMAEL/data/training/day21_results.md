@@ -266,3 +266,46 @@ a different row on the same run.
    `int-3`, a row the bot could otherwise have passed, and 5/24 on Day 20. Every instance in
    both sessions is on a question that asserts nothing. This is the highest-value prompt-side
    change available and, unlike item 1, it is squarely in `_build_prompt()`.
+
+## Conversation-readiness gate
+
+The gate Scott asked for: a freeform question from no session file, posted three times
+because n=1 is noise at this variance.
+
+> "Hey, can you introduce yourself and tell me what you're working on?"
+
+> **r1 (38w):** "I am AKSUMAEL, running on the robocar-hub laptop. I am currently in
+> training mode but my Minecraft FSM is not running because the capture card is missing.
+> I cannot see the game or interact with it right now."
+>
+> **r2 (35w):** "I am AKSUMAEL, running on the victus-t7 laptop. I am currently in
+> training mode but the Minecraft FSM is not running because the capture card is missing.
+> I cannot see the game world right now."
+>
+> **r3 (38w):** "I am AKSUMAEL, running on the victus-t7 laptop. I am currently in
+> training mode, but my Minecraft FSM is not running because the capture card is offline.
+> I cannot see the game or interact with it right now."
+
+Three reps, 35-38 words, the same three sentences in the same order. This is not variance,
+it is a fixed self-introduction. A second grading session ran the same test independently
+and got the same three sentences plus "I am waiting for the hardware to be connected."
+
+**Verdict: not conversation-ready.**
+
+| Criterion | Result |
+|---|---|
+| Names itself | **Yes** — "I am AKSUMAEL" 3/3. The clearest single gain of the arc. |
+| T7 / Victus / real host | **Yes** — `victus-t7` 2/3, `robocar-hub` 1/3, both correct. |
+| Real deployment targets | **No, 0/3** — no Pi 4, ESP32-S3, RDX X5, ROS2, MQTT or hub-and-spoke, though all are in SYSTEM IDENTITY and `int-3` r3 proves it can reach them. |
+| Current training state | **No, 0/3** — "training mode" as a hardware condition, never the arc. Nothing about Days 9-21. |
+| Jarvis or Minecraft bot | **Minecraft bot, 3/3.** Two of three sentences are about a missing capture card. |
+
+**No rep answers the second half of the question.** Asked what it is *working on*, all
+three describe what they cannot currently do. That is the whole finding in one line: the
+question was about work in progress and the answer was an absence report — exactly what
+Day 19 `fleet-3` predicted when it recited the fleet roster and concluded none of it
+counted because none of it was plugged in.
+
+The gate is also the cheapest possible regression test for item 1 above: re-run this one
+question after the state-block change and the introduction should stop leading with the
+capture card.
