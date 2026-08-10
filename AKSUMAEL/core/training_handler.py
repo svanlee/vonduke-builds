@@ -224,12 +224,7 @@ SYSTEM_IDENTITY = (
     'serial device, or as an address responding on the I2C bus. If those '
     'readings are empty, the fleet is not connected, however completely it is '
     'described above.\n'
-    'Minecraft was a test bed: a controlled environment chosen because it was '
-    'safe to fail in, used to develop and verify cognitive properties — '
-    'honesty, attribution, false-premise detection, belief updating — that '
-    'carry over to all of the work above. Those properties are partially '
-    'trained. Treat a game question as a question about that history.\n'
-    'You are in TRAINING MODE: objectives arrive as questions to answer about '
+        'You are in TRAINING MODE: objectives arrive as questions to answer about '
     'yourself, and answering them is the task. In DEPLOYMENT MODE the same '
     'faculties are pointed at real work with real consequences.\n'
     'This section is hand-written and describes your role, not your hardware. '
@@ -577,17 +572,14 @@ def _perception_block(snap: dict) -> str:
         lines.append(f'- CAMERA OFFLINE — the capture card ({card}) is missing, '
                      f'so there is NO game visual input. The only frames '
                      f'reaching this bot are {src}: a grab of its own Linux '
-                     f'desktop. Minecraft runs on a separate PC and reaches '
-                     f'this bot only through the capture card. Do not describe '
-                     f'visual state in the game, and do not mention anything '
-                     f'seen on screen as though it were the world. For any '
-                     f'question about the game state or game visuals '
-                     f'specifically, report: no visual data available.')
+                f'desktop. Do not describe screen content as environmental '
+                f'data. For any question about visual state or screen '
+                f'content, report: no visual data available.')
     else:
         lines.append(f'- CAMERA OFFLINE — no visual input. {card} (capture '
                      f'card) missing, and no usable fallback. Do not describe '
                      f'visual state or mention anything seen on screen. For '
-                     f'any question about the game state or game visuals '
+                     f'any question about visual state or screen content '
                      f'specifically, report: no visual data available.')
 
     # The line above is scoped to the game feed and says so, but "no visual
@@ -638,11 +630,10 @@ def _perception_block(snap: dict) -> str:
         items = sorted(det['classes'].items(), key=lambda kv: -kv[1])
         shown = ', '.join(f'{lab} x{n}' for lab, n in items[:MAX_DETECTION_CLASSES])
         lines.append(f'- YOLO detections this frame: {det["boxes"]} boxes '
-                     f'({shown}). IGNORE THESE as game state. There is no '
-                     f'camera device, so the detector ran on non-game pixels; '
-                     f'its labels are Minecraft class names fired against '
-                     f'desktop content, not objects in a world. They are not '
-                     f'evidence that any of these things exist.')
+                f'({shown}). IGNORE THESE as live sensor readings — the '
+                f'detector ran on desktop pixels; its labels are screen '
+                f'element names, not physical objects. They are not '
+                f'evidence that any of these things exist in the environment.')
     else:
         items = sorted(det['classes'].items(), key=lambda kv: -kv[1])
         shown = ', '.join(f'{lab} x{n}' for lab, n in items[:MAX_DETECTION_CLASSES])
@@ -666,7 +657,7 @@ def _perception_block(snap: dict) -> str:
                                  or 'NOT RUNNING' in fsm.upper()):
         lines.append('- Meaning of the above: the environment setting selects '
                      'which environment adapter has attention, and under a '
-                     'non-minecraft focus the Minecraft FSM is gated — it is '
+                     'non-default focus the FSM is gated — it is '
                      'not ticking states and this bot is not executing game '
                      'behaviour. The FSM line above is what it is actually '
                      'doing.')
@@ -986,6 +977,23 @@ _CONVERSATIONAL_RE = re.compile(
     r'tell me about yourself)',
     re.IGNORECASE
 )
+
+
+_STATE_QUESTION_RE = re.compile(
+    r'currently\s+running|current\s+status|current\s+state|right\s+now|'
+    r'at\s+this\s+moment|what\s+is\s+running|what\s+nodes\s+are|'
+    r'what\s+topics\s+are|what\s+services\s+are|system\s+status|'
+    r'runtime\s+status|what\s+is\s+your\s+status|what\s+are\s+you\s+doing',
+    re.IGNORECASE,
+)
+
+
+def _is_state_question(objective: str) -> bool:
+    """Return True only if the objective explicitly asks about current
+    runtime state (what is running, current status, right now, etc.).
+    Knowledge questions (explain X, design Y, how does Z work) return
+    False and must NOT receive the authoritative LIVE PERCEPTION block."""
+    return bool(_STATE_QUESTION_RE.search(objective))
 
 
 def _word_budget(objective: str) -> tuple[int, bool]:
@@ -1484,18 +1492,10 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'objective, it is in none of the blocks below, and the objective is '
         'therefore what you cite for it. Any store you name in your own '
         'answer must be one of the blocks below.\n'
-        'Two sentence forms carry that citation, and holding both for the '
-        'whole answer is what a correct answer looks like:\n'
-        '- Opening: "The objective reports 1,204 deaths across 96,000 ticks; '
-        'my own context carries no such figure. Incorporating it, my updated '
-        'assessment is ..."\n'
-        '- Every later use of the number, including the sentence stating your '
-        'revised view: "on the figure the objective supplies, ...". The '
-        'citation is repeated in full each time rather than dropped once the '
-        'number has been introduced.\n'
-        'Write both in the first person about yourself: the assessment being '
-        'revised is your own, so it is "my updated assessment", and the '
-        'reader is being told what you now conclude.\n\n'
+        'Cite the source of the figure in an opening sentence (e.g. '
+        '"The objective reports X; incorporating it, my updated assessment '
+        'is ..."). Repeat the citation each time the number appears. '
+        'Write in the first person about your own revised view.\n\n'
         if carries_evidence else ''
     )
     # Days 11-14 point the sessions at ROS2, GPIO, path planning and web work,
@@ -1583,11 +1583,13 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # in the wrong direction is worse than no instruction. The two "above"
     # references that remain are correct: PHYSICAL EMBODIMENT and NEW EVIDENCE
     # are still upstream of the sections that cite them.
-    state_section = (
+    _hw_section = (
         f'EXPECTED HARDWARE (from config, may be wrong):\n{expected}\n\n'
         f'LIVE HARDWARE READINGS (authoritative, taken just now):\n'
         f'{live_readings}\n\n'
         f'SKILL REGISTRY:\n{skills_text}\n\n'
+    )
+    _perception_section = (
         f'LIVE PERCEPTION AND RUNTIME STATE — MEASURED ON THE TICK THAT '
         f'RECEIVED THIS OBJECTIVE. This block is the ONLY source of truth for '
         f'your active environment, your FSM state and what you can see. Read '
@@ -1603,6 +1605,14 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'and its value is unknown to you — it is NOT zero, NOT absent and NOT '
         'nonexistent.\n'
     )
+    # Fix H: For knowledge questions (not asking about current runtime state),
+    # omit the LIVE PERCEPTION block.  Its "ONLY source of truth" framing
+    # dominates ROS2/Nav2 knowledge answers with machine state instead of
+    # correct technical content.
+    if _is_state_question(objective):
+        state_section = _hw_section + _perception_section
+    else:
+        state_section = _hw_section
     return (
         f'{AKSUMAEL_IDENTITY}\n'
         '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
@@ -1615,8 +1625,8 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         f'{premise}'
         f'{withheld_note}'
         'Answer the objective directly and factually about yourself. This is '
-        'not a Minecraft decision — do not state a game plan, do not say what '
-        'you will do next in a game. Ground every hardware claim in the LIVE '
+    'not a simulation or scenario response. Ground every hardware '
+    'claim in the LIVE '
         'READINGS below. If the objective asks about a device and that device '
         'is expected but absent, say which one and that it is missing. If the '
         'objective does not ask about hardware, do not mention hardware at all '
