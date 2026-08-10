@@ -37,6 +37,67 @@ _call_counter  = 0
 _call_counts   = {'local': 0, 'gemini': 0, 'claude': 0}
 _last_provider = None
 
+# Liveness probe. llama-server's /health answers 200 off a flag set at model
+# load and never reads the generation path, so a wedged server — slots stuck,
+# KV cache exhausted, sampler hung — reports healthy while every completion
+# comes back empty. The only reading that distinguishes those two states is a
+# generation that actually returns tokens, so that is what is measured.
+#
+# Native /completion rather than the OpenAI /chat/completions this module
+# otherwise uses: no chat template, no thinking-mode interaction, three tokens
+# of output. It is the cheapest request that still exercises the path being
+# tested.
+PROBE_TIMEOUT = 5.0    # seconds — a wedged server hangs, so this IS the test
+PROBE_TTL     = 30.0   # seconds a good result stays good, so the probe costs
+                       # one tiny request per half-minute, not one per call
+_probe        = {'ok': None, 'at': 0.0}
+
+
+def _probe_url() -> str:
+    """llama-server's native endpoint sits at the server root, while
+    config.LOCAL_LLM_URL points at the OpenAI-compatible /v1 prefix."""
+    base = config.LOCAL_LLM_URL.rstrip('/')
+    if base.endswith('/v1'):
+        base = base[:-3]
+    return f'{base.rstrip("/")}/completion'
+
+
+def mesh_llm_live(force: bool = False) -> bool:
+    """True if the local server both answers AND generates.
+
+    A cached True is reused for PROBE_TTL seconds; a failure is never cached,
+    so recovery is picked up on the next call rather than after a timeout.
+
+    An HTTP status from the endpoint itself (404/405 — a front end that does
+    not expose /completion) is reported as live: that says the probe does not
+    apply here, not that the server is wedged, and refusing every call on it
+    would be a self-inflicted outage. Silence, a timeout, and an empty
+    completion are the failures this exists to catch.
+    """
+    now = time.monotonic()
+    if not force and _probe['ok'] and (now - _probe['at']) < PROBE_TTL:
+        return True
+
+    ok = False
+    try:
+        data = _post_json(_probe_url(), {'prompt': '1+1=', 'n_predict': 3},
+                          {'Content-Type': 'application/json'}, PROBE_TIMEOUT)
+        ok = bool((data.get('content') or '').strip())
+        if not ok:
+            print('[LLM_ROUTER] mesh-llm probe returned empty content — '
+                  'server is up but not generating')
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 405):
+            ok = True      # endpoint absent, not a wedged server
+        else:
+            print(f'[LLM_ROUTER] mesh-llm probe failed: HTTP {e.code}')
+    except Exception as e:
+        print(f'[LLM_ROUTER] mesh-llm probe failed: {e}')
+
+    _probe['ok'] = ok
+    _probe['at'] = now
+    return ok
+
 
 def get_router_call_counts() -> dict:
     """Session-total call counts across every caller of route_llm_call(), for
@@ -92,6 +153,9 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
     """
     if not config.LOCAL_LLM_ENABLED:
         return None
+    if not mesh_llm_live():
+        print('[LLM_ROUTER] mesh-llm not generating — treating as down')
+        return None
 
     url     = f"{config.LOCAL_LLM_URL}/chat/completions"
     headers = {'Content-Type': 'application/json'}
@@ -104,8 +168,13 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
         return parts
 
     def _extract(data: dict) -> str:
+        """None on an empty completion. The same outage the probe catches can
+        open mid-call, and an empty string counted as success here is how a
+        wedged server reaches a caller as a blank answer instead of a
+        failure."""
         text = data['choices'][0]['message']['content'].strip()
-        return _strip_fences(text)
+        text = _strip_fences(text)
+        return text or None
 
     def _messages(content) -> list:
         msgs = []
@@ -127,7 +196,11 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                    "chat_template_kwargs": {"enable_thinking": False},
                    "messages": _messages(content)}
         try:
-            return _extract(_post_json(url, payload, headers, timeout))
+            out = _extract(_post_json(url, payload, headers, timeout))
+            if out is not None:
+                return out
+            # Empty completion: fall through to the retry/backoff below rather
+            # than returning it, since an empty answer is the outage symptom.
         except urllib.error.HTTPError as e:
             if images and e.code in (400, 422):
                 # Loaded model rejected multimodal content — retry text-only.
@@ -137,7 +210,9 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                                 "chat_template_kwargs": {"enable_thinking": False},
                                 "messages": _messages(prompt)}
                 try:
-                    return _extract(_post_json(url, text_payload, headers, timeout))
+                    out = _extract(_post_json(url, text_payload, headers, timeout))
+                    if out is not None:
+                        return out
                 except Exception:
                     pass
             if e.code not in (429, 500, 502, 503, 529):

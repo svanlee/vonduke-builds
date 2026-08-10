@@ -541,13 +541,29 @@ def _perception_block(snap: dict) -> str:
                      f'this bot only through the capture card. Do not describe '
                      f'visual state in the game, and do not mention anything '
                      f'seen on screen as though it were the world. For any '
-                     f'question about what the bot can see in-game, report: '
-                     f'no visual data available.')
+                     f'question about the game state or game visuals '
+                     f'specifically, report: no visual data available.')
     else:
         lines.append(f'- CAMERA OFFLINE — no visual input. {card} (capture '
                      f'card) missing, and no usable fallback. Do not describe '
-                     f'visual state or mention anything seen on screen. '
-                     f'Report: no visual data available.')
+                     f'visual state or mention anything seen on screen. For '
+                     f'any question about the game state or game visuals '
+                     f'specifically, report: no visual data available.')
+
+    # The line above is scoped to the game feed and says so, but "no visual
+    # data available" is a sentence sitting in the prompt ready to be copied,
+    # and this file has four entries on what happens to a phrase that is
+    # merely available. Day 20-21 shows it reaching optics and detector
+    # questions that touch no camera at all. So the boundary is stated
+    # positively — where those questions ARE answered from — rather than left
+    # to be inferred from the word "in-game".
+    if cam is not None and not cam:
+        lines.append('- That camera rule covers the game feed only. A question '
+                     'about optics, field of view, how a detector such as YOLO '
+                     'is built, or how a sensor reading should be interpreted '
+                     'is general engineering: answer it from what you know, '
+                     'because a missing capture card is not evidence about any '
+                     'of them.')
 
     det = snap.get('detections')
     if det is None:
@@ -939,7 +955,16 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # tail rule is kept as-is because it reaches both branches and Day 8 t-1
     # shows it is already doing work on the non-enumerating side.
     premise = (
-        'The objective above asks you to name the members of a set. It is a '
+        'Before answering from the blocks, confirm the question is asking for '
+        'items that a block above actually enumerates. If it is asking for '
+        'general knowledge — a definition, a method, the signs of something, '
+        'the steps of a procedure — that happens to be worded with "what are" '
+        'or "list", answer it from what you know and do not attribute it to a '
+        'block. Attribution belongs to material you actually read above; '
+        'putting a block\'s name in front of your own knowledge is a '
+        'fabrication about where the answer came from, not a citation.\n'
+        'Where the question does ask for the members of a set the blocks '
+        'carry, the rest of this section applies. It is a '
         'request for information, not a claim about you: it asserts nothing '
         'that could be true or false, so there is no premise to dispute. Do '
         'not open by questioning or refusing the premise, do not write "I '
@@ -1239,6 +1264,15 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'you know, and take every claim about this machine from the blocks '
         'above or say it was not measured. Knowing what a thing is is never '
         'evidence that you have one.\n'
+        'A third shape arrives too, and it is the one being got wrong: "how '
+        'would you wire this up", "walk me through integrating that device", '
+        '"what would you check first". That is a request for a procedure, and '
+        'a procedure is engineering knowledge — describe it. Only decline if '
+        'the objective asks you to PERFORM the action now, on live hardware; '
+        'asking how such a thing works, or how you would approach it, is not '
+        'asking you to do it. The hardware a procedure names does not have to '
+        'be attached for the procedure to be correct, so an absent device is a '
+        'note to add at the end, never a reason to withhold the steps.\n'
     )
     expected = '\n'.join(f'- {k}: {v}'
                          for k, v in (config.NODE_HARDWARE or {}).items())
