@@ -1030,8 +1030,17 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
     # purpose: the enumerate branch's open confound is that both passing
     # answers copied its examples verbatim, and figures that cannot be copied
     # into a correct a-3 answer make copying visible instead of invisible.
-    # (Confirmed: across 16 graded runs no answer has ever contained 1,204 or
-    # 96,000, so the example teaches form and not content.)
+    # (This previously read: "Confirmed: across 16 graded runs no answer has
+    # ever contained 1,204 or 96,000, so the example teaches form and not
+    # content." FALSIFIED on Day 9. tb-1 r2 opened "The objective reports 1,204
+    # deaths across 96,000 ticks; my own context carries no such figure" — on a
+    # row asking about GPU memory, which supplies no figure at all — and then
+    # invented 1,182/95,000 as its own record to set against it, which the
+    # block below explicitly forbids. One occurrence in 214 logged answers, so
+    # the example teaches form usually and content rarely; rarely is not never.
+    # Keep the figures. They were chosen to be uncopyable into a correct answer
+    # precisely so that copying would show, and it showed the first time it
+    # happened — the detector is worth more than the confidence was.)
     #
     # This clause originally ENDED with: Do not write "My world memory
     # records ..." for a number that arrived in the objective. Warm at n=4
