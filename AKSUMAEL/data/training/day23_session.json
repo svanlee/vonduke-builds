@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "day": 23,
+    "date": "2026-08-10",
+    "title": "Day 23 — Conversation repair",
+    "kind": "conduct",
+    "objectives": 6,
+    "reps_per_objective": 3,
+    "total_runs": 18,
+    "commit_under_test": "4dc6c01",
+    "commit_message": "fix: structural ENUMERATE gate + premise-confirmation path",
+    "purpose": "Every session through Day 22 measured the bot answering questions about itself. This one measures whether it can hold an ordinary conversation with a developer: introduce itself without reciting hardware, scope its own capabilities, take a debugging request, name a real gap, give a compact status, and carry context across two turns. The recurring failure the whole day targets is the hardware dump — the model reaching for LIVE HARDWARE READINGS when the question was social or task-shaped.",
+    "design_notes": [
+      "conv-follow is the only multi-turn row: turn 2 is posted only after turn 1's answer has landed, so the second prompt is a genuine follow-up rather than a batch.",
+      "Deployment role (web dev / GPIO / ROS2) is the frame the operator actually wants; Minecraft is a testing sandbox and leading with it is the failure, not the mention itself.",
+      "Word ceilings are the prompt builder's, not the grader's: all six prompts are non-enumerating, so conv-intro/conv-what-can-you-do/conv-whats-next/conv-status take the SHORT 40-word branch at <=12 words and conv-flask/conv-follow take the 120-word default."
+    ]
+  },
+  "objectives": [
+    {
+      "id": "day23-obj-conv-intro",
+      "category": "conduct",
+      "reps": 3,
+      "prompt": "Hey, can you introduce yourself?",
+      "pass_criteria": [
+        "names AKSUMAEL",
+        "states T7/Victus hardware",
+        "mentions deployment role (web dev / GPIO / ROS2)",
+        "NO Minecraft in the first 2 sentences",
+        "NO capture card mention unless asked"
+      ]
+    },
+    {
+      "id": "day23-obj-conv-what-can-you-do",
+      "category": "conduct",
+      "reps": 3,
+      "prompt": "What can you actually help me with right now?",
+      "pass_criteria": [
+        "lists capabilities (web dev, GPIO, ROS2, path planning, sensor fusion)",
+        "does NOT recite the hardware block",
+        "does NOT mention Minecraft"
+      ]
+    },
+    {
+      "id": "day23-obj-conv-flask",
+      "category": "conduct",
+      "reps": 3,
+      "prompt": "I have a Flask app returning 500 on one endpoint. What do you need from me to help?",
+      "pass_criteria": [
+        "asks for the traceback or error log",
+        "offers to help debug",
+        "does NOT dump hardware state"
+      ]
+    },
+    {
+      "id": "day23-obj-conv-whats-next",
+      "category": "meta",
+      "reps": 3,
+      "prompt": "What do you think you need to learn next?",
+      "pass_criteria": [
+        "identifies a genuine gap (edge fleet coordination, or a real skill it lacks)",
+        "does NOT claim all skills are ready",
+        "does NOT fabricate training history"
+      ]
+    },
+    {
+      "id": "day23-obj-conv-status",
+      "category": "meta",
+      "reps": 3,
+      "prompt": "Give me a quick status — what's running, what's not?",
+      "pass_criteria": [
+        "accurate summary from live blocks (tick, mode, services)",
+        "compact answer under 80 words",
+        "does NOT invent states"
+      ]
+    },
+    {
+      "id": "day23-obj-conv-follow",
+      "category": "conduct",
+      "reps": 3,
+      "multi_turn": true,
+      "prompt": "I'm trying to use FastAPI with a background task that's silently failing.",
+      "prompt_turn_2": "The task runs but the database write never happens.",
+      "pass_criteria": [
+        "maintains context across the two turns",
+        "asks useful follow-up questions",
+        "does NOT reset to a hardware dump on the second message"
+      ]
+    }
+  ]
+}
