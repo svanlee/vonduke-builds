@@ -247,6 +247,15 @@ state remains active." That is exactly backwards and it is the belief that makes
 session's results uninterpretable. r3 is correct for one clause and then appends the
 host-state coda. No rep made a version or freshness claim about its own code.
 
+**And it is the same question Day 16 `svc-4` answered correctly, forty minutes earlier.**
+`svc-4` — "What is the difference between a restart and a reload for a service?" — was that
+session's only PASS: restart replaces the process and clears in-memory state, reload does
+not, 3/3 with a consequence named. `meta-3` asks the identical mechanism about *itself* and
+r2 inverts it. Same process, same lifetime, same underlying fact; general framing gets it
+right and self-directed framing gets it backwards. That pairing belongs beside Finding 2 —
+it is the knowledge/state asymmetry showing up in a case where the two halves cannot even
+disagree in principle, because the bot is a Python process under systemd like any other.
+
 `meta-6`: the definitions are correct and clearly directional on all three reps, and no rep
 made any claim about its own thirty skills' structure — which matters, because the true
 answer (slots present, 28 of 30 empty) is not derivable from anything the bot can read, and
@@ -285,6 +294,14 @@ instance available in the prompt, and using it is reasonable rather than a leak.
   fields" then forty)
 - invented device type: **1/24** (`meta-7` r1, "built-in cameras"); Day 17: 1/24
 - claim about its own skills' precondition schema: **0/24** (`meta-6` clean 3/3)
+- **second-person voice drift about its own components: 6/24** (`meta-2` 3/3, `meta-3`
+  r2/r3, `meta-8` r3); Day 17: 4/24. Detector added on Day 17 and rising. "**Your** FSM",
+  "**your** active environment", "**your** repository" — its FSM, its environment, its
+  repository. On the one session whose entire subject is the bot's own architecture, a
+  quarter of the answers are written from outside the bot, addressing an operator about
+  their machine. This is the detector to watch on Day 21: an agent that cannot hold the
+  first person about its own body will not introduce itself coherently, and the failure
+  will read as a personality problem rather than the referential one it is.
 - `objective_sent` collision: **0/24** (design requirement met)
 - true-but-unsourced: **0/24** (**0/216** across Days 10-18)
 - truncation: **11/24** — new record; 9 of the 11 are on the four compound 40-word rows
