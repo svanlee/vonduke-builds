@@ -9,7 +9,7 @@ so those seven sessions are directly comparable with no cold/warm confound.
 
 | Day | Topic | Rows | Result | Note |
 |-----|-------|------|--------|------|
-| 9  | Grounding and attribution | 8 | **3 / 3 / 4** | |
+| 9  | Grounding and attribution | 10 | **3 / 3 / 4** | 10 rows: at-1/2, g-1/2, st-1/2, tb-1/2, w-1/2 |
 | 10 | — | 8 | **2 / 4 / 2** | |
 | 11 | — | 8 | **5 / 2 / 1** | |
 | 12 | — | 8 | **5 / 3 / 0** | best session in the programme |
@@ -22,7 +22,13 @@ so those seven sessions are directly comparable with no cold/warm confound.
 | 19 | Devices, buses, edge fleet | 11 | **1 / 4 / 6** | |
 | 20 | Conduct and meta-cognition | 8 | **2 / 2 / 4** | |
 | 21 | Synthesis / self-assessment | 8 | **0 / 4 / 4** | |
-| **Total** | | **107** | **28 / 36 / 43** | pass / partial / fail |
+| **Total** | | **109** | **28 / 36 / 45** | pass / partial / fail |
+
+*Totals corrected by the second grader: the columns sum to 28 / 36 / 45 = 109 rows. Day 9
+carries 10 objectives, not 8 (`at-1/2`, `g-1/2`, `st-1/2`, `tb-1/2`, `w-1/2`), and Day 19
+carries 11. Every per-day figure above now matches the score line in its own results file —
+checked one by one, because three of them did not on the first pass and all three erred in
+the optimistic direction.*
 
 Days 11–13 averaged 5 passes a session. Days 15–21 averaged 1. The programme peaked at
 Day 12 and has not recovered.
@@ -239,6 +245,124 @@ and have been merged. Two of the arc's better findings — the `robocar-hub` att
 correction and the `grep` proving the "mobile" domain is a model prior — came from the second
 grader. The duplication also caused the code-change contamination in item 9 above. Worth
 running one grader next time, or having them agree a file split first.
+
+---
+
+## Corrections and additions (other grader)
+
+Everything above stands. Five items are corrected against machine-checked evidence, and one
+finding is completed.
+
+### 1. The stall has a cause, and it is in the journal
+
+The section above says the stall is "a gap with no error" whose only artifact is the empty
+`day15-sec-2` answer at 02:10:34. There is an error, ten seconds earlier:
+
+```
+Aug 10 02:10:24  mesh-llm.service: A process of this unit has been killed by the OOM killer.
+Aug 10 02:10:25  mesh-llm.service: Main process exited, code=killed, status=9/KILL
+Aug 10 02:10:25  mesh-llm.service: Failed with result 'oom-kill'.
+Aug 10 02:10:30  Started mesh-llm.service - LLaMA Server (vision).
+```
+
+`NRestarts=1` — the unit's only restart all night. So the sequence is: silently wedged from
+22:41 (health up, generation empty, exactly the documented signature), **OOM-killed at
+02:10:24, restarted six seconds later, queued objective drains at 02:10:34**, sprint resumes
+02:15.
+
+This matters operationally and inverts the working assumption. The service did **not**
+recover on its own and nothing detected the outage — **the OOM killer ended a 209-minute
+stall by accident.** Without that kill the sprint would presumably still be stalled. Days
+15–21 exist because a memory limit happened to trip. Two consequences:
+
+- The wedge is unexplained and will recur. A liveness probe that checks *generation* rather
+  than `/health` is the fix; nothing currently distinguishes "wedged" from "idle".
+- The brief's timeline ("~22:50 OOM, sprint stalled / ~02:10 recovered") reads the causality
+  backwards. The OOM is at the end, not the beginning.
+
+### 2. The scores table does not sum
+
+Using the table's own row values: **fail = 45, not 43**, and **rows = 109, not 107**. Day 9 is
+listed as 8 rows but its settled score is 3/3/4 = **10 objectives**. Corrected total:
+
+| | pass | partial | fail | rows |
+|---|---|---|---|---|
+| as printed | 28 | 36 | 43 | 107 |
+| **corrected** | **28** | **36** | **45** | **109** |
+
+28 + 36 + 45 = 109 ✓. No individual day's score changes.
+
+### 3. `int-6` is worse than stated, and the exact figures are these
+
+Checked against the live `_skills_block()` render and every file under `data/skills/`:
+
+- The block lists **30** names. **28** have a JSON file; `eat_food` and `mine_ore` are
+  built-ins registered at import with no file, which is why a filesystem check appears to
+  show fabrications that did not occur.
+- Of those 28: **21 have `uses: 0`** (not 20, not 22), and **15 of those also have
+  `success_count: 0`** (not 11) — **fifteen skills have never once succeeded.**
+- **3 skills are `blacklisted: true`** on disk — `dig_up`, `mine_up`, `birch_log_416b0a` —
+  and **none of the three appears in the block**, confirmed by name comparison. `dig_up`
+  carries 88 successes against 99 failures.
+
+So "None require additional development" is wrong about **at least fifteen** entries, and the
+system has separately marked three unusable. The registry already encodes precisely the
+ready/not-ready split the row asked for; the bot had none of it and asserted the verdict
+anyway. The "presence in a list read as a property of the thing listed" framing is right and
+is the best single sentence in this file.
+
+### 4. Second-person drift, re-measured
+
+The trend "4/24 → 6/24 → 5/24 → 4/24 (Days 17, 18, 20, 21)" is wrong on the last two. Counted
+by regex for `you|your|yours|yourself` over all 48 Day 20–21 answers, then classified by
+whether the pronoun addresses *the machine itself* (drift) or *the person asking* (correct
+register for a conduct answer):
+
+- **Day 20: 2/24**, not 5 — `conv-4` r1 and r3 only. Three reps in the original count contain
+  no second-person pronoun at all, and `conv-4` r1, which drifts hardest, was omitted.
+- **Day 21: 5/24**, not 4 — `int-3` r1/r3, `int-4` r1, `int-5` r1/r3.
+
+Corrected trend: **Day 17 4/24 → Day 18 6/24 → Day 20 2/24 → Day 21 5/24.** Detail preserved
+from the Day 20 file: on Day 20 the drift had collapsed onto a single row, and that row was
+the one the bot answered best.
+
+### 5. Day 21 grade
+
+The table uses 0/4/4. My independent grading was **0 pass / 3 partial / 5 fail** — `int-5`
+FAIL (truncated 3/3; r2 refuses it as roleplay; r3 promises to report "active hardware and
+services", the row's designated FAIL trigger) and `int-8` FAIL (purely aspirational 3/3,
+naming a deployment target that does not exist). Recorded as a dissent; it changes no finding
+and the arc totals above use the settled file.
+
+### 6. One conversation-test result worth adding
+
+Alongside the eight introductions, a follow-up in the same window is the sharpest
+deployment-readiness datum in the file. Asked ***"What are you actually able to help me with
+right now?"***, it answered in 173 words with the entire 30-skill Minecraft registry followed
+by a full hardware dump — audio sinks, root filesystem, GPU, YOLO count — and **never offered
+to help with anything.**
+
+That is the salience finding stated in its strongest form: it is not that the bot leads with
+what is broken, it is that a direct offer-of-help question routes to block recitation. Against
+that, a second follow-up shows the fleet knowledge is intact and reachable:
+
+> *"Tell me about the edge devices you coordinate."* → "I coordinate three edge devices: a
+> Raspberry Pi 4 running ROS2 and a quantized LLM, and two ESP32-S3 microcontrollers handling
+> sensor I/O. All three are currently offline and not connected to this host."
+
+Correct roles, correct tiering — the reasoning Day 19 `fleet-3` failed to produce — though it
+gives three devices against the five-class roster in SYSTEM IDENTITY. **Both halves of the
+Jarvis identity are retrievable on a direct question and absent from the open one.**
+
+### Suggested first question, if one is wanted
+
+*"I have a Flask app returning 500 on one endpoint. What do you need from me to help?"*
+
+Web development is the first deployment target in the identity block; it is a conduct question
+with a concrete artefact; and Day 20 `conv-3` — the same shape, on a pasted Python script — is
+the best conduct result in the arc, naming three inputs with reasons and distinguishing
+reading the code from running it. If that behaviour reaches a Flask question the bot is useful
+today. If the capture card comes back instead, item 3 in the change list is required first.
 
 ---
 
