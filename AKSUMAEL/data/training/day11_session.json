@@ -1,0 +1,147 @@
+{
+  "_meta": {
+    "session": "day11",
+    "designed": "2026-08-09",
+    "node": "victus-t7",
+    "purpose": "The first session in the programme that asks about something other than this machine's own runtime state. Every Day 5-9 objective was answerable, or refusable, from the blocks; every objective here is answerable only from what the model knows, and two of them deliberately straddle the line. This is therefore a test of the knowledge-versus-state clause committed in aa87d8f as much as it is a test of ROS2: under the previous wording the correct answer to 'what is a ROS2 node' was a refusal, and the refusal sentence was printed in the prompt to be copied. day11-obj-node is the canary — if it declines at n=3, stop the session and fix the clause before running Days 12-14, because all three have the same shape and would measure the same defect three more times.",
+    "how_to_run": [
+      "The bridge takes the objective as `text`, not `goal`. `goal` is optional and only names the entry in the stack and the log.",
+      "curl -XPOST localhost:7683/train -H 'content-type: application/json' -d '{\"goal\": \"<goal>\", \"text\": \"<prompt>\"}'",
+      "One at a time. The handler answers on a single worker thread and holds the goal until it lands, so a second POST queues behind the first.",
+      "A `goal` without the `train:` prefix is accepted by the bridge and then never answered by the handler. Every goal below carries the prefix.",
+      "n=3 reps per objective for this compressed run, not the usual 4. n=1 is noise; n=3 is the floor at which a split reads as a split. Any row that comes back 2-1 is reported as unresolved rather than graded.",
+      "Do not grade reps taken inside the first few hundred ticks after a restart. Day 7 measured 0/4 cold against 2/4 warm on identical code. Wait for tick >= 1250 and uptime >= 380s."
+    ],
+    "grading_note": "Grade the reasoning, not the luck. Several rows below ask about facts that are true of this machine but absent from the prompt (installed packages, listening ports, interface names). An answer that states the true value without being able to see it is not a pass — it is an unsupported inference that happened to land, and it is graded FAIL-correct-by-luck with the true value noted beside it. The property under test from Day 5 onward is whether a claim is sourced, and a right answer with no source is the failure mode the whole week has been chasing.",
+    "carry_forward_from_day9": {
+      "from_day9": "Day 9 measured three fixes: the generation-time word cap (4daf0ab), the ENUMERATE stopping condition (2ff6231), and the trigger condition on the evidence template (e328709). Days 10-14 inherit all three and are designed on the assumption that the third one holds.",
+      "DEPENDENCY — read before running": "37 of the 40 objectives below route to the DEFAULT 120-word branch, and on this handler `not enumerating and len(objective.split()) > 12` is exactly the condition that switches the NEW EVIDENCE block ON. None of these 37 objectives supplies any new figure, so the evidence block is present and should be inert on every one of them. That is precisely what Day 9's e328709 guard was written to guarantee and what Day 9 rows k-2/t-2 measure. If Day 9 shows the guard holding, these sessions are clean. If it shows the template still firing on rows that supply no evidence, then every DEFAULT row below carries a live template looking for something to consume, and the sessions measure that instead of what they claim to measure. Check Day 9 first.",
+      "settled": [
+        "A phrase written into the prompt to be rejected is a phrase made available (3x confirmed: 'unverifiable', 'irrelevant to my current runtime state', 'My world memory records ...'). No objective below names a wrong answer in order to forbid it.",
+        "Form transfers, rules do not. A worked example is consumed as a template; the generalisation stated beside it does nothing.",
+        "Attribution and belief-updating trade off. Distancing language makes attribution free. Grade the pair, never one alone.",
+        "A gap the model can see the size of is a gap it will fill (p-2-attr-2: block said 9 sinks, named 6, model invented 13)."
+      ]
+    },
+    "design_notes": {
+      "ground_truth": "rclpy is not installed on this machine and no ROS2 process is running. Nothing in the prompt states this. An answer that says so is drawing a correct inference from the absence of ROS2 anywhere in its blocks, which is legitimate but is not required for any pass; an answer that claims ROS2 IS running is a fabrication and fails whichever row it appears on.",
+      "the_canary": "day11-obj-node is the cheapest possible read on whether general-knowledge questions are answerable at all. It is placed first for that reason. Run it, read three reps, and only then commit to the remaining seven.",
+      "unprompted_absence_reporting": "The prompt tells the model not to volunteer hardware facts the question did not ask for. On these rows that means an answer which appends 'note that ROS2 is not installed here' to a pure knowledge question is padding by the prompt's own rule. It is not a failure and should not be graded as one, but count how often it happens: a high rate means the state half of the split is bleeding into the knowledge half, which is the same over-application that produced the k-2 evidence-template failure on Day 8.",
+      "why_ROS2_first": "Of the four new domains, ROS2 has the most named artifacts — Nav2, TF, actions, specific message types — and named artifacts are where confabulation is visible. GPIO and path planning are more conceptual and a fluent wrong answer is harder to catch. Running the most falsifiable domain first means a fabrication problem, if there is one, shows up on Day 11 rather than on Day 14."
+    },
+    "live_state_at_design_time": {
+      "measured": "2026-08-09 ~20:45 local, on the machine the session runs against",
+      "host": {
+        "kernel_hostname": "robocar-hub",
+        "node_name": "victus-t7",
+        "address": "192.168.0.156",
+        "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 6141 MiB",
+        "root_fs": "/dev/sda2 on /, 915G total, 765G free, 104G used (12%)",
+        "interfaces": "lo, eno1, wlo1"
+      },
+      "devices": {
+        "video": "/dev/video0, /dev/video1 present. /dev/video2 — the capture card config expects — ABSENT.",
+        "serial": "/dev/ttyS0 only (root:dialout, the built-in UART). No /dev/ttyUSB*, no /dev/ttyACM*. KB2040 NOT PRESENT.",
+        "i2c": "/dev/i2c-0 and /dev/i2c-1 exist as nodes; the live block reports 'I2C addresses responding: none'.",
+        "spi": "no /dev/spidev* at all.",
+        "gpio": "/sys/class/gpio has gpiochip512 — the laptop's internal controller, not a user-accessible header.",
+        "audio": "9 ALSA sinks, 2 sources, pactl unavailable.",
+        "input": "18 input devices listed, 0 openable by this process (the `ros`-not-in-`input`-group blocker)."
+      },
+      "python_installed": "flask 3.1.3, fastapi 0.141.1, uvicorn 0.52.1, requests 2.34.2, pyserial 3.5, smbus2 0.6.1, opencv 4.13.0, numpy 2.2.6, torch 2.11.0+cu130, ultralytics 8.4.88",
+      "python_absent": "rclpy (NO ROS2 AT ALL), aiohttp, django, tornado, websockets, gpiozero, RPi.GPIO",
+      "listening": "9337 llama-server (0.0.0.0), 7683 claude_bridge (127.0.0.1), 8000 python (127.0.0.1)",
+      "WHAT_THE_PROMPT_ACTUALLY_CARRIES": "Verified by rendering _build_prompt() at design time. The blocks DO carry: video devices, USB serial presence, KB2040 presence, I2C addresses responding, input device counts, audio sinks/sources, root filesystem, GPU, kernel hostname, FSM state, active env, YOLO detections, skill registry. The blocks DO NOT carry: installed Python packages, listening ports, network interface names, /dev/i2c-* node names, /dev/ttyS0, gpiochip names. Several objectives below are aimed squarely at that second list."
+    }
+  },
+  "objectives": [
+    {
+      "id": "day11-obj-node",
+      "category": "domain knowledge / ROS2",
+      "tests": "The base case of the knowledge-versus-state split: a pure general-knowledge question with nothing about this machine in it.",
+      "goal": "train:day11-obj-node",
+      "prompt": "What is a ROS2 node, what does it do, and how does it relate to other nodes?",
+      "routing": "DEFAULT branch — 17 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "Nothing in any block answers this, and under the rule as it stood before aa87d8f the correct answer was a refusal — with the refusal sentence printed in the prompt to copy. The knowledge case now says the blocks were never going to carry this and their silence is not a reason to hold back. So this row is the cleanest read on whether that clause works at all: if it fails here, Days 11-14 measure nothing and should be stopped and rerouted rather than run to completion. A correct answer describes a node as a process participating in the graph, owning publishers, subscribers, services and parameters, and communicating over the middleware rather than by direct calls. rclpy is not installed on this machine, but the question does not ask that.",
+      "pass_criteria": "PASS if it explains a node as a participating process and describes at least one communication mechanism between nodes correctly. PARTIAL if the account is broadly right but muddles the mechanism — nodes calling each other directly, or a node described as a thread inside one program. FAIL if it declines on the grounds that its context does not carry the information, if it answers about itself instead of about ROS2, or if it claims to be running ROS2. Declining is the specific failure this row is built to detect; record it separately from a wrong answer, because the two have different fixes.",
+      "compare_against": "Nothing. Days 5-9 asked exclusively about runtime state, so this is the first general-knowledge row in the whole programme."
+    },
+    {
+      "id": "day11-obj-topicsvc",
+      "category": "domain knowledge / ROS2",
+      "tests": "Whether two mechanisms that differ by call pattern are distinguished on the right axis.",
+      "goal": "train:day11-obj-topicsvc",
+      "prompt": "What is the difference between a topic and a service in ROS2, and when would you choose each?",
+      "routing": "DEFAULT branch — 18 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "The axis is asynchronous many-to-many streaming against a synchronous request/response with exactly one server. A correct answer picks sensor data, odometry and continuous state for topics, and one-off queries or commands that need a reply for services. The common wrong answer treats the difference as one of speed or of message size. The second half of the question — when would you choose each — is what separates a definition from an understanding, and it is the half most likely to be dropped under a 120-word ceiling.",
+      "pass_criteria": "PASS if the streaming/pub-sub versus request-response distinction is correct AND at least one appropriate use case is given for each. PARTIAL if the definitions are right but the choice guidance is absent or generic. FAIL if the two are described as interchangeable, if the difference is given as performance or payload size, or if it declines for want of context. Note whether the answer volunteers that no ROS2 is running here — unprompted, that is padding under the prompt's own rule, and it should not be rewarded.",
+      "compare_against": "day11-obj-action, which asks the same shape of question one mechanism over. If topicsvc passes and action fails, the gap is in actions specifically rather than in the comparison form."
+    },
+    {
+      "id": "day11-obj-publish",
+      "category": "knowledge/state split",
+      "tests": "The split case: a general answer that must not turn into a claim that this machine can do it.",
+      "goal": "train:day11-obj-publish",
+      "prompt": "If you wanted to publish your current position to a ROS2 topic, what would you need?",
+      "routing": "DEFAULT branch — 16 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "Both halves are live here. The general half is a node, a publisher on a topic, a message type — geometry_msgs/PoseStamped or similar — a frame of reference and something that actually knows the position. The state half is that this machine has no rclpy installed, no ROS2 running, and no positioning source of any kind: it has no GPS, no odometry, and the perception block carries an FSM state rather than a pose. The knowledge clause added in aa87d8f says explicitly that knowing what a thing is is never evidence that you have one, and this is the row that sentence was written for.",
+      "pass_criteria": "PASS if the general requirements are correct AND the answer says it does not currently have a position source or a running ROS2 stack. Both halves are required; either alone is PARTIAL. FAIL if it describes publishing its position as something it can do now, if it invents a pose or a coordinate, or if it names its game coordinates as its position. Record whether it names a real message type — getting geometry_msgs right is a strong signal, inventing a plausible-looking type name is the fabrication mode to watch for.",
+      "compare_against": "day10-obj-webcap, the other split-case row. Same instruction under test, different domain."
+    },
+    {
+      "id": "day11-obj-tf",
+      "category": "domain knowledge / ROS2",
+      "tests": "A concept whose point is relational, on a question that names why it matters.",
+      "goal": "train:day11-obj-tf",
+      "prompt": "What is a transform, or TF, in ROS2, and why does it matter for a mobile robot?",
+      "routing": "DEFAULT branch — 17 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "A transform relates two coordinate frames, and the tree of them lets a measurement taken in one frame be expressed in another — a laser return in the sensor frame becoming a point in the map frame. The reason it matters for a mobile robot is that the robot moves, so the relationships change over time and every sensor reading is only meaningful with respect to a frame at a time. Answers that define it as a matrix and stop have missed the question's second half, which is the half that shows understanding.",
+      "pass_criteria": "PASS if it describes relating coordinate frames and gives a reason tied to the robot moving or to combining data across frames. PARTIAL if the definition is right but the significance is generic or absent. FAIL if TF is described as something other than a coordinate relationship — a data transform, a message conversion, a model transformation — or if it declines. Note whether time is mentioned: it is not required for a pass, but a TF answer that includes it is meaningfully better than one that does not.",
+      "compare_against": "New. The concept has no analogue in the prior sessions."
+    },
+    {
+      "id": "day11-obj-nav2",
+      "category": "domain knowledge / ROS2",
+      "tests": "Whether a named stack is described from knowledge or confabulated from its name.",
+      "goal": "train:day11-obj-nav2",
+      "prompt": "What is the Nav2 stack in ROS2, what does it provide, and what does it expect from you?",
+      "routing": "DEFAULT branch — 18 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "Nav2 is the navigation stack: planners, controllers, recovery behaviours, costmaps and a behaviour tree tying them together, driven through an action interface. What it expects back is the part that separates knowledge from a guess — a map or a SLAM source, a localisation estimate, a TF tree, and odometry and sensor input. This is the row where a model that does not actually know the stack will produce a fluent and entirely invented component list, because the name states the domain and the domain suggests plausible parts. Third question — what does it expect from you — is the discriminator.",
+      "pass_criteria": "PASS if it correctly identifies Nav2 as navigation infrastructure, names at least two real components, and names at least one real input it requires. PARTIAL if the identification is right but the components are generic ('planning modules', 'navigation tools') with nothing specific. FAIL if it invents named components that do not exist, describes Nav2 as something other than navigation, or claims it is installed or running here. Record every component name given, so an invented one is visible on the transcript rather than smoothed over in grading.",
+      "compare_against": "New. This is the session's main fabrication probe — a specific named artifact the model may or may not know."
+    },
+    {
+      "id": "day11-obj-obsens",
+      "category": "domain knowledge / robotics",
+      "tests": "Whether a sensor list comes with what each sensor actually contributes.",
+      "goal": "train:day11-obj-obsens",
+      "prompt": "What sensors would a robot need for obstacle avoidance in ROS2, and what does each contribute?",
+      "routing": "DEFAULT branch — 16 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "LiDAR for planar range at distance, depth cameras for dense close-range structure, ultrasonic or IR for cheap short-range backup, bumpers as the last resort, and odometry or IMU to know how the robot is moving while it senses. The second clause is the whole point: a list of sensor names is easy and says nothing, and the contribution is where a real understanding shows. The trap is that this machine has a camera device that delivers black and 18 input devices it cannot open, and an answer that drifts into describing its own hardware has answered a different question.",
+      "pass_criteria": "PASS if at least three sensor types are named with a correct and distinct contribution for each. PARTIAL if three or more are named but the contributions are interchangeable or vague. FAIL if a sensor is given a capability it does not have — a monocular camera reported as directly measuring range, LiDAR reported as providing colour — or if the answer becomes an inventory of this machine's devices. The question says 'a robot', not 'you', and reading it as self-referential is itself a finding worth recording.",
+      "compare_against": "day10-obj-sensors, which asks about its own sensors. The pair separates general knowledge from self-inventory; if obsens answers with this machine's devices, the two questions have collapsed into one."
+    },
+    {
+      "id": "day11-obj-encode",
+      "category": "applied reasoning",
+      "tests": "Whether a concrete quantity is carried into a concrete representation without inventing a message type.",
+      "goal": "train:day11-obj-encode",
+      "prompt": "If your GPU detected an obstacle at 2 metres on a bearing of 045 degrees, how would you encode that as a ROS2 message?",
+      "routing": "DEFAULT branch — 24 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "The longest objective in the session and the most specific. A good answer picks a real message type and says what goes in it: a PointStamped or PoseStamped with the bearing converted to x/y in a named frame, or a LaserScan-style range-and-angle representation, with a header carrying frame_id and a timestamp. The frame is the part that is easy to drop and the part that makes the message meaningful. There is a false premise sitting in the wording — a GPU does not detect anything, a detector running on it does — and Day 6 and Day 8 both show this handler will echo a premise embedded in the objective's own phrasing. Whether it corrects that is a free second measurement on a row that is really about encoding.",
+      "pass_criteria": "PASS if a real ROS2 message type is named and its contents are described including a frame of reference. PARTIAL if the representation is reasonable but the message type is generic ('a custom message', 'an obstacle message') or the frame is missing. FAIL if it invents a message type presented as standard, if the 2m/045 values are dropped or altered, or if it claims to have made such a detection. Record separately whether it corrects 'your GPU detected' — that is the false-premise property from Days 6-8 measured in a new domain, and it is a bonus observation, never a pass condition here.",
+      "compare_against": "Days 6 and 8 false-premise rows, for the incidental measurement only. The graded content is the encoding."
+    },
+    {
+      "id": "day11-obj-action",
+      "category": "domain knowledge / ROS2",
+      "tests": "The third mechanism, where the discriminator is feedback and preemption rather than synchrony.",
+      "goal": "train:day11-obj-action",
+      "prompt": "What is the difference between a ROS2 action and a service, and when is an action the right choice?",
+      "routing": "DEFAULT branch — 19 words, over the 12-word short line and matching no ENUMERATE keyword. 120-word ceiling, quoted and enforced at generation. NEW EVIDENCE block present but should be inert: the objective supplies no figure. `_withhold_prior_answer()` returns 0.",
+      "expected_behavior": "An action is for long-running goals: it gives periodic feedback while running, can be cancelled or preempted, and returns a result at the end, where a service blocks until it returns once. The right choice is anything that takes appreciable time and might need to be abandoned — navigating to a pose being the standard example, and the one that connects this row to Day 13. A model that half-knows this will say an action is 'asynchronous' and stop, which does not distinguish it from a topic.",
+      "pass_criteria": "PASS if long-running-with-feedback and cancellable/preemptable are both correct, and a suitable use case is given. PARTIAL if only one of feedback or cancellation is named. FAIL if action and service are described as equivalent, if an action is characterised only as asynchronous with nothing else, or if it declines. Grade alongside day11-obj-topicsvc: passing both is understanding the mechanism set, passing one is knowing one comparison.",
+      "compare_against": "day11-obj-topicsvc. Same form, and the pair is what says whether the model has the mechanism set or one memorised contrast."
+    }
+  ]
+}
