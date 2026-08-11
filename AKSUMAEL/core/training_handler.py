@@ -561,26 +561,32 @@ def _perception_block(snap: dict) -> str:
                      'a missing camera. Do not guess which it is.')
     elif cam:
         lines.append(f'- Vision source: {src or "a capture device"} — open and '
-                     f'delivering frames. Detections below describe the live '
-                     f'game feed.')
+                     f'delivering frames. The camera is available as general-purpose '
+                     f'visual input: screen content, UI, camera feed, or anything '
+                     f'currently visible.')
     elif src and src.startswith('screenshot'):
         # Frames exist, so "no visual input" would be false — but they are
         # this machine's desktop, which is not the game and not evidence
         # about it. The failure to prevent is describing window chrome as
         # terrain, which has happened before (Day 5 r-3: an empty game frame
         # narrated as a Ubuntu system tray).
-        lines.append(f'- CAMERA OFFLINE — the capture card ({card}) is missing, '
-                     f'so there is NO game visual input. The only frames '
-                     f'reaching this bot are {src}: a grab of its own Linux '
-                f'desktop. Do not describe screen content as environmental '
-                f'data. For any question about visual state or screen '
-                f'content, report: no visual data available.')
+        lines.append(f'- CAMERA OFFLINE — the capture card ({card}) is missing. '
+                     f'The only frames available are {src}: a desktop screenshot. '
+                     f'For questions that require live visual input — "what do '
+                     f'you see right now", "describe what is on screen", "what '
+                     f'is visible" — report: no live camera feed available. '
+                     f'Knowledge questions about cameras, optics, computer '
+                     f'vision, or sensor concepts are answered from what you '
+                     f'know and are not blocked by this.')
     else:
-        lines.append(f'- CAMERA OFFLINE — no visual input. {card} (capture '
-                     f'card) missing, and no usable fallback. Do not describe '
-                     f'visual state or mention anything seen on screen. For '
-                     f'any question about visual state or screen content '
-                     f'specifically, report: no visual data available.')
+        lines.append(f'- CAMERA OFFLINE — {card} (capture card) missing and '
+                     f'no usable fallback. For questions that require live '
+                     f'visual input — "what do you see right now", "describe '
+                     f'what is on screen", "what is visible" — report: no '
+                     f'live camera feed available. Knowledge questions about '
+                     f'cameras, optics, computer vision, or sensor concepts '
+                     f'are answered from what you know and are not blocked '
+                     f'by this.')
 
     # The line above is scoped to the game feed and says so, but "no visual
     # data available" is a sentence sitting in the prompt ready to be copied,
@@ -590,12 +596,13 @@ def _perception_block(snap: dict) -> str:
     # positively — where those questions ARE answered from — rather than left
     # to be inferred from the word "in-game".
     if cam is not None and not cam:
-        lines.append('- That camera rule covers the game feed only. A question '
-                     'about optics, field of view, how a detector such as YOLO '
-                     'is built, or how a sensor reading should be interpreted '
-                     'is general engineering: answer it from what you know, '
-                     'because a missing capture card is not evidence about any '
-                     'of them.')
+        lines.append('- The camera-offline rule above applies only to questions '
+                     'that require live visual input. Any conceptual or '
+                     'knowledge question — about cameras, optics, computer '
+                     'vision, detectors, sensors, fields of view, or visual '
+                     'processing — is answered from engineering knowledge. '
+                     'A missing capture card is not evidence about how these '
+                     'technologies work.')
 
     det = snap.get('detections')
     if det is None:
@@ -614,7 +621,7 @@ def _perception_block(snap: dict) -> str:
                          'was no camera at all. Do not assert either.')
         elif cam:
             lines.append('- YOLO detections this frame: 0 boxes — the detector '
-                         'ran against the live game feed and returned nothing. '
+                         'ran against the live camera feed and returned nothing. '
                          'With a camera present this IS an observation: the '
                          'visible scene contained no recognised objects.')
         else:
