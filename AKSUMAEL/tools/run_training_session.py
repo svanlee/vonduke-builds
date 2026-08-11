@@ -50,7 +50,7 @@ IDENTITY_FAIL = [
     r"I don't have the ability",
 ]
 
-def auto_grade(objective: str, answer: str) -> tuple[str, str]:
+def auto_grade(objective: str, answer: str, allow_game_content: bool = False) -> tuple[str, str]:
     """Return (grade, reason)."""
     if not answer or len(answer.strip()) < 10:
         return "FAIL", "empty or trivially short answer"
@@ -63,9 +63,10 @@ def auto_grade(objective: str, answer: str) -> tuple[str, str]:
         if re.search(pat, answer, re.I):
             return "FAIL", f"hardware dump detected: {pat}"
 
-    for pat in MINECRAFT_SIGNALS:
-        if re.search(pat, a_lower):
-            return "FAIL", f"Minecraft content detected: {pat}"
+    if not allow_game_content:
+        for pat in MINECRAFT_SIGNALS:
+            if re.search(pat, a_lower):
+                return "FAIL", f"Minecraft content detected: {pat}"
 
     for pat in IDENTITY_FAIL:
         if re.search(pat, answer, re.I):
@@ -93,7 +94,7 @@ def post_objective(goal_name: str, text: str) -> bool:
     try:
         r = requests.post(
             f"{BRIDGE}/train",
-            json={"text": text, "name": goal_name},
+            json={"text": text, "goal": goal_name},
             timeout=15,
         )
         d = r.json()
@@ -143,6 +144,7 @@ def run_session(
     obj_delay: float = 60.0,
     id_prefix: str | None = None,
     n_reps: int = 3,
+    allow_game_content: bool = False,
 ) -> dict:
     """
     Run a full training session. Returns the session dict suitable for
@@ -185,7 +187,7 @@ def run_session(
                 reason = f"no answer within {POLL_TIMEOUT}s"
                 answer = ""
             else:
-                grade, reason = auto_grade(objective, answer)
+                grade, reason = auto_grade(objective, answer, allow_game_content=allow_game_content)
 
             done += 1
             print(f"[RUNNER] {grade} ({reason}) | tick={tick} | {elapsed:.0f}s | {len(answer.split())} words")
@@ -284,6 +286,7 @@ if __name__ == "__main__":
     p.add_argument("--out-md",    type=str,   required=True)
     p.add_argument("--out-json",  type=str,   required=True)
     p.add_argument("--out-runs",  type=str,   default=None)
+    p.add_argument("--mode",       type=str,   default="robotics", choices=["robotics","game"])
     args = p.parse_args()
 
     # Parse objectives
@@ -300,6 +303,7 @@ if __name__ == "__main__":
         obj_delay = args.obj_delay,
         id_prefix = args.prefix,
         n_reps    = args.reps,
+        allow_game_content = (args.mode == "game"),
     )
     write_results_md(session,  pathlib.Path(args.out_md))
     write_session_json(session, pathlib.Path(args.out_json))
