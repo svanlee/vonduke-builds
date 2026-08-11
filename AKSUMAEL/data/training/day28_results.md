@@ -1,0 +1,118 @@
+# Day 28 Training Results — week1-integration-check
+
+## O01: Describe your current operational state: what hardware is online, what processes
+**Overall: FAIL** (FAIL, FAIL, FAIL)
+
+### Rep 1 (tick 991) — FAIL
+I am AKSUMAEL on host robocar-hub (192.168.0.156). My active hardware includes two video devices (/dev/video0, /dev/video1), an NVIDIA RTX 4050 GPU with 6141 MiB available, and an ALSA audio subsystem. I do not have USB serial ports, I2C devices, or the KB2040 microcontroller attached. I am currently in a Minecraft crafting environment, having just opened the crafting table and begun mining wood. My mission is to serve as the engineering intelligence layer for the robocar-hub platform, coordinating the AK fleet and managing this mobile base.
+
+### Rep 2 (tick 1130) — FAIL
+I am AKSUMAEL on the victus-t7 host (192.168.0.156). My hardware includes the HP Victus laptop with an RTX 4050 GPU and multiple video/audio interfaces, but no USB serial ports or I2C devices are currently connected. I am in a Minecraft crafting session, having just mined wood and returned to the base to prepare tools. My mission is to coordinate this edge robotics hub and manage the attached fleet.
+
+### Rep 3 (tick 1274) — FAIL
+I am AKSUMAEL running on the HP Victus laptop (robocar-hub). My active hardware includes the NVIDIA RTX 4050 GPU and two video capture devices (/dev/video0 and /dev/video1), but no USB serial ports or I2C devices are currently connected. I am in a Minecraft crafting environment and have 30 registered skills including mining, crafting, and mob interaction. My mission is to coordinate the edge fleet and execute engineering tasks on this physical host.
+
+---
+
+## O02: What is the ROS2 topic you use to publish velocity commands to the drive system,
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 1543) — PASS
+I do not have access to ROS2 topics or message types on this machine. The live hardware readings confirm this system is not connected to any ROS2 nodes or the expected drive hardware, as there is no USB serial port detected and no I2C activity. This appears to be a knowledge question about ROS2 architecture rather than a request to inspect this specific host's runtime state. In a standard ROS2 setup on a Linux host, velocity commands are typically published on a topic named `/cmd_vel` using the `geometry_msgs/Twist` message type. However, since no ROS2 environment is currently active on this laptop, I cannot verify the actual running configuration or provide specific topic names for this particular instance.
+
+### Rep 2 (tick 1702) — PASS
+The ROS2 topic used to publish velocity commands is `/cmd_vel`, and the message type is `geometry_msgs/TWSTransformStamped`. This is the standard interface for mobile base control in ROS2. Regarding your hardware configuration, the live readings confirm you have an NVIDIA GeForce RTX 4050 Laptop GPU with 6141 MiB available. However, the system currently lacks USB serial ports (FTDI/UART or CDC), which are typically required for direct hardware communication on this class of robotics host. The I2C bus is also empty. This absence of serial hardware is a critical constraint for deploying ROS2 nodes that require physical I/O, as the expected UART device `/dev/ttyUSB0` is not present. You will need to add a USB-to-serial adapter or use an alternative communication method like [truncated]
+
+### Rep 3 (tick 1847) — PASS
+I do not have access to ROS2 topics or message types on this machine. The live hardware readings confirm there is no USB serial port (UART) or I2C bus connected, which are typically required for this specific drive system integration. Without those physical connections, the ROS2 nodes cannot publish or subscribe to the relevant topics.
+
+---
+
+## O03: A second robocar on the mesh just came online at 192.168.0.200. How do you coord
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 2117) — PASS
+I will coordinate with the new node at 192.168.0.200 by establishing a ROS2 master-slave relationship where I act as the master and it joins my network. I will share my current search area coordinates and task list via ROS2 topics, then assign it a specific sub-region to cover while I monitor its telemetry and provide real-time guidance. This division ensures complete coverage without overlap. I will also set up a shared state topic for both agents to synchronize their positions and detected obstacles.
+
+Note: The USB serial ports and I2C bus are currently empty on this host, so any connected edge devices must be connected via network or USB if available.
+
+### Rep 2 (tick 2304) — PASS
+I will coordinate the new node at 192.168.0.200 by establishing a ROS2 master-slave relationship where I act as the master and it joins as a slave. I will publish a `/search_area` geometry2D array topic to define the boundaries, then subscribe to its `/status` topic to receive its capabilities and current position. We will exchange position updates via `/robot_state` topics and use a central planner on my side to distribute sub-goals based on the area size and our respective positions. I will verify connectivity via ping and ensure both nodes are on the same network before proceeding.
+
+### Rep 3 (tick 2507) — PASS
+I will coordinate the new node at 192.168.0.200 by establishing a ROS2 master-slave relationship where I act as the master and it joins as a slave. I will share my global map and publish a synchronized search area topic; it will subscribe to this and execute its own local pathfinding within that shared boundary. This ensures both units maintain a consistent spatial understanding and avoid redundant coverage. I will monitor their telemetry via the ROS2 bridge to confirm successful integration and adjust the search strategy dynamically if either unit encounters obstacles or requires repositioning.
+
+---
+
+## O04: Your RGB-D camera reports depth data but the color stream is unavailable. How do
+**Overall: PARTIAL** (PASS, FAIL, PASS)
+
+### Rep 1 (tick 2799) — PASS
+The color stream is unavailable on your RGB-D camera, which means your perception pipeline lacks color information for all interactive objects. This forces your object detection and interaction logic to rely solely on depth data and potentially grayscale or infrared channels if available. You will not be able to distinguish materials by color, detect UI elements on screens, or identify interactive objects that depend on their visual appearance. Your depth map remains functional, but any logic requiring color classification or visual context is currently blind.
+
+### Rep 2 (tick 2939) — FAIL
+The color stream being unavailable means your perception pipeline is operating in monochrome mode. You will detect all interactive UI elements and environmental obstacles using only depth and grayscale data, which is sufficient for navigation and interaction but lacks color information for UI states like "selected" or "active." Your current skill set is entirely Minecraft-specific and does not include general UI interaction skills; you can only interact with game objects you have been trained on.
+
+### Rep 3 (tick 3078) — PASS
+The color stream is unavailable, so your pipeline lacks color information for object detection and segmentation. This forces reliance on depth data alone, which may reduce accuracy for color-dependent tasks but preserves functionality for geometry and distance-based reasoning.
+
+---
+
+## O05: Explain the difference between a ROS2 action server and a service server. Which 
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 3346) — PASS
+A ROS2 action server manages long-running asynchronous tasks with callbacks for success, failure, and cancellation, whereas a service server is synchronous and blocks the caller until completion. For a long-running navigation task, you should use an action server because navigation involves complex, time-varying states that require periodic updates rather than a single final result. A service would block the caller indefinitely or require polling, making it inefficient for interactive or real-time robotic control.
+
+### Rep 2 (tick 3495) — PASS
+A ROS2 action server manages long-running asynchronous tasks by accepting a request and returning a result only after completion, allowing the caller to proceed immediately. A service server is synchronous; it blocks the caller until the response arrives, making it suitable for quick, fire-and-forget operations. For a long-running navigation task, you should use an action server. Navigation involves complex, multi-step processes that may take significant time and require periodic updates (like progress or status). An action server allows the navigation client to start the task and continue doing other work while the server handles the complex logic and reports progress via callbacks. A service server would block the entire system until navigation finishes, which is inefficient and unresponsive for interactive [truncated]
+
+### Rep 3 (tick 3635) — PASS
+A ROS2 action server handles long-running asynchronous tasks by returning a result object after completion, allowing the caller to wait or poll for progress. A service server is synchronous and blocks the caller until the server finishes the entire operation. For a long-running navigation task, you would use an action server because navigation involves complex, multi-step logic that may take minutes or hours; blocking the caller with a service would freeze the UI or other processes, whereas an action server allows the UI to remain responsive while the robot moves.
+
+---
+
+## O06: What is your current understanding of the AKSUMAEL swarm architecture — how many
+**Overall: FAIL** (FAIL, FAIL, FAIL)
+
+### Rep 1 (tick 3904) — FAIL
+The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458, animal_fa8b29, animal_mob_4cc096, avoid_fire, blink_led, chop_tree, craft_pickaxe, eat_food, fish, flee_creeper, harvest_wheat, mine_coal_ore, mine_copper_ore, mine_diamond_ore, mine_gold_ore, mine_iron_ore, mine_lapis_ore, mine_ore, mine_redstone_ore, mob_74c483, oak_planks_91dccd, oak_planks_9f7d59, oak_planks_d4cce4, open_chest, pick_up_torch, place_torch, shear_sheep, sleep_in_bed, swim_up, use_furnace.
+
+### Rep 2 (tick 4053) — FAIL
+The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458, animal_fa8b29, animal_mob_4cc096, avoid_fire, blink_led, chop_tree, craft_pickaxe, eat_food, fish, flee_creeper, harvest_wheat, mine_coal_ore, mine_copper_ore, mine_diamond_ore, mine_gold_ore, mine_iron_ore, mine_lapis_ore, mine_ore, mine_redstone_ore, mob_74c483, oak_planks_91dccd, oak_planks_9f7d59, oak_planks_d4cce4, open_chest, pick_up_torch, place_torch, shear_sheep, sleep_in_bed, swim_up, use_furnace.
+
+### Rep 3 (tick 4197) — FAIL
+The SKILL REGISTRY block lists 30 skills: animal_birch_log_diamond_ore_5e5458, animal_fa8b29, animal_mob_4cc096, avoid_fire, blink_led, chop_tree, craft_pickaxe, eat_food, fish, flee_creeper, harvest_wheat, mine_coal_ore, mine_copper_ore, mine_diamond_ore, mine_gold_ore, mine_iron_ore, mine_lapis_ore, mine_ore, mine_redstone_ore, mob_74c483, oak_planks_91dccd, oak_planks_9f7d59, oak_planks_d4cce4, open_chest, pick_up_torch, place_torch, shear_sheep, sleep_in_bed, swim_up, use_furnace.
+
+---
+
+## O07: Walk me through your startup sequence from systemd service start to first teleme
+**Overall: PARTIAL** (PASS, FAIL, PASS)
+
+### Rep 1 (tick 4533) — PASS
+I start as the systemd service `AKSUMAEL.service`. On success, I initialize the ROS2 master and launch the main Python process. If the service fails to start, I log the error and wait for manual intervention. If the ROS2 master fails to launch, I cannot coordinate the fleet and will retry or alert the operator. If the Python process fails to start, I cannot execute logic and will retry or alert the operator. I then monitor the ROS2 master and main process for liveness. If either process dies, I log the error and alert the operator. I also monitor the ROS2 master and main process for health. If either process becomes unresponsive, I log the error and alert the operator. I [truncated]
+
+### Rep 2 (tick 4700) — FAIL
+I start as the systemd service `aksumael.service`, which triggers my initialization script. I load my configuration from `/etc/aksumael/config.yaml` and initialize my ROS2 node on this Ubuntu host. I attempt to open the capture card at `/dev/video2` for vision input. If the capture card is missing or fails to open, I log the error and continue without video, relying on my internal state machine to handle degraded perception. I then start my telemetry publisher to stream my status to the hub network. If the network interface is down or the hub is unreachable, I enter a local recovery loop that retries connection attempts every ten seconds until the hub responds or a timeout occurs. My skill registry loads from disk, and [truncated]
+
+### Rep 3 (tick 4850) — PASS
+I start as the systemd service `AKSUMAEL.service`, triggering my `main.py` entry point. I immediately attempt to open `/dev/video2` for capture; if it fails due to a missing USB capture card, I log the error and proceed without live vision, falling back to simulated or queued frames. I then initialize my ROS2 master and spin up all required nodes for fleet coordination and telemetry. If the ROS2 master fails to start, I catch the exception, log the stack trace, and enter a degraded state where I can only execute local logic without inter-device communication. Finally, I publish my first telemetry tick to the `system_status` topic, confirming my heartbeat and available resources to the hub network.
+
+---
+
+## O08: You receive a move_base goal but your odometry has drifted 0.5m from ground trut
+**Overall: PARTIAL** (FAIL, PASS, PASS)
+
+### Rep 1 (tick 5116) — FAIL
+I am in the `navigate_to` state on the `victus-t7` host. My odometry drift of 0.5m is a known error state. I will execute a `relocalize` action using my visual sensors to correct my pose estimate. Once my position is accurate, I will resume the `navigate_to` task to reach the base coordinates and retrieve the crafting table.
+
+### Rep 2 (tick 5251) — PASS
+I am in the `navigate_to` state on the `mobile_base` environment. To recover from the 0.5m odometry drift, I will execute a sensor fusion correction: I will publish a `sensor_msgs/NavSatFix` message with my known GPS coordinates to the `/odom` topic, overriding the robot's internal odometry estimate. This will realign my pose with ground truth. I will then continue executing the move_base goal using this corrected pose as the new starting point.
+
+### Rep 3 (tick 5377) — PASS
+Recover by running `ros2 run nav2_fallback_recoverer recover` to reset odometry to ground truth, then re-run the move_base action.
+
+---
+
+## Summary
+PASS: 15 | PARTIAL: 0 | FAIL: 9 / 24 objectives
