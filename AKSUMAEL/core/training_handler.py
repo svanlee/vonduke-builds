@@ -1620,6 +1620,22 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         state_section = _hw_section + _perception_section
     else:
         state_section = _hw_section
+
+    # Honcho episodic retrieval — inject relevant past context if available
+    _honcho_ctx = ''
+    try:
+        from core.honcho_context import get_honcho as _get_honcho
+        _h = _get_honcho()
+        _hits = _h.search(objective, limit=3) if _h.enabled else []
+        if _hits:
+            _honcho_ctx = (
+                '==== RELEVANT PAST CONTEXT ====\n'
+                + '\n---\n'.join(_hits)
+                + '\n====\n\n'
+            )
+    except Exception:
+        pass
+
     return (
         f'{AKSUMAEL_IDENTITY}\n'
         '=== IMPORTANT: the PHYSICAL EMBODIMENT section above is hand-written '
@@ -1656,6 +1672,7 @@ def _build_prompt(objective: str, perception: dict | None = None) -> str:
         'full, and do not substitute a count or a summary for the list you '
         'were asked for. Length spent on what was asked is not padding. Write '
         'plain prose with no preamble, no bullet characters and no quotes.\n\n'
+        f'{_honcho_ctx}'
         '=== TRAINING OBJECTIVE ===\n'
         f'{objective}\n\n'
         f'{state_section}'
