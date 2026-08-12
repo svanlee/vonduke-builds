@@ -223,11 +223,13 @@ class GoalStack:
     def is_craft_goal(self, goal: str | None = None) -> bool:
         """True if `goal` (default: current goal) is any crafting-related goal."""
         g = self.current if goal is None else goal
+        if not g:
+            return False
         return g.startswith('craft_') or g in self._CRAFT_ALIASES
 
     def has_craft_goal(self) -> bool:
         """True if a crafting goal is active or queued anywhere in the stack."""
-        return self.is_craft_goal(self.current) or any(self.is_craft_goal(g) for g in self.stack)
+        return self.is_craft_goal(self.current) or any(self.is_craft_goal(g) for g in self.stack if g)
 
     def suggest_craft_goal(self, cached_inv: dict, chest_inv: dict | None = None):
         """Auto-push the highest-tier craft_*_pickaxe goal the instant inventory
