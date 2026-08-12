@@ -18,12 +18,30 @@
 import config
 
 
+# xdotool keysym map — converts AKSUMAEL action key names to X11 keysym names.
+# Single letters and digits pass through unchanged (xdotool accepts lowercase).
+_XDOTOOL_KEYMAP = {
+    'space': 'space', 'lshift': 'shift', 'rshift': 'shift',
+    'lctrl': 'ctrl',  'rctrl': 'ctrl',
+    'lalt': 'alt',    'ralt': 'alt',
+    'tab': 'Tab', 'escape': 'Escape', 'esc': 'Escape',
+    'enter': 'Return', 'return': 'Return', 'backspace': 'BackSpace',
+    'delete': 'Delete', 'home': 'Home', 'end': 'End',
+    'pageup': 'Prior', 'pagedown': 'Next',
+    'up': 'Up', 'down': 'Down', 'left': 'Left', 'right': 'Right',
+    'f1': 'F1', 'f2': 'F2', 'f3': 'F3', 'f4': 'F4',
+    'f5': 'F5', 'f6': 'F6', 'f7': 'F7', 'f8': 'F8',
+    'f9': 'F9', 'f10': 'F10', 'f11': 'F11', 'f12': 'F12',
+}
+
+
 class ActionExecutor:
     def __init__(self):
         self.mode     = config.ACTION_OUTPUT.lower()
         self.platform = config.PLATFORM_TARGET.lower()
         self._hid     = None   # KB2040Serial or CH9329Serial
         self.bridge   = None   # BridgeClient, when KB2040_MODE == 'bridge'
+        self._xdotool = False  # True when xdotool is available as fallback
 
         # The KB2040 can only be one thing at a time. When it's flashed as
         # a hardware bridge, an ACTION_OUTPUT of 'kb2040' is stale config,
@@ -48,7 +66,21 @@ class ActionExecutor:
             self._init_bridge()
         # 'print' needs no init
 
+        # xdotool fallback: used whenever no HID device is present so the
+        # bot can send keystrokes to Minecraft via X11 even without the KB2040.
+        self._xdotool = self._init_xdotool()
+
         print(f'[ACTION] mode:{self.mode}  platform:{self.platform}')
+
+    def _init_xdotool(self) -> bool:
+        """Check xdotool availability. Used as HID fallback when KB2040 absent."""
+        import shutil, os
+        if shutil.which('xdotool') is None:
+            return False
+        self._xdotool_display = os.environ.get('DISPLAY', ':0')
+        print(f'[ACTION] xdotool available — keystroke fallback active '
+              f'(DISPLAY={self._xdotool_display})')
+        return True
 
     def _init_bridge(self):
         """KB2040 as a general hardware bridge — no HID, no packets.
@@ -116,6 +148,13 @@ class ActionExecutor:
         # look like a dead FSM.
         if self.mode in ('print', 'bridge'):
             self._print_action(action_dict)
+            # xdotool fallback: send real keystrokes to the X11 window when
+            # no HID device is present. Camera-look (relative mouse) is skipped
+            # because xdotool cannot send relative motion; key + mouse_button
+            # actions work normally. This is what makes the bot functional
+            # without the KB2040 plugged in.
+            if self._xdotool:
+                self._xdotool_action(action_dict)
         else:
             self._execute_hid(action_dict)
 
@@ -128,6 +167,38 @@ class ActionExecutor:
         if hasattr(self._hid, 'try_reconnect') and self._hid.try_reconnect():
             self.mode = self._intended_mode
             print(f'[ACTION] {self._intended_mode} reconnected — resuming HID output')
+
+    def _xdotool_action(self, ad: dict):
+        """Inject keystrokes / mouse clicks via xdotool when no HID device present.
+
+        Covers key taps and mouse button clicks. Mouse-look (relative dx/dy)
+        requires hardware and is intentionally skipped — xdotool mousemove is
+        absolute and would pull the camera off target.
+        """
+        import subprocess, os
+        env = {**os.environ, 'DISPLAY': getattr(self, '_xdotool_display', ':0')}
+
+        key = (ad.get('key') or '').lower().strip()
+        if key and key not in ('null', 'none', 'wait', ''):
+            xkey = _XDOTOOL_KEYMAP.get(key, key)
+            try:
+                subprocess.run(
+                    ['xdotool', 'key', '--clearmodifiers', xkey],
+                    env=env, timeout=1, capture_output=True,
+                )
+            except Exception as e:
+                print(f'[ACTION] xdotool key error: {e}')
+
+        mouse_btn = ad.get('mouse_button')
+        if mouse_btn in ('left', 'right'):
+            btn_num = '1' if mouse_btn == 'left' else '3'
+            try:
+                subprocess.run(
+                    ['xdotool', 'click', btn_num],
+                    env=env, timeout=1, capture_output=True,
+                )
+            except Exception as e:
+                print(f'[ACTION] xdotool click error: {e}')
 
     def _print_action(self, ad: dict):
         key   = ad.get('key')
