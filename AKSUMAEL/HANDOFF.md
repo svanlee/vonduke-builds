@@ -1,85 +1,80 @@
 # HANDOFF — 2026-08-12
 
-## Current status
+## Where we stopped
 
-Bot running. Jarvis package live (committed fdb51a9).
-Git locks stale — run `rm .git/HEAD.lock .git/index.lock` then commit below.
+48-hour sprint toward Jarvis/Ultron-level autonomy. All core architecture is deployed and running.
 
-## Commit command (run from vonduke-builds/ root)
+## What was built this session
 
+### Commits (inventory-sprite-matching branch)
+- `3933354` — OODA Planner + propose_improvement self-improvement loop (23 tools)
+- `c2e3d78` — Local reward model (Bradley-Terry MLP) + score_goal tool (25 tools)
+- `0aaba07` — Training domain results wired into startup briefing; AK-01 offline handling
+- `609ecb1` — LoRA DPO fine-tuner + lora_infer/lora_train tools (27 tools)
+- `6ab37e9` — Lower LoRA threshold to 20 pairs, auto-trigger from overseer
+
+### New files
+- `jarvis/planner.py` — OODA autonomous planning thread (fires every 3 min)
+- `memory/local_trainer.py` — Bradley-Terry reward model (MLP on sentence-transformer embeddings)
+- `memory/lora_trainer.py` — LoRA DPO fine-tuner for TinyLlama-1.1B, auto-triggered by overseer
+
+### Modified files
+- `jarvis/brain.py` — _build_system_prompt injects AURORA + self-improvement context
+- `jarvis/tools.py` — 27 tools total (added: propose_improvement, score_goal, lora_infer, lora_train)
+- `jarvis/overseer.py` — _apply_improvements, _load_training_domain_context, auto-trigger LoRA
+- `core/runtime.py` — start_planner() wired in at bot startup
+
+## Current system state
+
+### Threads running on every bot start
+1. **Overseer** — 30s reactive monitoring (failure detection, LLM escalation)
+2. **Planner** — 3min OODA loop (observe full state → orient → decide → act → record)
+3. **Distill learn_log** — every 5min via overseer (reward stats → AURORA vault)
+4. **Build DPO pairs** — every 5min via overseer (preferences.jsonl)
+5. **Retrain reward model** — every 5min if stale (data/learning/reward_model.pt)
+6. **Auto LoRA training** — triggers when pairs ≥ 20 and adapter is stale (data/learning/lora_adapter/)
+7. **Apply self-improvements** — every 5min (pending proposals → brain._extra_context)
+8. **Startup briefing** — 60s after boot (AURORA context + training domain results → self_eval + inject goal)
+
+### Bot status at handoff
+- Service: active (running), 19:57 EDT, PID 149110, 1.1G memory
+- learn_log: 579 ticks
+- preference_pairs: 6 (need 20 to trigger LoRA — roughly 1hr of runtime away)
+- LoRA packages: ALL INSTALLED in venv (transformers 5.5.4, peft, trl, datasets, accelerate)
+- GPU: RTX 4050 Laptop, 6.1GB VRAM, CUDA available ✅
+- AK-01 (192.168.0.104): offline, no route to host
+
+### 27 Jarvis tools
+get_bot_state, inject_goal, clear_goals, get_recent_memory, get_hive_status, run_shell,
+restart_bot, get_system_telemetry, list_usb_devices, get_camera_status, gpio_read_pins,
+read_display_info, send_keystrokes, capture_screen, self_eval, switch_domain, query_aurora,
+build_preferences, list_skills, activate_skill, send_to_ak01, propose_improvement,
+score_goal, lora_infer, lora_train, **+2 from prior sessions**
+
+## What to do next
+
+### Immediate (next session start)
+1. Check pairs: `wc -l data/learning/preferences.jsonl`
+2. Check if LoRA trained: `ls -lh data/learning/lora_adapter/ 2>/dev/null`
+3. Check AURORA: `sqlite3 data/aurora.db "SELECT COUNT(*) FROM episodes;"`
+4. Bot health: `systemctl --user status aksumael.service`
+
+### If LoRA trained — test it
 ```bash
-rm .git/HEAD.lock .git/index.lock 2>/dev/null
-git add \
-  AKSUMAEL/core/capture.py \
-  AKSUMAEL/core/cognitive.py \
-  AKSUMAEL/core/frame_server.py \
-  AKSUMAEL/jarvis/tools.py \
-  AKSUMAEL/jarvis/brain.py \
-  AKSUMAEL/gesture/ \
-  AKSUMAEL/HANDOFF.md \
-  robocar/CLAUDE.md \
-  robocar/specs/ \
-  robocar/nodes/gesture_receiver.py \
-  .claude/commands/
-git commit -m "major: reid_bridge live, gesture layer, frugality gate, 14 Jarvis tools, CLAUDE.md"
-```
-
-## What changed (not yet committed)
-
-### core/capture.py
-GatedReIDBridge wired into YOLOThread._run(). Lazy-loads DINOv2 on first tracked
-frame. Adds entity_id to each detection when track_mode is active.
-
-### core/cognitive.py
-Frugality gate: skips LLM call every other cycle when goal + visible entities +
-reward all unchanged. Halves token burn in repetitive loops.
-
-### core/frame_server.py
-HUD now shows entity_id (green) when reid_bridge confirms identity, or track_id
-(cyan) when tracked but entity not yet confirmed.
-
-### jarvis/tools.py — 14 tools (was 7)
-Added: get_system_telemetry, list_usb_devices, get_camera_status,
-gpio_read_pins, read_display_info, send_keystrokes, capture_screen
-
-### jarvis/brain.py
-- System prompt updated (14 tools, DINOv2 ReID, KB2040 location)
-- History persisted to data/jarvis_history.json across restarts
-
-### gesture/ (new package)
-- gesture/recognizer.py: MediaPipe hand gesture recognition (5 gestures)
-- gesture/dispatcher.py: Routes AKSUMAEL goals + UDP to RoboCar
-- gesture/run_gesture.py: Standalone runner
-- gesture/install.sh: pip install mediapipe + apt xdotool scrot
-
-### robocar/nodes/gesture_receiver.py (new)
-UDP listener; publishes Twist on /robocar_01/cmd_vel in ROS 2 mode,
-or prints standalone.
-
-### robocar/CLAUDE.md + robocar/specs/imu-publisher.md (new)
-Seed rules + IMU publisher spec (10 requirements, defs of done).
-
-### .claude/commands/spec.md + build.md + review.md (new)
-/spec /build /review development workflow commands.
-
-## Open questions for Scott
-
-1. llama.cpp vision backend rebuild — resolved or still blocked on CLIP SIGSEGV?
-2. RDK X5 migration: started or still Pi 4 as queen node?
-3. Relocation timing — any hardware-boxed window coming?
-
-## To test gesture control
-
-```bash
-# On robocar-hub (Victus):
 cd ~/vonduke-builds/AKSUMAEL
-bash gesture/install.sh
-python3 gesture/run_gesture.py --display --no-bot  # test without injecting goals
-# Then with bot:
-python3 gesture/run_gesture.py --display
+source venv/bin/activate
+python3 -m memory.lora_trainer --infer "mine_diamonds"
 ```
 
-## To test Jarvis end-to-end
+### Remaining gaps (~15% to 100% Jarvis)
+- **Local model inference in runtime loop** — wire lora_infer into the FSM tick as a fast pre-screen before LLM calls
+- **AK-01 hive** — power on AK-01, SSH key is pre-configured, send_to_ak01 works immediately
+- **Cross-session goal continuity** — currently goals reset on restart; add intent persistence beyond goals.json
 
-Bot must be running. Press F9, say "what's the bot doing right now?".
-Should hear spoken response via TTS.
+### Protected files — do NOT touch
+config.py, data/skills/*.json, day5_results.md, mine_*_ore.json, overnight_monitor.sh
+
+## Known issues
+- AURORA sqlite3 check from the shell ran from wrong cwd — run from ~/vonduke-builds/AKSUMAEL/
+- The last learn_log tick JSON key names may vary by version — check actual key names before parsing
+- AK-01 offline — send_to_ak01 will timeout gracefully (5s), don't worry about it
