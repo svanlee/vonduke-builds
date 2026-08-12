@@ -460,6 +460,15 @@ def run():
 
     tts.say_line('startup')
 
+    # ── Jarvis Overseer: proactive self-monitoring background thread ──────────
+    # Wire TTS so the overseer can speak aloud when it detects problems.
+    try:
+        from jarvis.overseer import start_overseer
+        _overseer = start_overseer(speak_fn=lambda t: tts.say(t) if hasattr(tts, 'say') else None)
+        print('[JARVIS] overseer started — proactive monitoring active')
+    except Exception as _ov_err:
+        print(f'[JARVIS] overseer not started: {_ov_err}')
+
     tick = 0
     last_skill_name  = None
     same_skill_count = 0
