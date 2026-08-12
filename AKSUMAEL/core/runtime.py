@@ -294,7 +294,8 @@ def run():
             neural_policy = None
             rl_trainer    = None
     aim_ctrl  = AimController()          # uses YOLO-frame coords (640×360)
-    ui        = LabelingUI(yolo, router, reward, skills=skills)
+    # LabelingUI (skills sidebar) replaced by Jarvis HUD in poll_display().
+    ui        = None
 
     # ── Mastermind hive (opt-in) ────────────────────────────────
     mastermind_client = None
@@ -371,7 +372,7 @@ def run():
 
     # Start background threads
     pipeline.start()   # CaptureThread + YOLOThread + DisplayThread
-    from core.frame_server import FrameServer
+    from core.frame_server import FrameServer, update_state as _hud_update
     FrameServer(pipeline).start()   # MJPEG viewer → http://localhost:8765/
     router.start()
     if ear.enabled:
@@ -1076,7 +1077,7 @@ def run():
                 break
             if pipeline.quit:
                 break
-            if ui.enabled:
+            if ui is not None and ui.enabled:
                 ui_r = ui.consume_reward()
                 if ui_r > 0:
                     reward.add_manual(+1.0)
@@ -1085,7 +1086,7 @@ def run():
                     reward.add_manual(-1.0)
                     tts.say_line('bad_reward')
 
-            if ui.paused:
+            if ui is not None and ui.paused:
                 time.sleep(0.05)
                 continue
 
@@ -1127,6 +1128,11 @@ def run():
                     print(f'[{tick:04d}] {round(time.time() - t0, 2)}s | TRAINING | '
                           f'goal={goals.current_goal() or "none"} | yolo:{_yolo_n} | '
                           f'minecraft FSM gated')
+                    try:
+                        _hud_update(goal=goals.current_goal() or 'idle',
+                                    mode='training', tick=tick)
+                    except Exception:
+                        pass
                 time.sleep(max(0, config.LOOP_INTERVAL_SEC - (time.time() - t0)))
                 continue
 
@@ -2669,6 +2675,10 @@ def run():
             if tick % 100 == 0:
                 rl.save()
                 _active_goal = goals.current_goal() or 'none'
+                try:
+                    _hud_update(goal=_active_goal, mode='live', tick=tick)
+                except Exception:
+                    pass
                 _inv_snap    = inv_reader.read(force=False) if inv_reader._cache_ts > 0 else {}
                 _inv_str     = ', '.join(f'{k}:{v}' for k, v in list(_inv_snap.items())[:6]) or 'unknown'
                 _held        = hotbar_reader.held_item() or '?'
@@ -2791,6 +2801,16 @@ def run():
             rl_trainer.stop()
             neural_policy.save_checkpoint()
         tts.say_line('shutdown', priority=True)
+        try:
+            episodic_mem.record({
+                'fsm_state': 'SHUTDOWN',
+                'goal': goal if 'goal' in dir() else None,
+                'action': 'shutdown',
+                'outcome': f'clean stop — ticks:{tick} avg_reward:{reward.average():.3f}',
+                'observations': [],
+            })
+        except Exception:
+            pass
         skills.save_all()
         if recorder is not None:
             recorder.close()
@@ -2813,7 +2833,8 @@ def run():
             ear.stop()
         tts.stop()
         pipeline.stop()   # signals CaptureThread, YOLOThread, DisplayThread
-        ui.close()
+        if ui is not None:
+            ui.close()
 
 
 def _idle() -> dict:
@@ -3006,8 +3027,9 @@ def _handle_joystick(h, ui, router, reward, tts):
         reward.add_manual(-1.0)
         tts.say_line('bad_reward')
     if h.buttons & 0x0004:
-        ui.paused = not ui.paused
-        tts.say_line('pause' if ui.paused else 'resume', priority=True)
+        if ui is not None:
+            ui.paused = not ui.paused
+            tts.say_line('pause' if ui.paused else 'resume', priority=True)
         time.sleep(0.3)
     if h.buttons & 0x0008:
         mode = router.cycle_blend_mode()

@@ -1,0 +1,58 @@
+id: perception.reid-bridge
+name: Entity Re-Identification Bridge
+domain: AKSUMAEL
+category: perception
+status: partial
+current_rung: 1
+
+summary: >
+  Assigns stable identities to YOLO-detected entities (players, mobs, items)
+  across frames so downstream reasoning can track "the same sheep" over time
+  rather than treating each detection as a fresh unknown.
+
+replaces: >
+  The human scanning each frame and mentally tracking which entity is which
+  across video cuts and occlusions.
+
+ladder:
+  rung_1:
+    label: human-led
+    description: >
+      YOLO detects classes and bounding boxes each frame. No cross-frame
+      identity is assigned. Human must mentally stitch detections together.
+      Current state: YOLO outputs class+confidence only; no tracking ID.
+  rung_2:
+    label: human-assisted
+    description: >
+      Bot assigns tentative IDs using IoU overlap + class match between
+      frames. Human reviews identity assignments via HUD and corrects
+      mis-tracks via voice command. Requires: tracker thread, HUD track
+      overlay, voice correction path.
+  rung_3:
+    label: fully-autonomous
+    description: >
+      Deep ReID embedding (e.g. BoT-SORT or ByteTrack) running alongside
+      YOLO. Stable entity IDs feed GoalStack ("follow entity#7") and
+      EpisodicMemory ("saw entity#7 again at tick 4823"). Bot recovers
+      from occlusions and re-enters without human correction.
+
+the_human: >
+  Defines what entities are worth tracking (game design decisions) and
+  audits the tracker when a new mob type or skin breaks embedding similarity.
+
+breaks_into:
+  - perception.yolo-detector
+  - perception.iou-tracker
+  - perception.reid-embedder
+
+builds_on:
+  - action.kb2040-hid
+
+artifacts:
+  - core/capture.py         # YOLO inference, frame pipeline
+  - core/cognitive.py       # overseer references reid
+  - core/overseer.py
+
+evidence:
+  - "76-class YOLO retrained 2026-07-31; cross-frame identity not yet assigned"
+  - "overseer.py references reid concept but no tracker thread exists"

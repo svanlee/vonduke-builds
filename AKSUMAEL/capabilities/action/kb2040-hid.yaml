@@ -1,0 +1,59 @@
+id: action.kb2040-hid
+name: KB2040 HID Action Bridge
+domain: AKSUMAEL
+category: action
+status: live
+current_rung: 2
+
+summary: >
+  Adafruit KB2040 microcontroller connected via USB-serial (ttyUSB0) receives
+  structured action packets from AKSUMAEL and emits them as USB HID keyboard
+  and mouse events. This is what physically controls Minecraft — the game sees
+  a real USB keyboard/mouse, not a software injection.
+
+replaces: >
+  The human sitting at the keyboard pressing keys and moving the mouse to
+  control the character in-game.
+
+ladder:
+  rung_1:
+    label: human-led
+    description: >
+      Human physically presses keys. KB2040 exists but is unused.
+      AKSUMAEL outputs planned actions as print statements only.
+  rung_2:
+    label: human-assisted
+    description: >
+      KB2040 executes all routine actions (WASD movement, hotbar swaps,
+      left/right click, F3 toggles). Human overrides with physical keyboard
+      when bot gets stuck or needs to navigate menus the bot doesn't handle.
+      Current state: LIVE — 17-button, 7-byte HID protocol, confirmed working.
+  rung_3:
+    label: fully-autonomous
+    description: >
+      KB2040 handles all in-game input including inventory navigation, chat,
+      and complex sequences (crafting, chest management). Human never touches
+      the keyboard during a bot session. Requires: menu-state machine, complete
+      inventory HID path, error recovery for unexpected game-state transitions.
+
+the_human: >
+  Physical access to plug/unplug the KB2040 for firmware updates, and final
+  authority to yank the USB cable as an emergency stop.
+
+breaks_into:
+  - action.keyboard-emitter
+  - action.mouse-emitter
+  - action.hid-protocol
+
+builds_on: []
+
+artifacts:
+  - hardware/ftdi.py                  # serial write path
+  - hardware/hardware_manager.py
+  - tools/kb2040_firmware/            # CircuitPython HID firmware
+  - config.py                         # UART_PORT = /dev/ttyUSB0
+
+evidence:
+  - "17-button 7-byte protocol confirmed working 2026-07-23"
+  - "Start button fix (0x0080→0x0200) confirmed 2026-07-26"
+  - "Gamepad reflash with kb/mouse HID (not gamepad) confirmed 2026-08-01"

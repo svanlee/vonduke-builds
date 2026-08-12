@@ -1,0 +1,59 @@
+id: robocar.slam-session
+name: RoboCar SLAM Session
+domain: ROBOCAR
+category: perception
+status: planned
+current_rung: 1
+
+summary: >
+  AK-01 (RoboCar) runs a SLAM session (Simultaneous Localization and Mapping)
+  using onboard depth/lidar to build a persistent map of the physical
+  environment. Map is shared with the Hive so AKSUMAEL and other nodes know
+  where AK-01 is in physical space.
+
+replaces: >
+  The human manually driving the robot and keeping a mental model of where
+  it has been and what the room layout looks like.
+
+ladder:
+  rung_1:
+    label: human-led
+    description: >
+      Human drives AK-01 via gamepad. No mapping. Position is dead-reckoned
+      from wheel odometry only and drifts rapidly.
+      Current state: AK-01 has ROS2 nav stack scaffolded but no SLAM node live.
+  rung_2:
+    label: human-assisted
+    description: >
+      SLAM node (e.g. slam_toolbox or cartographer) runs continuously.
+      Human reviews map in RViz, corrects loop-closure failures, and
+      designates waypoints. AK-01 navigates autonomously between waypoints
+      but human confirms each leg before execution.
+  rung_3:
+    label: fully-autonomous
+    description: >
+      AK-01 self-navigates to assigned destinations using the live SLAM map.
+      Handles dynamic obstacles, re-localises after being moved, and publishes
+      its pose to the Hive at 10 Hz. AKSUMAEL can request AK-01 to "come here"
+      without human involvement.
+
+the_human: >
+  Defines the operational area (which rooms AK-01 is allowed to map),
+  physically handles stairs and surfaces AK-01 cannot traverse, and approves
+  navigation plans that take AK-01 out of visual range.
+
+breaks_into:
+  - robocar.lidar-driver
+  - robocar.slam-node
+  - robocar.waypoint-nav
+
+builds_on:
+  - hive.node-telemetry
+
+artifacts:
+  - envs/                             # ROS2 env scaffold (2026-07-18 session)
+  - config.py                         # AK-01 IP: 192.168.0.202
+
+evidence:
+  - "ROS2 nav stack scaffolded 2026-07-18 overseer session"
+  - "AK-01 reachable at 192.168.0.202 — SLAM node not yet deployed"

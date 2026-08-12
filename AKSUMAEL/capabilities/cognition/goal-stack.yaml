@@ -1,0 +1,60 @@
+id: cognition.goal-stack
+name: Goal Stack
+domain: AKSUMAEL
+category: cognition
+status: live
+current_rung: 2
+
+summary: >
+  Priority queue of survival and task goals (mine_diamonds, craft_crafting_table,
+  eat, return_to_base, etc.) that drives the FSM. Goals are injected by voice
+  (Axon), by the LLM planner, or by autonomous triggers (hunger below threshold).
+
+replaces: >
+  The human deciding what the bot should do next and typing commands into
+  a terminal each time the current task completes.
+
+ladder:
+  rung_1:
+    label: human-led
+    description: >
+      Human specifies each goal explicitly by writing to injected_goals.json
+      or typing in the terminal. Bot executes one goal then stops.
+  rung_2:
+    label: human-assisted
+    description: >
+      Bot maintains a priority queue. Survival goals (eat, flee) preempt
+      task goals automatically. Human injects high-level goals via voice or
+      mastermind interface; bot sequences sub-goals itself.
+      Current state: LIVE — GoalStack, check_injected_goals(), FSM integration.
+  rung_3:
+    label: fully-autonomous
+    description: >
+      Bot generates its own goal queue from world-state observations and
+      long-horizon planning (LLM planner with episodic context). No human
+      injection required for a full survival session. Human sets mission
+      parameters (base location, resource targets) but not task sequence.
+
+the_human: >
+  Sets mission-level objectives (where to build, what to farm) and approves
+  any goal that involves irreversible actions (dropping items, large digs).
+
+breaks_into:
+  - cognition.goal-injector
+  - cognition.goal-planner
+  - cognition.survival-preemptor
+
+builds_on:
+  - perception.reid-bridge
+  - action.kb2040-hid
+
+artifacts:
+  - memory/goals.py         # GoalStack, INJECTED_GOALS_PATH
+  - core/runtime.py         # FSM consumes GoalStack
+  - axon/hub.py             # voice injects into injected_goals.json
+  - data/injected_goals.json
+
+evidence:
+  - "GoalStack.check_injected_goals() draining queue each tick — confirmed live 2026-07-28"
+  - "Voice path: axon → injected_goals.json → GoalStack — confirmed 2026-08-12"
+  - "Survival preempt (eat) confirmed working 2026-07-28 two-path fix"

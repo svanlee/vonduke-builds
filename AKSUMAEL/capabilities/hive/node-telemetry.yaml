@@ -1,0 +1,61 @@
+id: hive.node-telemetry
+name: Hive Node Telemetry
+domain: HIVE
+category: infrastructure
+status: partial
+current_rung: 1
+
+summary: >
+  Aggregates health and status from all Hive nodes (AKSUMAEL, AK-01/RoboCar,
+  Axon, BatRail) into a single queryable surface. Enables cross-node decisions:
+  "is AK-01 stuck?", "is Axon processing voice?", "what is BatRail's battery?".
+
+replaces: >
+  The human SSH-ing into each node individually to check logs and infer whether
+  each subsystem is healthy.
+
+ladder:
+  rung_1:
+    label: human-led
+    description: >
+      Each node writes its own local health log (/tmp/aksumael_health.txt,
+      /tmp/axon_health.txt, etc.). Human SSHs to each node and reads logs
+      manually to assess hive health.
+      Current state: AKSUMAEL writes health log; other nodes have no standard
+      telemetry format.
+  rung_2:
+    label: human-assisted
+    description: >
+      All nodes POST a structured JSON heartbeat to a central collector
+      (robocar-hub). Collector serves a /hive/status endpoint.
+      Human reviews a unified dashboard; AKSUMAEL can read hive state but
+      doesn't act on it autonomously. Requires: heartbeat agent on each node,
+      collector server, shared schema.
+  rung_3:
+    label: fully-autonomous
+    description: >
+      AKSUMAEL reads hive telemetry each tick and adjusts its own goals
+      accordingly (e.g. pauses mining if AK-01 reports low battery and needs
+      to return to charge dock). Nodes alert each other to faults. Human
+      receives a summary notification, not a task.
+
+the_human: >
+  Defines alert thresholds, decides which faults warrant human intervention
+  vs. autonomous recovery, and physically handles hardware failures that no
+  software recovery path can resolve.
+
+breaks_into:
+  - hive.heartbeat-agent
+  - hive.collector-server
+  - hive.fault-router
+
+builds_on: []
+
+artifacts:
+  - tools/overnight_monitor.sh        # manual health-check script (AKSUMAEL)
+  - /tmp/aksumael_health.txt          # AKSUMAEL's current health log
+  - config.py                         # node IPs: 192.168.0.156/202/249
+
+evidence:
+  - "_write_health_log() in core/runtime.py — AKSUMAEL only, no other nodes"
+  - "Hive has 4 nodes (robocar-hub, AK-01, Axon, BatRail) with no shared telemetry schema"
