@@ -316,6 +316,63 @@ TOOL_SCHEMAS = [
             "required": [],
         },
     },
+    {
+        "name": "list_skills",
+        "description": (
+            "List all learned skills from data/skills/. Returns skill name, avg_reward, "
+            "success_count, last_used, and trigger objects. Use to understand what "
+            "capabilities AKSUMAEL has mastered."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "activate_skill",
+        "description": (
+            "Activate a skill by injecting its name as a goal. The bot will pursue the "
+            "skill's steps on the next tick. Use when you want AKSUMAEL to apply a "
+            "specific learned skill immediately (e.g. mine_diamond_ore, chop_tree, fish)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "skill_name": {
+                    "type": "string",
+                    "description": "Exact skill name from list_skills (e.g. mine_diamond_ore).",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why you're activating this skill (for logging).",
+                },
+            },
+            "required": ["skill_name"],
+        },
+    },
+    {
+        "name": "send_to_ak01",
+        "description": (
+            "Send a shell command to AK-01 (the RoboCar Pi at 192.168.0.104) via SSH. "
+            "Use to check AK-01 status, read sensor data, or send ROS2 topic messages. "
+            "SSH key must already be installed on AK-01 (ros@192.168.0.104)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to run on AK-01.",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in seconds (default 5).",
+                },
+            },
+            "required": ["command"],
+        },
+    },
 ]
 
 
@@ -742,7 +799,70 @@ TOOL_DISPATCH = {
     "switch_domain": lambda args: switch_domain(args["domain"]),
     "query_aurora": lambda args: query_aurora(args.get("env"), args.get("limit", 10), args.get("entity")),
     "build_preferences": lambda args: _build_preferences(),
+    "list_skills": lambda args: list_skills(),
+    "activate_skill": lambda args: activate_skill(args["skill_name"], args.get("reason", "")),
+    "send_to_ak01": lambda args: send_to_ak01(args["command"], args.get("timeout", 5)),
 }
+
+
+def list_skills() -> dict:
+    """List all learned skills from data/skills/."""
+    skills_dir = BASE_DIR / "data" / "skills"
+    skills = []
+    try:
+        for f in sorted(skills_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+                skills.append({
+                    "name": data.get("name", f.stem),
+                    "avg_reward": data.get("avg_reward"),
+                    "success_count": data.get("success_count", 0),
+                    "trigger_objects": data.get("trigger_objects", []),
+                    "blacklisted": data.get("blacklisted", False),
+                })
+            except Exception:
+                pass
+        # Sort by avg_reward descending
+        skills.sort(key=lambda s: s.get("avg_reward") or 0, reverse=True)
+        return {"skills": skills, "count": len(skills)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def activate_skill(skill_name: str, reason: str = "") -> dict:
+    """Activate a skill by injecting it as a high-priority goal."""
+    # Verify skill exists
+    skills_dir = BASE_DIR / "data" / "skills"
+    skill_file = skills_dir / f"{skill_name}.json"
+    if not skill_file.exists():
+        # Try partial match
+        matches = list(skills_dir.glob(f"*{skill_name}*.json"))
+        if not matches:
+            return {"error": f"skill '{skill_name}' not found in data/skills/"}
+        skill_name = matches[0].stem
+    return inject_goal(skill_name, priority=7, reason=f"skill_activation:{reason}")
+
+
+def send_to_ak01(command: str, timeout: int = 5) -> dict:
+    """SSH a command to AK-01 at 192.168.0.104."""
+    blocked = ["rm -rf", "shutdown", "reboot", "halt", "mkfs"]
+    if any(b in command for b in blocked):
+        return {"error": f"blocked: matches safety filter"}
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", f"ConnectTimeout={timeout}",
+             "ros@192.168.0.104", command],
+            capture_output=True, text=True, timeout=timeout + 2,
+        )
+        return {
+            "stdout": result.stdout[:1000],
+            "stderr": result.stderr[:300],
+            "returncode": result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": f"SSH to AK-01 timed out after {timeout}s"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def _build_preferences() -> dict:
