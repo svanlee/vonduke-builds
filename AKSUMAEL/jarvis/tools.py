@@ -271,25 +271,31 @@ def get_bot_state() -> dict:
 
 
 def inject_goal(goal: str, priority: int = 5, reason: str = "") -> dict:
+    """Write goal to injected_goals.json in {"queue": [...]} format.
+    authority maps priority 1-10 → 1-5 (GoalStack.check_injected_goals scale)."""
     injected_path = BASE_DIR / "data" / "injected_goals.json"
-    goals_path = BASE_DIR / "data" / "goals.json"
 
-    # Load existing injected goals
+    # Load existing queue
     try:
         with open(injected_path) as f:
-            existing = json.load(f)
-        if not isinstance(existing, list):
-            existing = []
+            data = json.load(f)
+        queue = data.get("queue", []) if isinstance(data, dict) else list(data)
     except Exception:
-        existing = []
+        queue = []
 
-    entry = {"goal": goal, "priority": priority, "source": f"jarvis:{reason or 'voice'}"}
-    existing.append(entry)
+    authority = max(1, min(5, round(priority / 2)))  # map 1-10 → 1-5
+    entry = {
+        "goal": goal,
+        "authority": authority,
+        "source": f"jarvis:{reason or 'voice'}",
+        "ts": time.time(),
+    }
+    queue.append(entry)
 
     with open(injected_path, "w") as f:
-        json.dump(existing, f, indent=2)
+        json.dump({"queue": queue}, f, indent=2)
 
-    return {"status": "injected", "goal": goal, "priority": priority}
+    return {"status": "injected", "goal": goal, "authority": authority}
 
 
 def clear_goals() -> dict:
