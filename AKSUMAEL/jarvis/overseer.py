@@ -466,6 +466,28 @@ class JarvisOverseer(threading.Thread):
         except Exception as e:
             _log(f"apply_improvements error: {e}")
 
+    def _load_training_domain_context(self) -> str:
+        """Load summaries from training domain result files for startup context."""
+        domain_ctx = []
+        training_dir = BASE_DIR / "data" / "training"
+        # Also check root-level day_*.md files
+        search_dirs = [BASE_DIR, training_dir] if training_dir.exists() else [BASE_DIR]
+        seen = set()
+        for d in search_dirs:
+            for f in sorted(d.glob("day_*.md")):
+                if f.name in seen:
+                    continue
+                seen.add(f.name)
+                try:
+                    text = f.read_text()[:800]  # first 800 chars per domain
+                    domain_ctx.append(f"=== {f.stem} ===\n{text}")
+                except Exception:
+                    pass
+        if not domain_ctx:
+            return ""
+        combined = "\n\n".join(domain_ctx[:5])  # cap at 5 files
+        return f"\n\nTraining domain results from prior sessions:\n{combined}"
+
     def _startup_briefing(self):
         """On first start, ask the brain to assess system state using AURORA context.
         This gives Jarvis awareness of what happened in prior sessions."""
@@ -479,10 +501,13 @@ class JarvisOverseer(threading.Thread):
                 conn.close()
             except Exception:
                 pass
+            # Load training domain results for cross-session awareness
+            domain_ctx = self._load_training_domain_context()
             prompt = (
                 f"[JARVIS STARTUP] System just started. "
                 f"AURORA has {ep_count} recorded episodes from prior sessions. "
-                f"Check the current bot state, review your recent history via query_aurora, "
+                + (f"Prior training results available.{domain_ctx[:400]} " if domain_ctx else "")
+                + f"Check the current bot state, review your recent history via query_aurora, "
                 f"run self_eval to see which goals perform best, then inject the highest-reward "
                 f"goal if the bot is idle. Respond with a one-sentence status. Act now."
             )
