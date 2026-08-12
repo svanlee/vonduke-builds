@@ -539,6 +539,14 @@ class JarvisOverseer(threading.Thread):
                         _log(f"preference build error: {_pe}")
                     # Apply any pending self-improvement proposals to brain context
                     self._apply_improvements()
+                    # Retrain local reward model if stale (non-blocking best-effort)
+                    try:
+                        from memory.local_trainer import _run_periodic as _train
+                        _result = _train()
+                        if not _result.get("skipped"):
+                            _log(f"reward model retrained: loss={_result.get('final_loss')} pairs={_result.get('n_pairs')}")
+                    except Exception as _te:
+                        _log(f"local trainer error: {_te}")
                     _distill_counter = 0
 
                 # Periodic silent check-in

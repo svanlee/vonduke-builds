@@ -403,6 +403,24 @@ TOOL_SCHEMAS = [
             "required": ["area", "suggestion"],
         },
     },
+    {
+        "name": "score_goal",
+        "description": (
+            "Score a goal using the locally-trained reward model. Returns a scalar "
+            "reward estimate based on preference pairs learned from AKSUMAEL's own "
+            "experience. Use before inject_goal to rank candidate goals — higher score "
+            "means the local model thinks this goal tends to produce good outcomes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "Goal name to score (e.g. mine_diamonds, explore)"},
+                "action": {"type": "string", "description": "Optional: action context string"},
+                "belief": {"type": "string", "description": "Optional: current belief/state context"},
+            },
+            "required": ["goal"],
+        },
+    },
 ]
 
 
@@ -833,6 +851,7 @@ TOOL_DISPATCH = {
     "activate_skill": lambda args: activate_skill(args["skill_name"], args.get("reason", "")),
     "send_to_ak01": lambda args: send_to_ak01(args["command"], args.get("timeout", 5)),
     "propose_improvement": lambda args: propose_improvement(args["area"], args["suggestion"], args.get("rationale", "")),
+    "score_goal": lambda args: score_goal_tool(args["goal"], args.get("action", ""), args.get("belief", "")),
 }
 
 
@@ -892,6 +911,20 @@ def send_to_ak01(command: str, timeout: int = 5) -> dict:
         }
     except subprocess.TimeoutExpired:
         return {"error": f"SSH to AK-01 timed out after {timeout}s"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def score_goal_tool(goal: str, action: str = "", belief: str = "") -> dict:
+    """Score a goal using the local reward model trained from preference data."""
+    try:
+        from memory.local_trainer import score_goal, MODEL_PATH
+        score = score_goal(goal, action, belief)
+        if score is None:
+            pairs_path = BASE_DIR / "data" / "learning" / "preferences.jsonl"
+            n_pairs = sum(1 for _ in open(pairs_path)) if pairs_path.exists() else 0
+            return {"error": "reward model not trained yet", "preference_pairs": n_pairs, "tip": "run: python3 -m memory.local_trainer"}
+        return {"goal": goal, "reward_score": score, "model_path": str(MODEL_PATH)}
     except Exception as e:
         return {"error": str(e)}
 
