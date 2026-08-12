@@ -286,13 +286,15 @@ class InnerMonologue:
             said = '\n'.join(f'Scott says: {m.text}' for m in incoming)
             task = (
                 f'{said}\n'
-                'You are the inner monologue of a Minecraft AI, and Scott just spoke '
-                'to you. In ONE short sentence (max 25 words), answer him directly. '
+                'You are the inner monologue of AKSUMAEL, an autonomous AI engineering '
+                'assistant, and Scott just spoke to you. In ONE short sentence '
+                '(max 25 words), answer him directly. '
             )
         else:
             task = (
-                'You are the inner monologue of a Minecraft AI. In ONE short sentence '
-                '(max 20 words), think out loud about what to do next. '
+                'You are the inner monologue of AKSUMAEL, an autonomous AI engineering '
+                'assistant. In ONE short sentence (max 20 words), think out loud about '
+                'what to do next. '
             )
         # Repetition gate. Placed after the situation and before the output
         # instruction so it reads as the most recent thing said, which is
