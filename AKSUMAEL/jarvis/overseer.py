@@ -255,13 +255,27 @@ class JarvisOverseer(threading.Thread):
         _log(f"event (score={score}): {notes_str}")
 
         # ── Auto-remediation (no LLM needed for clear-cut fixes) ──────────
+        def _aurora_event(action: str, outcome: str):
+            try:
+                from memory import aurora_memory
+                aurora_memory.record(
+                    env='overseer',
+                    action=action,
+                    outcome=outcome,
+                    metadata={'score': score, 'notes': notes_str},
+                )
+            except Exception as _ae:
+                _log(f"aurora record error: {_ae}")
+
         if "aksumael.service stopped unexpectedly" in notes:
             self._say("Service went down. Attempting restart.")
             ok = self._maybe_restart_service()
             if ok:
                 self._say("Back online.")
+                _aurora_event('restart_service', 'success')
             else:
                 self._say("Restart failed. Manual intervention may be needed.")
+                _aurora_event('restart_service', 'failed')
             self._silent_polls = 0
             return
 
@@ -270,15 +284,17 @@ class JarvisOverseer(threading.Thread):
             recovered = self._maybe_fix_uvcvideo()
             if recovered:
                 self._say("Capture card recovered.")
-            # Don't speak if not recovered — avoid noise on expected hardware-absent state
+            _aurora_event('fix_uvcvideo', 'recovered' if recovered else 'failed')
             self._silent_polls = 0
 
         if "KB2040 disconnected from ttyUSB0" in notes:
             self._say("KB2040 disconnected. Input control is disabled.")
+            _aurora_event('kb2040_disconnect', 'detected')
             self._silent_polls = 0
 
         if "KB2040 reconnected on ttyUSB0" in notes:
             self._say("KB2040 back on ttyUSB0. Input control restored.")
+            _aurora_event('kb2040_reconnect', 'detected')
             self._silent_polls = 0
 
         # ── LLM escalation for genuinely interesting situations ────────────
@@ -296,6 +312,7 @@ class JarvisOverseer(threading.Thread):
             f"capture_card={snap.get('capture_card')}. "
             f"Assess and act if needed. Respond in one to two sentences max."
         )
+        response = None
         try:
             brain = self._get_brain()
             response = brain.respond(prompt)
@@ -303,6 +320,21 @@ class JarvisOverseer(threading.Thread):
                 self._say(response)
         except Exception as e:
             _log(f"LLM call failed: {e}")
+        # Record the overseer LLM decision as an AURORA episode
+        try:
+            from memory import aurora_memory
+            aurora_memory.record(
+                env='overseer',
+                action=f'llm_alert: {notes[:200]}',
+                outcome=(response or 'no_response')[:300],
+                metadata={
+                    'service_active': snap.get('service_active'),
+                    'goal': snap.get('goal'),
+                    'kb2040': snap.get('kb2040'),
+                },
+            )
+        except Exception as _ae:
+            _log(f"aurora record error: {_ae}")
         self._last_llm_ts = now
 
     def _periodic_checkin(self, snap: dict):

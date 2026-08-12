@@ -179,6 +179,18 @@ class JarvisBrain:
                     "tool_use_id": tc.id,
                     "content": result_str,
                 })
+                # Record every tool call as a Jarvis episode in AURORA
+                try:
+                    from memory import aurora_memory
+                    aurora_memory.record(
+                        env='jarvis',
+                        action=f'{tc.name}({json.dumps(tc.input)[:120]})',
+                        outcome=result_str[:300],
+                        notes=f'prompt: {user_text[:100]}',
+                        metadata={'tool': tc.name, 'model': self._model},
+                    )
+                except Exception as _ae:
+                    print(f'[JARVIS] aurora record error: {_ae}')
             messages.append({"role": "user", "content": tool_results})
 
         # Shouldn't reach here
