@@ -217,10 +217,14 @@ class GameEar:
             return
         self._last[event] = now
         meta = AUDIO_EVENTS.get(event, {})
+        # Persona TTS suppressed: Minecraft-tuned thresholds false-positive on
+        # ambient audio (pickup_rms=400 fires on fan/room noise). Reward signal
+        # still flows through for learning. Re-enable once thresholds are tuned
+        # to the actual audio environment.
         self.event_queue.put({
             'event':   event,
             'reward':  meta.get('reward', 0.0),
-            'persona': meta.get('persona'),
+            'persona': None,
             'ts':      now,
         })
 
