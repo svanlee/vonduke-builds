@@ -490,10 +490,17 @@ class JarvisOverseer(threading.Thread):
                 else:
                     self._silent_polls += 1
 
-                # Distill learn_log into AURORA vault every ~5 minutes
+                # Distill learn_log into AURORA vault + preference pairs every ~5 minutes
                 _distill_counter += 1
                 if _distill_counter >= 10:  # 10 × 30s = 5 min
                     self._distill_learn_log()
+                    try:
+                        from memory.preference_builder import build_and_save
+                        result = build_and_save()
+                        _log(f"preference pairs: {result.get('preference_pairs', 0)} "
+                             f"({result.get('goals_covered', 0)} goals)")
+                    except Exception as _pe:
+                        _log(f"preference build error: {_pe}")
                     _distill_counter = 0
 
                 # Periodic silent check-in

@@ -302,6 +302,20 @@ TOOL_SCHEMAS = [
             "required": [],
         },
     },
+    {
+        "name": "build_preferences",
+        "description": (
+            "Build a DPO/preference training dataset from learn_log.jsonl. "
+            "Pairs high-reward ticks (chosen) with low-reward ticks (rejected) per goal. "
+            "Writes to data/learning/preferences.jsonl. Use periodically to generate "
+            "training data for reward model or policy fine-tuning."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -727,7 +741,19 @@ TOOL_DISPATCH = {
     "self_eval": lambda args: self_eval(),
     "switch_domain": lambda args: switch_domain(args["domain"]),
     "query_aurora": lambda args: query_aurora(args.get("env"), args.get("limit", 10), args.get("entity")),
+    "build_preferences": lambda args: _build_preferences(),
 }
+
+
+def _build_preferences() -> dict:
+    """Build DPO preference dataset from learn_log."""
+    try:
+        import sys
+        sys.path.insert(0, str(BASE_DIR))
+        from memory.preference_builder import build_and_save
+        return build_and_save()
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def call_tool(name: str, args: dict) -> str:
