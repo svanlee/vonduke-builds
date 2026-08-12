@@ -123,7 +123,17 @@ class JarvisBrain:
             )
         except Exception:
             memory_section = ''
-        return SYSTEM_PROMPT + memory_section
+
+        # Self-improvement context — proposals applied by the overseer
+        improvement_section = ''
+        try:
+            extra = getattr(self, '_extra_context', [])
+            if extra:
+                improvement_section = '\n\n## Self-Improvement Guidelines (from your own proposals)\n' + '\n'.join(f'- {e}' for e in extra[-10:])
+        except Exception:
+            pass
+
+        return SYSTEM_PROMPT + memory_section + improvement_section
 
     def respond(self, user_text: str, timeout: float = 30.0) -> str:
         """

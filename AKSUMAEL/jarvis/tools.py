@@ -373,6 +373,36 @@ TOOL_SCHEMAS = [
             "required": ["command"],
         },
     },
+    {
+        "name": "propose_improvement",
+        "description": (
+            "Propose an improvement to your own behavior or the AKSUMAEL system. "
+            "Proposals are written to data/jarvis_improvements.json and applied as "
+            "additional context in future LLM calls. This is how you evolve yourself — "
+            "use it when you notice a recurring problem, a better way to handle a goal, "
+            "or a pattern in AURORA that suggests a change. Be specific: proposals are "
+            "injected verbatim as behavioral guidelines."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "area": {
+                    "type": "string",
+                    "description": "One of: system_prompt, goal_priority, tool_behavior, skill_selection, other",
+                    "enum": ["system_prompt", "goal_priority", "tool_behavior", "skill_selection", "other"],
+                },
+                "suggestion": {
+                    "type": "string",
+                    "description": "The concrete improvement to make (specific and actionable).",
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Why this will improve outcomes (optional but helpful for review).",
+                },
+            },
+            "required": ["area", "suggestion"],
+        },
+    },
 ]
 
 
@@ -802,6 +832,7 @@ TOOL_DISPATCH = {
     "list_skills": lambda args: list_skills(),
     "activate_skill": lambda args: activate_skill(args["skill_name"], args.get("reason", "")),
     "send_to_ak01": lambda args: send_to_ak01(args["command"], args.get("timeout", 5)),
+    "propose_improvement": lambda args: propose_improvement(args["area"], args["suggestion"], args.get("rationale", "")),
 }
 
 
@@ -872,6 +903,52 @@ def _build_preferences() -> dict:
         sys.path.insert(0, str(BASE_DIR))
         from memory.preference_builder import build_and_save
         return build_and_save()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def propose_improvement(area: str, suggestion: str, rationale: str = "") -> dict:
+    """
+    Propose an improvement to Jarvis's own behavior, system prompt, or tooling.
+
+    Improvements are written to data/jarvis_improvements.json. The overseer
+    reads this file every 5 min and appends accepted proposals to the system
+    prompt context — making this the self-improvement loop.
+
+    Args:
+        area: One of 'system_prompt', 'goal_priority', 'tool_behavior', 'skill_selection', 'other'
+        suggestion: Concrete change to make (be specific — will be injected verbatim as context)
+        rationale: Why this change would improve outcomes (used for review)
+    """
+    imp_path = BASE_DIR / "data" / "jarvis_improvements.json"
+    try:
+        if imp_path.exists():
+            existing = json.loads(imp_path.read_text())
+        else:
+            existing = {"proposals": [], "applied": []}
+        proposal = {
+            "ts": time.time(),
+            "ts_human": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "area": area,
+            "suggestion": suggestion,
+            "rationale": rationale,
+            "status": "pending",
+        }
+        existing.setdefault("proposals", []).append(proposal)
+        imp_path.write_text(json.dumps(existing, indent=2))
+        # Record to AURORA
+        try:
+            from memory import aurora_memory
+            aurora_memory.record(
+                env="jarvis",
+                action=f"propose_improvement:{area}",
+                outcome=suggestion[:200],
+                notes=rationale[:200],
+                metadata={"area": area},
+            )
+        except Exception:
+            pass
+        return {"status": "proposed", "area": area, "total_proposals": len(existing["proposals"])}
     except Exception as e:
         return {"error": str(e)}
 

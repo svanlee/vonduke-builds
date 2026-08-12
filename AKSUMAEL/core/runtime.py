@@ -475,6 +475,16 @@ def run():
     except Exception as _ov_err:
         print(f'[JARVIS] overseer not started: {_ov_err}')
 
+    # ── Jarvis Planner: OODA autonomous planning loop ─────────────────────────
+    # Separate from overseer (reactive) — planner proactively decides what to do
+    # next every 3 minutes based on full system state + AURORA memory.
+    try:
+        from jarvis.planner import start_planner
+        _planner = start_planner(speak_fn=lambda t: tts.say(t) if hasattr(tts, 'say') else None)
+        print('[JARVIS] planner started — OODA autonomous planning active')
+    except Exception as _pl_err:
+        print(f'[JARVIS] planner not started: {_pl_err}')
+
     tick = 0
     last_skill_name  = None
     same_skill_count = 0

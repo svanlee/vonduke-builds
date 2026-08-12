@@ -430,6 +430,42 @@ class JarvisOverseer(threading.Thread):
         except Exception as e:
             _log(f"distill_learn_log error: {e}")
 
+    def _apply_improvements(self):
+        """Read pending improvement proposals from jarvis_improvements.json and
+        apply them to the brain's system prompt context. This is the self-improvement
+        loop — Jarvis proposes, overseer applies."""
+        imp_path = BASE_DIR / "data" / "jarvis_improvements.json"
+        if not imp_path.exists():
+            return
+        try:
+            data = json.loads(imp_path.read_text())
+            proposals = data.get("proposals", [])
+            pending = [p for p in proposals if p.get("status") == "pending"]
+            if not pending:
+                return
+            brain = self._get_brain()
+            applied = []
+            for p in pending:
+                # Append to brain's behavioral context
+                area = p.get("area", "other")
+                suggestion = p.get("suggestion", "")
+                if suggestion:
+                    # Add to brain's extra context (stored in brain._extra_context)
+                    if not hasattr(brain, "_extra_context"):
+                        brain._extra_context = []
+                    brain._extra_context.append(
+                        f"[SELF-IMPROVEMENT:{area.upper()}] {suggestion}"
+                    )
+                    p["status"] = "applied"
+                    p["applied_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                    applied.append(suggestion[:80])
+                    _log(f"applied improvement [{area}]: {suggestion[:80]}")
+            if applied:
+                data["applied"] = data.get("applied", []) + applied
+                imp_path.write_text(json.dumps(data, indent=2))
+        except Exception as e:
+            _log(f"apply_improvements error: {e}")
+
     def _startup_briefing(self):
         """On first start, ask the brain to assess system state using AURORA context.
         This gives Jarvis awareness of what happened in prior sessions."""
@@ -501,6 +537,8 @@ class JarvisOverseer(threading.Thread):
                              f"({result.get('goals_covered', 0)} goals)")
                     except Exception as _pe:
                         _log(f"preference build error: {_pe}")
+                    # Apply any pending self-improvement proposals to brain context
+                    self._apply_improvements()
                     _distill_counter = 0
 
                 # Periodic silent check-in
