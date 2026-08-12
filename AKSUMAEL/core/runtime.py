@@ -113,6 +113,7 @@ from core                    import feature_extractor
 from core                    import policy_blender
 from core                    import training_handler
 from core                    import code_awareness
+from core                    import learn_log
 from memory.reward           import RewardSystem
 from memory.world_memory     import WorldMemory
 from memory.inventory        import InventoryTracker
@@ -2544,6 +2545,32 @@ def run():
             r = reward.compute({'objects': objects}, action_dict)
             rl.update(r, objects)
             prev_objects = objects
+
+            # ── Learning loop — log (belief, action, reward) tuples ──
+            # Every action paired with its outcome. Foundation for future
+            # policy improvement. See core/learn_log.py.
+            _inv_snapshot = {}
+            try:
+                _inv_snapshot = {k: v for k, v in (inventory.slots or {}).items() if v}
+            except Exception:
+                pass
+            _pos_snapshot = None
+            try:
+                if world_mem.pos_x is not None:
+                    _pos_snapshot = (world_mem.pos_x, world_mem.pos_z)
+            except Exception:
+                pass
+            learn_log.log_step(
+                tick=tick,
+                goal=goals.current_goal() or 'unknown',
+                objects=objects,
+                action_dict=action_dict,
+                reward=r,
+                reward_avg=reward.average(),
+                inventory=_inv_snapshot,
+                pos=_pos_snapshot,
+                source=final.get('source', 'unknown') if isinstance(final, dict) else 'unknown',
+            )
 
             # ── Neural policy training (opt-in) ─────────────────
             # Pairs this tick's action (if the neural policy produced one

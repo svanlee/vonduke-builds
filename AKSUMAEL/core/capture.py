@@ -909,6 +909,47 @@ class VideoCapturePipeline:
         self._ctrl_connected = bool(connected)
         self._human_mode = bool(human_mode)
 
+    # Colour palette for YOLO detection boxes — one colour per class, cycling.
+    _BOX_COLOURS = [
+        (0, 255, 0), (255, 128, 0), (0, 128, 255), (255, 0, 255),
+        (0, 255, 255), (255, 255, 0), (128, 0, 255), (0, 200, 128),
+    ]
+
+    def _draw_detections(self, frame, objects: list):
+        """Draw YOLO detection boxes and labels onto frame.
+
+        Each object dict has at minimum:
+          bbox   — [x1, y1, x2, y2] in *small-frame* (640-wide) pixel space
+          label  — class name string
+          conf   — confidence float 0–1
+
+        Boxes are colour-coded by class name (hash → palette index) so the
+        same class is always the same colour. Suppressed when no objects or
+        no bbox field (e.g. audio-sourced events have no spatial position)."""
+        if not objects or frame is None:
+            return
+        fh, fw = frame.shape[:2]
+        # The small frame is 640-wide; scale boxes if the display frame differs.
+        sx = fw / 640.0
+        sy = fh / 360.0
+        for obj in objects:
+            bbox = obj.get('bbox') or obj.get('box')
+            if not bbox or len(bbox) < 4:
+                continue
+            label = obj.get('label', '?')
+            conf  = obj.get('conf', obj.get('confidence', 0.0))
+            colour = self._BOX_COLOURS[hash(label) % len(self._BOX_COLOURS)]
+            x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
+            x1 = int(x1 * sx); y1 = int(y1 * sy)
+            x2 = int(x2 * sx); y2 = int(y2 * sy)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
+            tag = f'{label} {conf:.2f}' if conf else label
+            (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            ty = max(y1 - 4, th + 2)
+            cv2.rectangle(frame, (x1, ty - th - 2), (x1 + tw + 4, ty + 2), colour, -1)
+            cv2.putText(frame, tag, (x1 + 2, ty), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, (0, 0, 0), 1, cv2.LINE_AA)
+
     def _draw_hud(self, frame):
         """Burn the FSM-state label (top-left) and controller/mode indicator
         (top-right) onto frame. Pure drawing over an in-memory array — no
@@ -971,6 +1012,7 @@ class VideoCapturePipeline:
         frame, objs = self.display.get_display_frame()
         _drain_monologue_queue()
         self.set_overlay_text('\n'.join(_monologue_render_lines()))
+        self._draw_detections(frame, objs)   # YOLO boxes before text overlay
         self._draw_overlay(frame)
         self._draw_hud(frame)
         if frame is None:

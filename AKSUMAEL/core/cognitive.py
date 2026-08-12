@@ -278,6 +278,27 @@ class InnerMonologue:
             bad = [e.get('goal') for e in recent_episodes[-3:] if e.get('outcome') != 'success']
             if bad:
                 fails = f' Recent failures: {", ".join(bad)}.'
+
+        # ── Reflection gate ────────────────────────────────────────
+        # Check whether the current goal has been consistently failing
+        # recently. If avg reward for this goal is negative over the last
+        # 30 records, surface that as a signal in the prompt so the model
+        # reflects before defaulting to the same approach.
+        reflection_block = ''
+        if goal and not incoming:
+            try:
+                from core.learn_log import goal_avg_reward
+                avg = goal_avg_reward(goal, n=30)
+                if avg is not None and avg < -0.05:
+                    reflection_block = (
+                        f'REFLECTION: Your last 30 attempts at "{goal}" averaged '
+                        f'{avg:+.2f} reward — consistently negative. '
+                        'Before acting, ask: is this goal achievable right now? '
+                        'Should you try a different approach or goal instead? '
+                    )
+            except Exception:
+                pass
+
         # Honcho's cross-session self-model goes in front of the task
         # framing so the model reads it as standing context rather than
         # as part of the current situation.
@@ -315,6 +336,7 @@ class InnerMonologue:
         prompt = (
             f'{AKSUMAEL_IDENTITY}\n'
             f'{mem_block}'
+            f'{reflection_block}'
             f'{task}'
             f'Current goal: {goal or "explore"}. Visible: {", ".join(labels) or "nothing"}. '
             f'Last reward: {reward:+.2f}.{fails} '
