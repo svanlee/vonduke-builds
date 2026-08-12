@@ -387,6 +387,49 @@ class JarvisOverseer(threading.Thread):
             _log(f"aurora record error: {_ae}")
         self._last_llm_ts = now
 
+    def _distill_learn_log(self):
+        """Read learn_log.jsonl and write reward statistics per goal into the
+        AURORA vault as facts. This closes the reward → self-knowledge loop:
+        Jarvis can then say 'explore averages +0.4 reward, craft_crafting_table
+        averages +0.2' and use that to guide goal decisions."""
+        try:
+            learn_path = BASE_DIR / 'data' / 'learning' / 'learn_log.jsonl'
+            if not learn_path.exists():
+                return
+            import json as _json
+            from collections import defaultdict
+            lines = learn_path.read_text().strip().splitlines()[-500:]  # last 500 ticks
+            goal_rewards: dict = defaultdict(list)
+            for line in lines:
+                try:
+                    r = _json.loads(line)
+                    g = r.get('goal')
+                    reward = r.get('reward')
+                    if g and reward is not None:
+                        goal_rewards[g].append(float(reward))
+                except Exception:
+                    continue
+            if not goal_rewards:
+                return
+            from memory import aurora_memory
+            for goal, rewards in goal_rewards.items():
+                avg = sum(rewards) / len(rewards)
+                aurora_memory.remember_entity(goal, type='goal', attributes={
+                    'avg_reward': round(avg, 3),
+                    'sample_count': len(rewards),
+                    'max_reward': round(max(rewards), 3),
+                    'min_reward': round(min(rewards), 3),
+                })
+                aurora_memory.remember_fact(
+                    entity=goal,
+                    predicate='avg_reward_last_500_ticks',
+                    value=round(avg, 3),
+                    confidence=min(1.0, len(rewards) / 50),
+                )
+            _log(f"distilled learn_log: {len(goal_rewards)} goals → AURORA vault")
+        except Exception as e:
+            _log(f"distill_learn_log error: {e}")
+
     def run(self):
         _log("overseer started")
         # Warm up with an initial snapshot
@@ -396,6 +439,7 @@ class JarvisOverseer(threading.Thread):
             _log(f"initial snapshot failed: {e}")
             self._prev_snap = {}
 
+        _distill_counter = 0
         while not self._stop_event.is_set():
             try:
                 curr = _get_situation()
@@ -406,6 +450,12 @@ class JarvisOverseer(threading.Thread):
                     self._silent_polls = 0
                 else:
                     self._silent_polls += 1
+
+                # Distill learn_log into AURORA vault every ~5 minutes
+                _distill_counter += 1
+                if _distill_counter >= 10:  # 10 × 30s = 5 min
+                    self._distill_learn_log()
+                    _distill_counter = 0
 
                 # Periodic silent check-in
                 if self._silent_polls >= SILENT_CHECKIN_AFTER:
