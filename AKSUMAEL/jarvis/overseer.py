@@ -338,23 +338,53 @@ class JarvisOverseer(threading.Thread):
         self._last_llm_ts = now
 
     def _periodic_checkin(self, snap: dict):
-        """Periodic unprompted LLM check-in after long silence."""
+        """Periodic unprompted LLM check-in after long silence.
+        The brain sees recent AURORA episodes so it can notice patterns and act."""
         now = time.time()
+        # Pull recent learn_log for richer context
+        learn_summary = ''
+        try:
+            learn_path = BASE_DIR / 'data' / 'learning' / 'learn_log.jsonl'
+            if learn_path.exists():
+                import json as _json
+                lines = learn_path.read_text().strip().splitlines()[-5:]
+                recent = [_json.loads(l) for l in lines if l]
+                learn_summary = ' | '.join(
+                    f"tick={r.get('tick')} goal={r.get('goal')} r={r.get('reward',0):.2f}"
+                    for r in recent
+                )
+        except Exception:
+            pass
+
         prompt = (
-            f"[OVERSEER CHECKIN — proactive report] "
-            f"System has been quiet for {self._silent_polls * POLL_INTERVAL // 60} minutes. "
-            f"Current: service_active={snap.get('service_active')}, "
-            f"goal={snap.get('goal')}, tick={snap.get('tick')}. "
-            f"Brief status in one sentence."
+            f"[OVERSEER CHECKIN — proactive autonomous decision] "
+            f"System quiet for {self._silent_polls * POLL_INTERVAL // 60} minutes. "
+            f"Bot: service_active={snap.get('service_active')}, "
+            f"mode=TRAINING, goal={snap.get('goal')}, tick={snap.get('tick')}. "
+            f"Recent learning: {learn_summary or 'unavailable'}. "
+            f"You have full tool access. Check bot state, assess what the system needs, "
+            f"and take one useful action or report a specific observation. "
+            f"One to two sentences. Act now."
         )
+        response = None
         try:
             brain = self._get_brain()
             response = brain.respond(prompt)
             if response:
-                _log(f"checkin response: {response}")
-                # Don't speak check-ins aloud to avoid being annoying
+                _log(f"checkin: {response}")
         except Exception as e:
             _log(f"checkin LLM failed: {e}")
+        # Record the checkin as an AURORA episode
+        try:
+            from memory import aurora_memory
+            aurora_memory.record(
+                env='overseer',
+                action=f'periodic_checkin: tick={snap.get("tick")} goal={snap.get("goal")}',
+                outcome=(response or 'no_response')[:300],
+                metadata={'silent_polls': self._silent_polls, 'tick': snap.get('tick')},
+            )
+        except Exception as _ae:
+            _log(f"aurora record error: {_ae}")
         self._last_llm_ts = now
 
     def run(self):

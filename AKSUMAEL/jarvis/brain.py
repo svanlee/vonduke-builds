@@ -105,6 +105,26 @@ class JarvisBrain:
                 raise RuntimeError("anthropic package not installed — run: pip install anthropic")
         return self._client
 
+    def _build_system_prompt(self) -> str:
+        """System prompt augmented with live AURORA memory context."""
+        try:
+            from memory import aurora_memory
+            # Recent autonomous episodes — what Jarvis has done and what happened
+            episodes = aurora_memory.recent(limit=8)
+            ep_lines = []
+            for ep in reversed(episodes):
+                ep_lines.append(f"  [{ep['env']}] {ep['timestamp']} | {ep['action'][:60]} → {ep['outcome'][:60]}")
+            ep_block = '\n'.join(ep_lines) if ep_lines else '  (none yet)'
+            # Entity/fact context (what the world knows)
+            world_ctx = aurora_memory.context_for_llm(max_tokens=200)
+            memory_section = (
+                f"\n\n## AURORA Memory (your past actions and their outcomes)\n{ep_block}"
+                + (f"\n\n## Known entities\n{world_ctx}" if world_ctx else '')
+            )
+        except Exception:
+            memory_section = ''
+        return SYSTEM_PROMPT + memory_section
+
     def respond(self, user_text: str, timeout: float = 30.0) -> str:
         """
         Process a voice utterance and return the spoken response string.
@@ -116,13 +136,14 @@ class JarvisBrain:
 
         client = self._get_client()
         messages = list(self._history)
+        system_prompt = self._build_system_prompt()
 
         for _round in range(MAX_TOOL_ROUNDS):
             try:
                 resp = client.messages.create(
                     model=self._model,
                     max_tokens=MAX_TOKENS,
-                    system=SYSTEM_PROMPT,
+                    system=system_prompt,
                     tools=TOOL_SCHEMAS,
                     messages=messages,
                 )
@@ -135,7 +156,7 @@ class JarvisBrain:
                         resp = client.messages.create(
                             model=self._model,
                             max_tokens=MAX_TOKENS,
-                            system=SYSTEM_PROMPT,
+                            system=system_prompt,
                             tools=TOOL_SCHEMAS,
                             messages=messages,
                         )
