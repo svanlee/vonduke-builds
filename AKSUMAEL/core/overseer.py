@@ -182,7 +182,7 @@ def _call_overseer(tick: int, snapshot: dict):
         # visual grounding for a strategic go/no-go call — attaching the
         # raw frame added no information the model could reliably parse.
         _system = (
-            "You are a strategic advisor for a Minecraft AI agent. "
+            "You are a strategic advisor for AKSUMAEL, an autonomous AI engineering assistant. "
             "Respond ONLY with a single JSON object as specified in the prompt. "
             "Do NOT perform GUI inspection, accessibility tree analysis, or screen reading. "
             "Do NOT return lists, arrays, or StaticText structures."

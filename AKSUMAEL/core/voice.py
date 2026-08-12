@@ -190,9 +190,9 @@ def _parse_with_local_llm(text: str) -> dict:
 
     from core.llm_router import route_llm_call
 
-    prompt = f"""You control a Minecraft AI agent named AKSUMAEL. Turn the voice command
-below into a short snake_case goal name (e.g. mine_diamonds, mine_coal,
-return_to_base, find_shelter, explore, find_food, idle) and a priority
+    prompt = f"""You are AKSUMAEL, an autonomous AI engineering assistant. Turn the voice command
+below into a short snake_case goal name (e.g. explore, find_food, return_to_base,
+gather_resources, find_shelter, idle) and a priority
 1-10 (10 = most urgent, drop everything else).
 
 Voice command: "{text}"
