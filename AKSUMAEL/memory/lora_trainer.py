@@ -41,7 +41,7 @@ STATS_PATH = BASE_DIR / "data" / "learning" / "lora_stats.json"
 
 # Model to fine-tune (fits in 6GB VRAM with 4-bit quantization)
 BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-MIN_PAIRS = 50  # minimum pairs before fine-tuning makes sense
+MIN_PAIRS = 20  # minimum pairs before fine-tuning makes sense
 
 
 def _pair_to_dpo_sample(pair: dict) -> dict:
@@ -241,6 +241,34 @@ def infer(goal: str, belief: str = "", max_new_tokens: int = 80) -> Optional[str
         return result[len(prompt):].strip()
     except Exception as e:
         return f"[infer error: {e}]"
+
+
+_lora_training_active = False
+
+
+def _run_lora_if_ready(max_steps: int = 200) -> dict:
+    """Non-blocking: start LoRA training in background if not already running and adapter is stale."""
+    global _lora_training_active
+    if _lora_training_active:
+        return {"skipped": True, "reason": "already_training"}
+    # Check if adapter is fresh (< 2 hours old)
+    if LORA_PATH.exists():
+        age_h = (time.time() - LORA_PATH.stat().st_mtime) / 3600
+        if age_h < 2.0:
+            return {"skipped": True, "reason": "adapter_fresh", "age_hours": round(age_h, 2)}
+    import threading
+    def _run():
+        global _lora_training_active
+        _lora_training_active = True
+        try:
+            print("[LORA] auto-triggered LoRA training from overseer")
+            result = train(max_steps=max_steps)
+            print(f"[LORA] auto-training complete: {result}")
+        finally:
+            _lora_training_active = False
+    t = threading.Thread(target=_run, daemon=True, name="LoRAAutoTrainer")
+    t.start()
+    return {"status": "training_started_background"}
 
 
 if __name__ == "__main__":

@@ -572,6 +572,14 @@ class JarvisOverseer(threading.Thread):
                             _log(f"reward model retrained: loss={_result.get('final_loss')} pairs={_result.get('n_pairs')}")
                     except Exception as _te:
                         _log(f"local trainer error: {_te}")
+                    # Auto-trigger LoRA fine-tune when enough pairs exist (non-blocking)
+                    try:
+                        from memory.lora_trainer import check_readiness, _run_lora_if_ready
+                        _lr = check_readiness()
+                        if _lr.get("ready_to_train") and _lr.get("packages_ok") and _lr.get("cuda_available"):
+                            _run_lora_if_ready()
+                    except Exception as _le:
+                        pass  # LoRA is optional — fail silently
                     _distill_counter = 0
 
                 # Periodic silent check-in
