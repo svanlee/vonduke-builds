@@ -430,6 +430,41 @@ class JarvisOverseer(threading.Thread):
         except Exception as e:
             _log(f"distill_learn_log error: {e}")
 
+    def _startup_briefing(self):
+        """On first start, ask the brain to assess system state using AURORA context.
+        This gives Jarvis awareness of what happened in prior sessions."""
+        try:
+            from memory import aurora_memory
+            ep_count = 0
+            try:
+                import sqlite3, os as _os
+                conn = sqlite3.connect(_os.path.join('data', 'aurora.db'))
+                ep_count = conn.execute('SELECT COUNT(*) FROM episodes').fetchone()[0]
+                conn.close()
+            except Exception:
+                pass
+            prompt = (
+                f"[JARVIS STARTUP] System just started. "
+                f"AURORA has {ep_count} recorded episodes from prior sessions. "
+                f"Check the current bot state, review your recent history via query_aurora, "
+                f"run self_eval to see which goals perform best, then inject the highest-reward "
+                f"goal if the bot is idle. Respond with a one-sentence status. Act now."
+            )
+            brain = self._get_brain()
+            response = brain.respond(prompt)
+            if response:
+                _log(f"startup briefing: {response}")
+                if self._speak:
+                    self._speak(response)
+            aurora_memory.record(
+                env='overseer',
+                action='startup_briefing',
+                outcome=(response or 'no_response')[:300],
+                metadata={'ep_count': ep_count},
+            )
+        except Exception as e:
+            _log(f"startup briefing error: {e}")
+
     def run(self):
         _log("overseer started")
         # Warm up with an initial snapshot
@@ -438,6 +473,10 @@ class JarvisOverseer(threading.Thread):
         except Exception as e:
             _log(f"initial snapshot failed: {e}")
             self._prev_snap = {}
+        # Give the bot 60s to fully start before the first briefing
+        self._stop_event.wait(60)
+        if not self._stop_event.is_set():
+            self._startup_briefing()
 
         _distill_counter = 0
         while not self._stop_event.is_set():
