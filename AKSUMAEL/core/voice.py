@@ -1409,8 +1409,8 @@ class VoiceThread:
             return
 
         self._apply_mode(read_mode_file())
-        if self.speaker is not None and self.speaker.available:
-            self._say("Voice online.")
+        # Startup announcement is handled by runtime.py (tts.say_line('startup')).
+        # No second announcement here.
 
         while self._running:
             try:
