@@ -241,6 +241,67 @@ TOOL_SCHEMAS = [
             "required": [],
         },
     },
+    {
+        "name": "self_eval",
+        "description": (
+            "Compute performance metrics from AURORA and learn_log: avg reward per goal, "
+            "total episodes recorded, top/bottom performing goals, episode count by env. "
+            "Use to answer 'how am I doing?', 'what's working?', or to decide which goal "
+            "to inject next based on past performance."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "switch_domain",
+        "description": (
+            "Switch the bot's active training domain. Writes to data/attention_focus.json "
+            "and data/axon_mode.txt. Available domains: training, minecraft, robocar, vehicle. "
+            "Use when you want AKSUMAEL to focus on a different environment."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "enum": ["training", "minecraft", "robocar", "vehicle"],
+                    "description": "The domain to switch to.",
+                },
+            },
+            "required": ["domain"],
+        },
+    },
+    {
+        "name": "query_aurora",
+        "description": (
+            "Query the AURORA episode store for recent history, stats, or entity facts. "
+            "Use to recall what the system has done, what outcomes were seen, or what "
+            "is known about a specific entity (goal, location, mob, item)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "env": {
+                    "type": "string",
+                    "description": "Filter by env: jarvis, overseer, minecraft, training, or omit for all.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max episodes to return (default 10).",
+                    "minimum": 1,
+                    "maximum": 50,
+                },
+                "entity": {
+                    "type": "string",
+                    "description": "Optional: recall facts about a specific entity by name.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -570,6 +631,82 @@ def capture_screen() -> dict:
         return {"error": str(e)}
 
 
+def self_eval() -> dict:
+    """Compute performance metrics from AURORA + learn_log."""
+    result = {}
+    try:
+        from memory import aurora_memory
+        # Episode counts by env
+        import sqlite3, os as _os
+        db = _os.path.join('data', 'aurora.db')
+        conn = sqlite3.connect(db)
+        rows = conn.execute(
+            'SELECT env, COUNT(*) FROM episodes GROUP BY env ORDER BY COUNT(*) DESC'
+        ).fetchall()
+        result['episodes_by_env'] = {r[0]: r[1] for r in rows}
+        result['total_episodes'] = sum(v for v in result['episodes_by_env'].values())
+        # Goal reward stats from vault
+        entities = conn.execute(
+            'SELECT name, attributes FROM entities WHERE type="goal" ORDER BY last_seen DESC'
+        ).fetchall()
+        goal_perf = {}
+        for name, attrs_json in entities:
+            try:
+                attrs = json.loads(attrs_json) if attrs_json else {}
+                goal_perf[name] = {
+                    'avg_reward': attrs.get('avg_reward'),
+                    'samples': attrs.get('sample_count'),
+                }
+            except Exception:
+                pass
+        result['goal_performance'] = goal_perf
+        if goal_perf:
+            ranked = sorted(
+                [(g, v['avg_reward']) for g, v in goal_perf.items() if v['avg_reward'] is not None],
+                key=lambda x: x[1], reverse=True
+            )
+            result['best_goal'] = ranked[0][0] if ranked else None
+            result['worst_goal'] = ranked[-1][0] if len(ranked) > 1 else None
+        conn.close()
+    except Exception as e:
+        result['error'] = str(e)
+    # learn_log line count
+    try:
+        lp = pathlib.Path('data/learning/learn_log.jsonl')
+        result['learn_log_ticks'] = sum(1 for _ in lp.open()) if lp.exists() else 0
+    except Exception:
+        pass
+    return result
+
+
+def switch_domain(domain: str) -> dict:
+    """Switch the active attention domain by writing attention_focus.json."""
+    focus_path = BASE_DIR / 'data' / 'attention_focus.json'
+    axon_path = BASE_DIR / 'data' / 'axon_mode.txt'
+    try:
+        focus_path.write_text(json.dumps({'active': domain, 'ts': time.time()}))
+        if axon_path.exists():
+            axon_path.write_text(domain)
+        return {'status': 'switched', 'domain': domain}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def query_aurora(env: str = None, limit: int = 10, entity: str = None) -> dict:
+    """Query AURORA for recent episodes and/or entity facts."""
+    try:
+        from memory import aurora_memory
+        result = {}
+        if entity:
+            result['entity'] = aurora_memory.recall_entity(entity)
+            result['facts'] = aurora_memory.recall_facts(entity, limit=10)
+        result['episodes'] = aurora_memory.recent(env=env, limit=limit)
+        result['stats'] = aurora_memory.stats(env=env)
+        return result
+    except Exception as e:
+        return {'error': str(e)}
+
+
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
 TOOL_DISPATCH = {
@@ -587,6 +724,9 @@ TOOL_DISPATCH = {
     "read_display_info": lambda args: read_display_info(),
     "send_keystrokes": lambda args: send_keystrokes(args["action"], args["value"], args.get("window_title", "")),
     "capture_screen": lambda args: capture_screen(),
+    "self_eval": lambda args: self_eval(),
+    "switch_domain": lambda args: switch_domain(args["domain"]),
+    "query_aurora": lambda args: query_aurora(args.get("env"), args.get("limit", 10), args.get("entity")),
 }
 
 
