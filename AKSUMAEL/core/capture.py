@@ -638,6 +638,10 @@ class YOLOThread(threading.Thread):
         # core/fsm.py + vision/target_lock.py); read here every inference
         # cycle to pick predict() vs track(persist=True).
         self._track_mode = False
+        # Lazy GatedReIDBridge — instantiated on first tracked frame.
+        # Only fires when track_mode is True (ByteTrack provides track_ids).
+        # DINOv2 is heavy (~340 MB); we load it once and reuse.
+        self._reid_bridge = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -677,6 +681,36 @@ class YOLOThread(threading.Thread):
 
                 objects = self._yolo.detect(frame, track=self._track_mode)
                 _consecutive_errors = 0  # reset on success
+
+                # ── Re-ID bridge (GatedReIDBridge) ────────────────────────
+                # When track_mode is active, ByteTrack has assigned track_ids.
+                # Pass objects through the bridge to add entity_id — a stable
+                # cross-occlusion identity that lets episodic memory track the
+                # *same* entity across different track_id assignments.
+                # DINOv2 is only run for new/unconfirmed track_ids; confirmed
+                # entities are dict lookups with zero extra compute.
+                if self._track_mode and objects:
+                    tracked = [o for o in objects if o.get('track_id') is not None]
+                    if tracked:
+                        try:
+                            if self._reid_bridge is None:
+                                from core.reid_bridge import GatedReIDBridge
+                                print('[YOLO] loading GatedReIDBridge (DINOv2 lazy init)…')
+                                self._reid_bridge = GatedReIDBridge()
+                            reid_dets = [
+                                {'track_id': o['track_id'], 'box': o['box'],
+                                 'mask': o.get('mask')}
+                                for o in tracked
+                            ]
+                            enriched = self._reid_bridge.process(frame, reid_dets)
+                            # Merge entity_id back into objects by track_id
+                            eid_map = {e['track_id']: e.get('entity_id') for e in enriched}
+                            for o in objects:
+                                tid = o.get('track_id')
+                                if tid is not None:
+                                    o['entity_id'] = eid_map.get(tid)
+                        except Exception as _reid_err:
+                            print(f'[YOLO] reid_bridge error: {_reid_err}')
 
                 with self._lock:
                     self._frame   = frame
@@ -1000,6 +1034,174 @@ class VideoCapturePipeline:
             cv2.putText(frame, line, (10, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
             y += line_height
 
+    # ── Jarvis HUD renderer ───────────────────────────────────────────────
+    _JARVIS_START = None   # set lazily on first render
+
+    def _jarvis_imshow(self, window_name: str, frame, objs):
+        """Render a Jarvis/Ultron-style HUD — cognitive brain as main panel,
+        camera feed as a small PiP inset in the top-right corner.
+
+        Layout:
+          ┌─────────── header ───────────────────────────────────────┐
+          │  AKSUMAEL  TICK  MODE  UPTIME                           │
+          ├──────────────────────────────────────┬──────────────────┤
+          │  COGNITIVE STATE / INNER MONOLOGUE   │  ┌─ PiP cam ─┐  │
+          │  (large scrolling thought stream)    │  │  camera   │  │
+          │                                      │  └───────────┘  │
+          │  > thought line 1                    │  DETECTIONS      │
+          │  > thought line 2                    │  ore  91% ████  │
+          │  > ...                               │  player 87% ██  │
+          │                                      │                  │
+          │  VOICE ◉  transcript text here       │  OBJECTIVE       │
+          └──────────────────────────────────────┴──────────────────┘
+        """
+        if VideoCapturePipeline._JARVIS_START is None:
+            VideoCapturePipeline._JARVIS_START = time.time()
+
+        # ── Colours (BGR) ──────────────────────────────────────────────
+        BG     = (16,  12,  2)       # #020c10
+        CYAN   = (255, 212,  0)      # #00d4ff — bright accent
+        DCYAN  = (80,   60,  0)      # dim accent
+        PANEL  = (28,  18,  2)       # sidebar/panel bg
+        GREEN  = (100, 210, 60)      # detection bars
+        WHITE  = (210, 210, 195)     # monologue text
+        ORANGE = (30,  160, 255)     # voice active
+        FONT   = cv2.FONT_HERSHEY_SIMPLEX
+
+        # ── Canvas dimensions ──────────────────────────────────────────
+        WIN_W  = 1100
+        WIN_H  = 680
+        HDR_H  = 38
+        SIDE_W = 280          # right panel width
+        MAIN_W = WIN_W - SIDE_W
+
+        canvas = np.zeros((WIN_H, WIN_W, 3), dtype=np.uint8)
+        canvas[:] = BG
+
+        # ── HUD state from frame_server ────────────────────────────────
+        goal       = 'idle'
+        mode       = 'live'
+        tick       = 0
+        voice_text = ''
+        try:
+            from core import frame_server as _fs
+            with _fs._hud_lock:
+                goal       = _fs._hud_state.get('goal', 'idle') or 'idle'
+                mode       = _fs._hud_state.get('mode', 'live') or 'live'
+                tick       = _fs._hud_state.get('tick', 0)
+                voice_text = _fs._hud_state.get('voice_text', '')
+        except Exception:
+            pass
+
+        uptime_s   = int(time.time() - VideoCapturePipeline._JARVIS_START)
+        uptime_str = f'{uptime_s // 3600:02d}h {(uptime_s % 3600) // 60:02d}m {uptime_s % 60:02d}s'
+        thoughts   = _monologue_render_lines()
+
+        # ── Header bar ─────────────────────────────────────────────────
+        cv2.rectangle(canvas, (0, 0), (WIN_W, HDR_H), PANEL, -1)
+        cv2.line(canvas, (0, HDR_H), (WIN_W, HDR_H), CYAN, 1)
+        cv2.putText(canvas, 'A K S U M A E L', (10, 26),
+                    FONT, 0.65, CYAN, 2, cv2.LINE_AA)
+        cv2.putText(canvas,
+                    f'TICK:{tick:07d}   MODE:{mode.upper():<8s}   UP:{uptime_str}',
+                    (230, 26), FONT, 0.42, DCYAN, 1, cv2.LINE_AA)
+
+        # ── Main cognitive panel (left) ────────────────────────────────
+        body_y0 = HDR_H + 1
+        body_h  = WIN_H - body_y0
+
+        # Section label
+        cy = body_y0 + 18
+        cv2.putText(canvas, 'COGNITIVE STATE', (14, cy),
+                    FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
+        cv2.line(canvas, (14, cy + 4), (MAIN_W - 14, cy + 4), DCYAN, 1)
+        cy += 22
+
+        # Thought stream — show up to 18 lines, newest at bottom
+        LINE_H = 22
+        MAX_LINES = (WIN_H - cy - 80) // LINE_H
+        recent = thoughts[-MAX_LINES:] if len(thoughts) > MAX_LINES else thoughts
+        for i, line in enumerate(recent):
+            # Fade older lines (alternate brightness)
+            is_latest = (i == len(recent) - 1)
+            color = CYAN if is_latest else (WHITE if i >= len(recent) - 4 else DCYAN)
+            prefix = '▶ ' if is_latest else '  '
+            disp = (line[:90] + '...') if len(line) > 90 else line
+            cv2.putText(canvas, f'{prefix}{disp}',
+                        (14, cy + i * LINE_H),
+                        FONT, 0.40, color, 1, cv2.LINE_AA)
+
+        # ── Voice strip (bottom of main panel) ────────────────────────
+        vy = WIN_H - 55
+        cv2.line(canvas, (8, vy), (MAIN_W - 8, vy), DCYAN, 1)
+        vy += 18
+        if voice_text:
+            cv2.circle(canvas, (22, vy - 4), 6, ORANGE, -1)
+            vt = (voice_text[:85] + '...') if len(voice_text) > 85 else voice_text
+            cv2.putText(canvas, vt, (36, vy),
+                        FONT, 0.45, ORANGE, 1, cv2.LINE_AA)
+        else:
+            cv2.circle(canvas, (22, vy - 4), 6, DCYAN, 1)
+            cv2.putText(canvas, 'listening...',
+                        (36, vy), FONT, 0.40, DCYAN, 1, cv2.LINE_AA)
+        vy += 20
+        cv2.putText(canvas, f'OBJECTIVE: {goal[:70]}',
+                    (14, vy), FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
+
+        # ── Right panel divider ────────────────────────────────────────
+        cv2.rectangle(canvas, (MAIN_W, HDR_H), (WIN_W, WIN_H), PANEL, -1)
+        cv2.line(canvas, (MAIN_W, HDR_H), (MAIN_W, WIN_H), CYAN, 1)
+
+        # ── PiP camera (top of right panel) ────────────────────────────
+        PIP_W = SIDE_W - 8
+        PIP_H = int(PIP_W * 9 / 16)
+        pip_x = MAIN_W + 4
+        pip_y = HDR_H + 6
+
+        if frame is not None:
+            pip_frame = cv2.resize(frame, (PIP_W, PIP_H))
+            canvas[pip_y:pip_y + PIP_H, pip_x:pip_x + PIP_W] = pip_frame
+        # PiP border + corner brackets
+        cv2.rectangle(canvas, (pip_x, pip_y), (pip_x + PIP_W, pip_y + PIP_H),
+                      DCYAN, 1)
+        blen = 10
+        for cx2, cy2, dx, dy in [
+            (pip_x, pip_y, 1, 1), (pip_x + PIP_W - blen, pip_y, -1, 1),
+            (pip_x, pip_y + PIP_H - blen, 1, -1),
+            (pip_x + PIP_W - blen, pip_y + PIP_H - blen, -1, -1)
+        ]:
+            cv2.line(canvas, (cx2, cy2), (cx2 + dx * blen, cy2), CYAN, 2)
+            cv2.line(canvas, (cx2, cy2), (cx2, cy2 + dy * blen), CYAN, 2)
+
+        # ── Detections (below PiP) ─────────────────────────────────────
+        px = MAIN_W + 10
+        dy2 = pip_y + PIP_H + 14
+        cv2.putText(canvas, 'DETECTIONS', (px, dy2),
+                    FONT, 0.36, DCYAN, 1, cv2.LINE_AA)
+        dy2 += 16
+        cv2.line(canvas, (px, dy2), (WIN_W - 6, dy2), DCYAN, 1)
+        dy2 += 12
+
+        bar_max = SIDE_W - 18
+        for obj in (objs or [])[:8]:
+            if dy2 >= WIN_H - 20:
+                break
+            label = obj.get('label', obj.get('class_name', '?'))
+            conf  = float(obj.get('confidence', 0.0))
+            bar_w = int(bar_max * conf)
+            cv2.rectangle(canvas, (px, dy2 - 9), (px + bar_w, dy2 - 1),
+                          (0, 55, 55), -1)
+            cv2.putText(canvas, f'{label[:16]:<16s}{conf:3.0%}',
+                        (px, dy2 - 1), FONT, 0.35, GREEN, 1, cv2.LINE_AA)
+            dy2 += 14
+        if not objs:
+            cv2.putText(canvas, 'no detections', (px, dy2),
+                        FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
+
+        cv2.imshow(window_name, canvas)
+
+    # ── Display pump (main-thread only) ──────────────────────────────────
+
     def poll_display(self, window_name: str = 'AKSUMAEL') -> bool:
         """
         Call this from the MAIN THREAD each tick to update the display window.
@@ -1013,8 +1215,6 @@ class VideoCapturePipeline:
         _drain_monologue_queue()
         self.set_overlay_text('\n'.join(_monologue_render_lines()))
         self._draw_detections(frame, objs)   # YOLO boxes before text overlay
-        self._draw_overlay(frame)
-        self._draw_hud(frame)
         if frame is None:
             key = self._safe_wait_key()
         elif self.display._ui is not None:
@@ -1025,11 +1225,8 @@ class VideoCapturePipeline:
                 return False
             key = self._safe_wait_key()
         elif config.ENABLE_DISPLAY_UI:
-            # Plain fallback window when no LabelingUI was given at all.
-            # Gated the same way as LabelingUI — headless rigs (no monitor;
-            # see config.ENABLE_DISPLAY_UI) have no GTK/Qt/Cocoa backend for
-            # cv2.imshow to open a window against.
-            cv2.imshow(window_name, frame)
+            # Jarvis/Ultron HUD window (replaces old plain imshow).
+            self._jarvis_imshow(window_name, frame, objs)
             key = self._safe_wait_key()
         else:
             key = self._safe_wait_key()

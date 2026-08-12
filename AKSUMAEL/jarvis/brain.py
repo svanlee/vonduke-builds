@@ -28,26 +28,44 @@ MAX_TOKENS      = 400                 # keep spoken responses concise
 
 SYSTEM_PROMPT = """You are JARVIS — an advanced AI assistant integrated into AKSUMAEL, Scott's autonomous AI platform. AKSUMAEL is a Minecraft bot running on a gaming laptop (robocar-hub) connected to a hive of AI nodes including AK-01 (a RoboCar) and an Axon voice hub.
 
-Your personality: calm, precise, proactive. Brief spoken responses — one to three sentences maximum unless detail is explicitly requested. You have access to tools to check what the bot is doing, inject goals, inspect memory, and run shell commands on robocar-hub.
+Your personality: calm, precise, proactive. Brief spoken responses — one to three sentences maximum unless detail is explicitly requested.
+
+You have broad sensor and control access via tools:
+- Bot state, goal injection, goal clearing, episodic memory (7 bot tools)
+- System telemetry: CPU, GPU (RTX 4050), RAM, disk, battery, temperatures, power draw
+- USB/serial devices: KB2040 on ttyUSB0, capture card on /dev/video2
+- Camera status: check if /dev/video2 is alive
+- GPIO pins: read current state (safe, read-only)
+- Display info: connected screens, resolutions
+- Keyboard injection: type text or send key combos to any window (xdotool)
+- Screenshot: capture the current display to /tmp/jarvis_screen.png
+- Shell: run arbitrary commands on robocar-hub (safety-filtered)
+- Bot restart: clean service restart
 
 Key facts:
-- The bot is AKSUMAEL, running Minecraft autonomously via YOLO vision + FSM + LLM cognition
-- KB2040 microcontroller emulates keyboard/mouse HID for in-game control
+- The bot is AKSUMAEL, running Minecraft autonomously via YOLO + ByteTrack + DINOv2 ReID + FSM + LLM cognition
+- KB2040 microcontroller emulates keyboard/mouse HID; lives at /dev/ttyUSB0
 - Voice mode is PTT (push-to-talk, F9 key) due to game audio bleed
-- You respond via text-to-speech so keep answers short and spoken-word natural
+- You respond via text-to-speech — keep answers short and spoken-word natural
 - When injecting goals, use snake_case: explore, mine_diamonds, find_food, return_to_base, find_and_chop_tree, craft_crafting_table, gather_resources
-- If asked what the bot is doing, always check get_bot_state first — don't guess
+- Always check get_bot_state before guessing what the bot is doing
+- GPU is RTX 4050 Laptop GPU 6GB — VRAM is shared between YOLO inference and any other models
 
 Do not use markdown, bullet points, or headers in your responses — speak naturally."""
 
 
+HISTORY_PATH = BASE_DIR / "data" / "jarvis_history.json"
+HISTORY_KEEP = 20   # max turns to persist
+
+
 class JarvisBrain:
-    """Stateful brain with conversation history and tool_use loop."""
+    """Stateful brain with conversation history and tool_use loop.
+    History persists across restarts via data/jarvis_history.json."""
 
     def __init__(self, api_key: str | None = None):
         self._client = None
         self._api_key = api_key or self._load_key()
-        self._history: list[dict] = []
+        self._history: list[dict] = self._load_history()
         self._model = JARVIS_MODEL
 
     def _load_key(self) -> str | None:
@@ -57,6 +75,26 @@ class JarvisBrain:
                 return f.read().strip()
         except Exception:
             return os.environ.get("ANTHROPIC_API_KEY")
+
+    def _load_history(self) -> list:
+        """Load conversation history from disk (last HISTORY_KEEP turns)."""
+        try:
+            with open(HISTORY_PATH) as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data[-HISTORY_KEEP:]
+        except Exception:
+            pass
+        return []
+
+    def _save_history(self):
+        """Persist conversation history to disk."""
+        try:
+            HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(HISTORY_PATH, 'w') as f:
+                json.dump(self._history[-HISTORY_KEEP:], f, indent=2, default=str)
+        except Exception as e:
+            print(f'[JARVIS] history save error: {e}')
 
     def _get_client(self):
         if self._client is None:
@@ -123,9 +161,10 @@ class JarvisBrain:
                 # Final answer
                 answer = " ".join(text_parts).strip()
                 self._history.append({"role": "assistant", "content": answer})
-                # Trim history to last 20 turns to avoid token bloat
-                if len(self._history) > 20:
-                    self._history = self._history[-20:]
+                # Trim history to last HISTORY_KEEP turns to avoid token bloat
+                if len(self._history) > HISTORY_KEEP:
+                    self._history = self._history[-HISTORY_KEEP:]
+                self._save_history()
                 return answer
 
             # Execute tool calls and continue the loop
@@ -146,8 +185,9 @@ class JarvisBrain:
         return "I ran into a loop — please try again."
 
     def clear_history(self):
-        """Reset conversation context."""
+        """Reset conversation context and wipe persisted history."""
         self._history.clear()
+        self._save_history()
 
 
 # ── Singleton for voice thread to import ─────────────────────────────────────

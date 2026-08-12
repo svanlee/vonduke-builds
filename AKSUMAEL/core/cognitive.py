@@ -174,6 +174,10 @@ class InnerMonologue:
         self.honcho     = get_honcho()
         self.telegram   = get_channel()
         self._last_honcho_write = 0.0
+        # Frugality gate state — skip LLM when situation is unchanged
+        self._last_situation_key: str = ''   # goal + sorted entity labels
+        self._last_reward_avg: float = 0.0
+        self._situation_stable_count: int = 0
 
     def update(self, tick: int, objects: list, action_dict: dict, reward: float,
                goal: str = None, recent_episodes: list = None):
@@ -198,6 +202,34 @@ class InnerMonologue:
                              recent_episodes, incoming=None):
         incoming = incoming or []
         try:
+            # ── Frugality gate — skip LLM when nothing changed ──────────────
+            # Build a compact situation key: goal + sorted entity labels.
+            # If the key is identical to last cycle and reward is stable
+            # (delta < 0.03) and Scott hasn't spoken, reuse the last thought
+            # rather than burning another LLM call.  Resets when situation
+            # changes or reward drifts — so the model sees novel situations
+            # immediately and repeated ones only every 3 cycles.
+            if not incoming:
+                labels_key = ','.join(sorted({o.get('label', '') for o in objects
+                                              if o.get('label')}))
+                situation_key = f'{goal}|{labels_key}'
+                reward_stable = abs(reward - self._last_reward_avg) < 0.03
+
+                if (situation_key == self._last_situation_key and reward_stable):
+                    self._situation_stable_count += 1
+                else:
+                    self._situation_stable_count = 0
+
+                self._last_situation_key = situation_key
+                self._last_reward_avg = reward
+
+                # Skip LLM every other stable cycle — halves token burn when
+                # the agent is in a repetitive loop.
+                if self._situation_stable_count > 0 and self._situation_stable_count % 2 == 1:
+                    print(f'[COGNITIVE] frugality: situation unchanged (stable×{self._situation_stable_count}) — skipping LLM')
+                    self._generating = False
+                    return
+
             # Persist Scott's side first so the thought that answers it is
             # already downstream of it in the session history.
             for m in incoming:
@@ -218,6 +250,11 @@ class InnerMonologue:
                 snapshot = list(self.thoughts)
             _save(self.FILE, snapshot)
             push_monologue_line(thought)
+            try:
+                from core.frame_server import push_thought as _hud_push
+                _hud_push(thought)
+            except Exception:
+                pass
             # Reply only when spoken to; the monologue itself is not a
             # notification stream.
             if incoming:

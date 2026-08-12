@@ -199,6 +199,48 @@ TOOL_SCHEMAS = [
             "required": [],
         },
     },
+    {
+        "name": "send_keystrokes",
+        "description": (
+            "Send keyboard input to the currently focused application using xdotool. "
+            "Use for typing text, pressing key combinations, or sending control keys. "
+            "Examples: type 'hello world', press 'ctrl+c', press 'Return', "
+            "press 'F9'. This sends input to whatever window has focus — "
+            "be careful when Minecraft is the focused window."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["type", "key"],
+                    "description": "'type' sends characters, 'key' sends a key name or combo.",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Text to type, or key name (e.g. 'Return', 'ctrl+c', 'F9').",
+                },
+                "window_title": {
+                    "type": "string",
+                    "description": "Optional: target a specific window by title fragment.",
+                },
+            },
+            "required": ["action", "value"],
+        },
+    },
+    {
+        "name": "capture_screen",
+        "description": (
+            "Take a screenshot of the current display and save it to /tmp/jarvis_screen.png. "
+            "Returns the path and basic image info. Use when asked what's on screen, "
+            "whether Minecraft is showing something specific, or to visually check state."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -280,8 +322,8 @@ def get_recent_memory(n: int = 10) -> dict:
 
 def get_hive_status() -> dict:
     nodes = {
-        "robocar-hub": "192.168.0.156",
-        "AK-01": "192.168.0.202",
+        "robocar-hub": "192.168.0.156",   # HP Victus, RTX 4050 Laptop GPU
+        "AK-01": "192.168.0.104",         # Pi 4 queen node (will be RDK X5)
     }
     status = {}
     for name, ip in nodes.items():
@@ -465,6 +507,63 @@ def read_display_info() -> dict:
         return {"error": str(e)}
 
 
+def send_keystrokes(action: str, value: str, window_title: str = "") -> dict:
+    """Send keyboard input to a window using xdotool."""
+    # Safety: block dangerous key combos
+    dangerous = ["ctrl+alt+del", "ctrl+alt+f", "super+l"]
+    if any(d in value.lower() for d in dangerous):
+        return {"error": f"blocked: '{value}' matches safety filter"}
+    try:
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+        if window_title:
+            # Focus the target window first
+            subprocess.run(
+                ["xdotool", "search", "--name", window_title, "windowfocus"],
+                capture_output=True, text=True, timeout=3, env=env
+            )
+        if action == "type":
+            r = subprocess.run(
+                ["xdotool", "type", "--clearmodifiers", "--", value],
+                capture_output=True, text=True, timeout=5, env=env
+            )
+        else:  # key
+            r = subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", value],
+                capture_output=True, text=True, timeout=5, env=env
+            )
+        if r.returncode == 0:
+            return {"status": "sent", "action": action, "value": value}
+        return {"error": r.stderr[:200], "returncode": r.returncode}
+    except FileNotFoundError:
+        return {"error": "xdotool not installed — run: sudo apt install xdotool"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def capture_screen() -> dict:
+    """Take a screenshot and save to /tmp/jarvis_screen.png."""
+    try:
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+        path = "/tmp/jarvis_screen.png"
+        r = subprocess.run(
+            ["scrot", path, "--overwrite"],
+            capture_output=True, text=True, timeout=10, env=env
+        )
+        if r.returncode != 0:
+            # fallback: try import (ImageMagick)
+            r2 = subprocess.run(
+                ["import", "-window", "root", path],
+                capture_output=True, text=True, timeout=10, env=env
+            )
+            if r2.returncode != 0:
+                return {"error": f"scrot: {r.stderr[:100]}  import: {r2.stderr[:100]}"}
+        import os
+        size = os.path.getsize(path)
+        return {"path": path, "size_bytes": size, "status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
 TOOL_DISPATCH = {
@@ -480,6 +579,8 @@ TOOL_DISPATCH = {
     "get_camera_status": lambda args: get_camera_status(),
     "gpio_read_pins": lambda args: gpio_read_pins(),
     "read_display_info": lambda args: read_display_info(),
+    "send_keystrokes": lambda args: send_keystrokes(args["action"], args["value"], args.get("window_title", "")),
+    "capture_screen": lambda args: capture_screen(),
 }
 
 
