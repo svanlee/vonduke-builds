@@ -673,7 +673,8 @@ class _VADSegmenter:
         self._stream = None
         self._q = queue.Queue(maxsize=VAD_QUEUE_FRAMES)
         self._vad = None
-        self._energy_threshold = float(getattr(config, 'VOICE_VAD_ENERGY_THRESHOLD', 0.012))
+        _cfg_thresh = float(getattr(config, 'VOICE_VAD_ENERGY_THRESHOLD', 0.012))
+        self._energy_threshold = float(os.environ.get('VOICE_VAD_ENERGY_THRESHOLD', str(_cfg_thresh)))
         self._suppress_until = 0.0   # monotonic ts; frames before this are dropped
         self._reset()
 
@@ -771,7 +772,14 @@ class _VADSegmenter:
         samples = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
         if samples.size == 0:
             return False
-        return float(np.sqrt(np.mean(samples ** 2))) > self._energy_threshold
+        rms = float(np.sqrt(np.mean(samples ** 2)))
+        _VADSegmenter._rms_counter = getattr(_VADSegmenter, '_rms_counter', 0) + 1
+        if _VADSegmenter._rms_counter >= 167:
+            _VADSegmenter._rms_counter = 0
+            print(f'[VOICE] rms={rms:.5f} thresh={self._energy_threshold:.5f} '
+                  f'{"SPEECH" if rms > self._energy_threshold else "silence"}',
+                  flush=True)
+        return rms > self._energy_threshold
 
     @staticmethod
     def _to_float32(frames):
@@ -1292,24 +1300,33 @@ class VoiceThread:
                 self._say("I don't know how to do that yet.")
             return
 
-        if _looks_like_question(transcript):
-            self._answer_question(transcript)
-            return
-
-        # No rule matched and it doesn't read as a question — last resort, ask
-        # the local LLM to interpret it as a free-form goal command.
-        intent = parse(transcript)
-        if intent['type'] == 'goal':
-            print(f'[VOICE] command: "{transcript}"')
-            if self._enqueue_goal(intent['goal'], f"voice:{intent['source']} — \"{transcript}\""):
-                self._say(f"Got it. {intent['goal'].replace('_', ' ')}.")
+        # Everything the deterministic rules didn't catch goes to Jarvis —
+        # questions, free-form goals, status queries, hive commands, anything.
+        # Jarvis has tool_use so it can check bot state, inject goals, clear
+        # goals, run shell commands, etc. without the rigid parse/keyword system.
+        print(f'[VOICE] → jarvis: "{transcript}"')
+        try:
+            from jarvis.brain import get_brain
+            brain = get_brain()
+            response = brain.respond(transcript)
+            if response:
+                self._say(response)
+        except Exception as e:
+            print(f'[VOICE] jarvis error: {e}')
+            # Fallback: try the old question handler
+            if _looks_like_question(transcript):
+                self._answer_question(transcript)
             else:
-                self._say("I don't know how to do that yet.")
-            return
-
-        # Not recognized as a command. In "on" mode this is most likely
-        # ambient speech, not a failed request — log only, stay quiet.
-        print(f'[VOICE] heard (unrecognized): "{transcript}"')
+                # Last resort: legacy LLM goal parse
+                intent = parse(transcript)
+                if intent['type'] == 'goal':
+                    print(f'[VOICE] command (fallback): "{transcript}"')
+                    if self._enqueue_goal(intent['goal'], f"voice:{intent['source']} — \"{transcript}\""):
+                        self._say(f"Got it. {intent['goal'].replace('_', ' ')}.")
+                    else:
+                        self._say("I don't know how to do that yet.")
+                else:
+                    print(f'[VOICE] heard (unrecognized): "{transcript}"')
 
     def _answer_question(self, question: str):
         """Answer a spoken question out loud, using the same self-built memory
