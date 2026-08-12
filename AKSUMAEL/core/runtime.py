@@ -426,7 +426,13 @@ def run():
     except Exception as e:
         print(f'[ATTENTION] training env unavailable: {e}')
 
-    _default_env = config.ACTIVE_ENV if config.ACTIVE_ENV in _attention_envs else 'minecraft'
+    # AKSUMAEL_ACTIVE_ENV env var overrides config.ACTIVE_ENV — lets the
+    # systemd unit (Environment= stanza) set the active env without touching
+    # the protected config.py. Falls back to config value if not set.
+    import os as _os
+    _env_override = _os.environ.get('AKSUMAEL_ACTIVE_ENV', '').strip()
+    _cfg_env = _env_override if _env_override else config.ACTIVE_ENV
+    _default_env = _cfg_env if _cfg_env in _attention_envs else 'minecraft'
     attention_manager = AttentionManager(_attention_envs, default=_default_env)
     # Persist the focus BEFORE start() so sync_external_focus() (called on
     # the idle tick 5s after start) doesn't overwrite it with the stale
