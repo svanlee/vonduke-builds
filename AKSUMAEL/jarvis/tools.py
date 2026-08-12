@@ -421,6 +421,39 @@ TOOL_SCHEMAS = [
             "required": ["goal"],
         },
     },
+    {
+        "name": "lora_infer",
+        "description": (
+            "Run inference with the locally fine-tuned LoRA model. This model was "
+            "trained on AKSUMAEL's own experience (preference pairs from learn_log). "
+            "Use it to get a fast local prediction of the best action for a goal, "
+            "without an API call. Only works after lora_train has been run."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "The goal to get an action prediction for"},
+                "belief": {"type": "string", "description": "Optional: current belief/state context"},
+            },
+            "required": ["goal"],
+        },
+    },
+    {
+        "name": "lora_train",
+        "description": (
+            "Start a LoRA fine-tuning run using the current preference pairs. "
+            "Trains a local TinyLlama model with DPO on data/learning/preferences.jsonl. "
+            "Runs in background on the GPU. Check data/learning/lora_stats.json for results. "
+            "Requires 50+ preference pairs and transformers/peft/trl packages."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max_steps": {"type": "integer", "description": "Training steps (default 200, ~10min on RTX 4050)"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -852,6 +885,8 @@ TOOL_DISPATCH = {
     "send_to_ak01": lambda args: send_to_ak01(args["command"], args.get("timeout", 5)),
     "propose_improvement": lambda args: propose_improvement(args["area"], args["suggestion"], args.get("rationale", "")),
     "score_goal": lambda args: score_goal_tool(args["goal"], args.get("action", ""), args.get("belief", "")),
+    "lora_infer": lambda args: lora_infer_tool(args["goal"], args.get("belief", "")),
+    "lora_train": lambda args: lora_train_tool(args.get("max_steps", 200)),
 }
 
 
@@ -911,6 +946,39 @@ def send_to_ak01(command: str, timeout: int = 5) -> dict:
         }
     except subprocess.TimeoutExpired:
         return {"error": f"SSH to AK-01 timed out after {timeout}s"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def lora_infer_tool(goal: str, belief: str = "") -> dict:
+    """Run inference with the locally fine-tuned LoRA model."""
+    try:
+        from memory.lora_trainer import infer, LORA_PATH
+        if not LORA_PATH.exists():
+            return {"error": "LoRA adapter not trained yet", "tip": "run: python3 -m memory.lora_trainer"}
+        result = infer(goal, belief)
+        return {"goal": goal, "predicted_action": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def lora_train_tool(max_steps: int = 200) -> dict:
+    """Start a LoRA fine-tuning run from current preference data."""
+    try:
+        from memory.lora_trainer import train, check_readiness
+        readiness = check_readiness()
+        if readiness.get("missing_packages"):
+            return readiness
+        if not readiness.get("ready_to_train"):
+            return readiness
+        # Run in background thread so this tool returns quickly
+        import threading
+        def _run():
+            result = train(max_steps=max_steps)
+            print(f"[LORA] training done: {result}")
+        t = threading.Thread(target=_run, daemon=True, name="LoRATrainer")
+        t.start()
+        return {"status": "training_started", "max_steps": max_steps, "pairs": readiness["preference_pairs"]}
     except Exception as e:
         return {"error": str(e)}
 
