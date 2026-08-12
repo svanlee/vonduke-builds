@@ -1,0 +1,160 @@
+{
+  "nodes": [
+    {
+      "id": "action.kb2040-hid",
+      "name": "KB2040 HID Action Bridge",
+      "domain": "AKSUMAEL",
+      "category": "action",
+      "status": "live",
+      "current_rung": 2
+    },
+    {
+      "id": "cognition.goal-stack",
+      "name": "Goal Stack",
+      "domain": "AKSUMAEL",
+      "category": "cognition",
+      "status": "live",
+      "current_rung": 2
+    },
+    {
+      "id": "hive.node-telemetry",
+      "name": "Hive Node Telemetry",
+      "domain": "HIVE",
+      "category": "infrastructure",
+      "status": "partial",
+      "current_rung": 1
+    },
+    {
+      "id": "perception.reid-bridge",
+      "name": "Entity Re-Identification Bridge",
+      "domain": "AKSUMAEL",
+      "category": "perception",
+      "status": "partial",
+      "current_rung": 1
+    },
+    {
+      "id": "robocar.slam-session",
+      "name": "RoboCar SLAM Session",
+      "domain": "ROBOCAR",
+      "category": "perception",
+      "status": "planned",
+      "current_rung": 1
+    }
+  ],
+  "edges": [
+    {
+      "source": "action.kb2040-hid",
+      "target": "action.keyboard-emitter",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "action.kb2040-hid",
+      "target": "action.mouse-emitter",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "action.kb2040-hid",
+      "target": "action.hid-protocol",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "cognition.goal-stack",
+      "target": "cognition.goal-injector",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "cognition.goal-stack",
+      "target": "cognition.goal-planner",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "cognition.goal-stack",
+      "target": "cognition.survival-preemptor",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "cognition.goal-stack",
+      "target": "perception.reid-bridge",
+      "rel": "builds_on",
+      "target_exists": true
+    },
+    {
+      "source": "cognition.goal-stack",
+      "target": "action.kb2040-hid",
+      "rel": "builds_on",
+      "target_exists": true
+    },
+    {
+      "source": "hive.node-telemetry",
+      "target": "hive.heartbeat-agent",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "hive.node-telemetry",
+      "target": "hive.collector-server",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "hive.node-telemetry",
+      "target": "hive.fault-router",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "perception.reid-bridge",
+      "target": "perception.yolo-detector",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "perception.reid-bridge",
+      "target": "perception.iou-tracker",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "perception.reid-bridge",
+      "target": "perception.reid-embedder",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "perception.reid-bridge",
+      "target": "action.kb2040-hid",
+      "rel": "builds_on",
+      "target_exists": true
+    },
+    {
+      "source": "robocar.slam-session",
+      "target": "robocar.lidar-driver",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "robocar.slam-session",
+      "target": "robocar.slam-node",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "robocar.slam-session",
+      "target": "robocar.waypoint-nav",
+      "rel": "breaks_into",
+      "target_exists": false
+    },
+    {
+      "source": "robocar.slam-session",
+      "target": "hive.node-telemetry",
+      "rel": "builds_on",
+      "target_exists": true
+    }
+  ]
+}
