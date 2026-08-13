@@ -2,432 +2,889 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0d0f14">
-  <title>AKSUMAEL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AKSUMAEL · JARVIS</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0d0f14;
-      --surface: #13161f;
-      --surface2: #1a1e2e;
-      --border: #252a3a;
-      --text: #dde1f0;
-      --text-dim: #606880;
-      --accent: #7c6bff;
-      --accent2: #3b82f6;
-      --user-bg: #162840;
-      --user-text: #c4daf5;
-      --bot-bg: #161a28;
-      --bot-border: #252a3a;
-      --send: #7c6bff;
-      --send-h: #9b8dff;
+      --bg:        #030810;
+      --panel:     #050d1a;
+      --panel2:    #07111f;
+      --border:    #0d2a45;
+      --border2:   #0a3d62;
+      --cyan:      #00d4ff;
+      --cyan-dim:  #005c7a;
+      --cyan-glow: rgba(0, 212, 255, 0.18);
+      --blue:      #1a6fff;
+      --orange:    #ff7b00;
+      --red:       #ff2244;
+      --green:     #00ff88;
+      --text:      #b0d4e8;
+      --text-dim:  #3a6080;
+      --text-bright: #e0f4ff;
     }
+
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap');
 
     html, body {
-      height: 100%;
+      height: 100%; width: 100%;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
-      font-size: 15px;
-      line-height: 1.6;
-    }
-
-    body {
-      display: flex;
-      flex-direction: column;
-      height: 100dvh;
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      font-size: 13px;
       overflow: hidden;
     }
 
-    /* ── Header ── */
-    header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 11px 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+    /* ── SCANLINE overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 9999;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+    }
+
+    /* ── LAYOUT: 3-column grid ── */
+    #hud {
+      display: grid;
+      grid-template-columns: 260px 1fr 260px;
+      grid-template-rows: 48px 1fr 180px;
+      height: 100dvh;
+      gap: 0;
+    }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center;
+      padding: 0 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border2);
+      gap: 24px;
+      position: relative;
+    }
+
+    .tb-logo {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900; font-size: 17px;
+      letter-spacing: 0.18em;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+    }
+
+    .tb-sep {
+      width: 1px; height: 24px;
+      background: var(--border2);
       flex-shrink: 0;
     }
 
-    .hdr-avatar {
-      width: 38px; height: 38px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #7c6bff 0%, #3b82f6 100%);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 14px; color: #fff;
-      flex-shrink: 0;
-      box-shadow: 0 0 0 2px #1a1e2e, 0 0 0 3px #7c6bff44;
+    .tb-info {
+      font-size: 11px; color: var(--text-dim);
+      letter-spacing: 0.08em;
     }
 
-    .hdr-name { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
-    .hdr-sub  { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+    .tb-info span { color: var(--cyan); }
 
-    .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .tb-right { margin-left: auto; display: flex; align-items: center; gap: 18px; }
 
-    .clear-btn {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text-dim);
-      border-radius: 8px;
-      padding: 5px 10px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: border-color .2s, color .2s;
+    /* Thinking pulse */
+    #think-wrap {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; letter-spacing: 0.1em;
     }
-    .clear-btn:hover { border-color: var(--accent); color: var(--text); }
 
-    .status-pill {
+    #think-label { color: var(--text-dim); transition: color .3s; }
+    #think-label.active { color: var(--cyan); }
+
+    #think-ring {
+      width: 24px; height: 24px;
+      position: relative; flex-shrink: 0;
+    }
+
+    #think-ring svg {
+      width: 24px; height: 24px;
+      transform: rotate(-90deg);
+    }
+
+    #think-ring .ring-track {
+      fill: none; stroke: var(--border2); stroke-width: 2.5;
+    }
+
+    #think-ring .ring-fill {
+      fill: none; stroke: var(--cyan); stroke-width: 2.5;
+      stroke-dasharray: 63; stroke-dashoffset: 63;
+      stroke-linecap: round;
+      transition: stroke-dashoffset .15s linear, stroke .3s;
+      filter: drop-shadow(0 0 4px var(--cyan));
+    }
+
+    #think-ring.thinking .ring-fill {
+      animation: spin-ring 1.2s linear infinite;
+    }
+
+    @keyframes spin-ring {
+      0%   { stroke-dashoffset: 63; }
+      50%  { stroke-dashoffset: 10; }
+      100% { stroke-dashoffset: 63; }
+    }
+
+    .tb-time {
+      font-family: 'Orbitron', monospace;
+      font-size: 13px; color: var(--cyan);
+      letter-spacing: 0.12em;
+    }
+
+    /* status dots */
+    .sdot {
       display: flex; align-items: center; gap: 5px;
-      font-size: 11px; color: #4ade80;
+      font-size: 10px; letter-spacing: 0.08em;
     }
-    .status-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: #22c55e;
-      box-shadow: 0 0 6px #22c55e;
-      animation: pulse 2.5s ease-in-out infinite;
+    .sdot-circle {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
     }
-    @keyframes pulse {
-      0%,100% { opacity: 1; } 50% { opacity: .5; }
+    .sdot-circle.warn { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+    .sdot-circle.err  { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+
+    /* ── LEFT PANEL ── */
+    #left {
+      grid-column: 1;
+      grid-row: 2;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
     }
 
-    /* ── Messages ── */
+    /* ── CENTER PANEL ── */
+    #center {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex; flex-direction: column;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Camera feed */
+    #cam-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #cam {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* Corner HUD frames */
+    .corner {
+      position: absolute;
+      width: 24px; height: 24px;
+      border-color: var(--cyan);
+      border-style: solid;
+      opacity: 0.7;
+    }
+    .corner-tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+    .corner-tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+    .corner-bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+    .corner-br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+    /* Center reticle */
+    #reticle {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px; height: 40px;
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    #reticle::before, #reticle::after {
+      content: '';
+      position: absolute;
+      background: var(--cyan);
+    }
+    #reticle::before {
+      top: 50%; left: 0; width: 100%; height: 1px;
+      transform: translateY(-50%);
+    }
+    #reticle::after {
+      left: 50%; top: 0; height: 100%; width: 1px;
+      transform: translateX(-50%);
+    }
+
+    /* Cam offline message */
+    #cam-offline {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #000;
+      color: var(--text-dim);
+      gap: 10px;
+      font-size: 12px; letter-spacing: 0.1em;
+    }
+    #cam-offline svg { opacity: 0.3; }
+
+    /* cam status badge */
+    #cam-badge {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      font-size: 9px; letter-spacing: 0.14em; color: var(--cyan);
+      background: rgba(0,0,0,0.7); border: 1px solid var(--cyan-dim);
+      padding: 2px 8px; border-radius: 2px;
+    }
+
+    /* ── RIGHT PANEL ── */
+    #right {
+      grid-column: 3;
+      grid-row: 2;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── BOTTOM: CHAT ── */
+    #bottom {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      background: var(--panel);
+      border-top: 1px solid var(--border2);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Panel sections ── */
+    .panel-hdr {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 9px; letter-spacing: 0.2em; color: var(--cyan-dim);
+      font-family: 'Orbitron', monospace;
+      flex-shrink: 0;
+    }
+    .panel-hdr::before {
+      content: '';
+      width: 4px; height: 4px;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+      border-radius: 50%;
+    }
+
+    /* Stat rows */
+    .stat-row {
+      display: flex; align-items: center;
+      padding: 6px 12px;
+      border-bottom: 1px solid rgba(13, 42, 69, 0.4);
+      gap: 8px;
+    }
+    .stat-label {
+      font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim);
+      min-width: 70px; text-transform: uppercase;
+    }
+    .stat-val {
+      font-size: 12px; color: var(--text-bright);
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .stat-val.ok  { color: var(--green); }
+    .stat-val.warn{ color: var(--orange); }
+    .stat-val.err { color: var(--red); }
+    .stat-val.hi  { color: var(--cyan); }
+
+    /* Bar meter */
+    .bar-wrap {
+      flex: 1; height: 5px;
+      background: var(--border);
+      border-radius: 2px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+      transition: width .5s ease;
+    }
+    .bar-fill.hp   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .bar-fill.food { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+
+    /* Monologue feed */
+    #monologue {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 10px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    #monologue::-webkit-scrollbar { width: 3px; }
+    #monologue::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    .mono-line {
+      display: flex; gap: 6px;
+      font-size: 11px; line-height: 1.5;
+      opacity: 0.85;
+    }
+    .mono-ts { color: var(--text-dim); flex-shrink: 0; font-size: 9px; padding-top: 2px; }
+    .mono-text { color: var(--text); }
+
+    /* Aurora feed */
+    #aurora-feed {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 10px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    #aurora-feed::-webkit-scrollbar { width: 3px; }
+    #aurora-feed::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    .aurora-line {
+      font-size: 10px; line-height: 1.5;
+      color: var(--text-dim); border-left: 2px solid var(--border2);
+      padding-left: 6px;
+    }
+    .aurora-line .env { color: var(--blue); }
+    .aurora-line .act { color: var(--text); }
+
+    /* ── CHAT AREA ── */
+    #chat-inner {
+      flex: 1;
+      display: flex; flex-direction: row;
+      gap: 0;
+      overflow: hidden;
+      min-height: 0;
+    }
+
     #messages {
       flex: 1;
       overflow-y: auto;
-      padding: 20px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      scroll-behavior: smooth;
+      padding: 8px 14px;
+      display: flex; flex-direction: column; gap: 8px;
+      min-height: 0;
     }
-    #messages::-webkit-scrollbar { width: 4px; }
-    #messages::-webkit-scrollbar-track { background: transparent; }
-    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    #messages::-webkit-scrollbar { width: 3px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border2); }
 
-    /* Welcome */
-    .welcome {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 40px 20px;
-      gap: 10px;
-    }
-    .welcome-logo {
-      font-size: 32px; font-weight: 800; letter-spacing: 0.08em;
-      background: linear-gradient(135deg, #7c6bff, #3b82f6);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .welcome-tagline { font-size: 13px; color: var(--text-dim); max-width: 260px; }
-    .welcome-hint {
-      margin-top: 18px;
-      font-size: 12px;
-      color: var(--text-dim);
-      border: 1px dashed var(--border);
-      border-radius: 10px;
-      padding: 10px 16px;
-    }
+    .msg-row { display: flex; gap: 8px; align-items: flex-start; }
+    .msg-row.user { flex-direction: row-reverse; }
 
-    /* Message rows */
-    .row {
-      display: flex;
-      align-items: flex-end;
-      gap: 8px;
-      max-width: 88%;
-    }
-    .row.user { align-self: flex-end; flex-direction: row-reverse; }
-    .row.bot  { align-self: flex-start; }
-
-    .row-avatar {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #7c6bff, #3b82f6);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 10px; color: #fff;
-      flex-shrink: 0; margin-bottom: 2px;
-    }
-
-    .bwrap { display: flex; flex-direction: column; gap: 3px; }
-    .row.user .bwrap { align-items: flex-end; }
-
-    .bname {
-      font-size: 11px; color: var(--text-dim);
-      padding: 0 5px;
+    .msg-who {
+      font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim);
+      margin-bottom: 2px;
     }
 
     .bubble {
-      padding: 10px 14px;
-      border-radius: 16px;
-      max-width: 100%;
-      word-wrap: break-word;
-      white-space: pre-wrap;
-      line-height: 1.58;
-      font-size: 14.5px;
+      max-width: 72%;
+      padding: 7px 12px;
+      font-size: 12.5px; line-height: 1.55;
+      border-radius: 3px;
+      white-space: pre-wrap; word-wrap: break-word;
     }
-    .row.bot .bubble {
-      background: var(--bot-bg);
+    .msg-row.bot .bubble {
+      background: rgba(0, 212, 255, 0.04);
+      border: 1px solid var(--border2);
       color: var(--text);
-      border: 1px solid var(--bot-border);
-      border-radius: 4px 16px 16px 16px;
+      border-radius: 2px 10px 10px 10px;
     }
-    .row.user .bubble {
-      background: var(--user-bg);
-      color: var(--user-text);
-      border-radius: 16px 4px 16px 16px;
-    }
-
-    /* Typing indicator */
-    .typing-bubble {
-      display: flex; align-items: center; gap: 5px;
-      padding: 13px 16px;
-      background: var(--bot-bg);
-      border: 1px solid var(--bot-border);
-      border-radius: 4px 16px 16px 16px;
-    }
-    .tdot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--text-dim);
-      animation: tdot 1.3s ease-in-out infinite;
-    }
-    .tdot:nth-child(2) { animation-delay: .18s; }
-    .tdot:nth-child(3) { animation-delay: .36s; }
-    @keyframes tdot {
-      0%,60%,100% { transform: translateY(0); opacity: .35; }
-      30% { transform: translateY(-6px); opacity: 1; }
+    .msg-row.user .bubble {
+      background: rgba(26, 111, 255, 0.12);
+      border: 1px solid rgba(26, 111, 255, 0.3);
+      color: var(--text-bright);
+      border-radius: 10px 2px 10px 10px;
     }
 
-    /* ── Input bar ── */
-    #bar {
-      flex-shrink: 0;
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      padding: 12px 16px;
-      padding-bottom: max(12px, env(safe-area-inset-bottom));
-      background: var(--surface);
+    /* Thinking indicator inside chat */
+    .think-bubble {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: 2px 10px 10px 10px;
+      width: fit-content;
+    }
+    .think-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--cyan);
+      animation: think-pulse 1.4s ease-in-out infinite;
+      box-shadow: 0 0 6px var(--cyan);
+    }
+    .think-dot:nth-child(2) { animation-delay: .2s; }
+    .think-dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes think-pulse {
+      0%,60%,100% { transform: translateY(0); opacity: .3; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* Input row */
+    #input-row {
+      display: flex; align-items: flex-end;
+      padding: 8px 12px 10px;
       border-top: 1px solid var(--border);
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     #inp {
       flex: 1;
-      resize: none;
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      background: var(--surface2);
-      color: var(--text);
-      font: inherit;
-      font-size: 15px;
-      padding: 10px 16px;
-      outline: none;
-      min-height: 44px;
-      max-height: 140px;
-      line-height: 1.45;
-      transition: border-color .2s;
-      overflow-y: auto;
+      background: rgba(0, 20, 40, 0.8);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      color: var(--text-bright);
+      font: inherit; font-size: 13px;
+      padding: 8px 14px;
+      outline: none; resize: none;
+      min-height: 36px; max-height: 100px;
+      line-height: 1.4;
+      transition: border-color .2s, box-shadow .2s;
     }
-    #inp:focus { border-color: var(--accent); }
+    #inp:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 1px var(--cyan-dim), inset 0 0 12px rgba(0,212,255,0.04);
+    }
     #inp::placeholder { color: var(--text-dim); }
 
     #send {
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      background: var(--send);
-      border: none; color: #fff;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; flex-shrink: 0;
-      transition: background .2s, transform .1s, opacity .2s;
+      background: var(--cyan-dim);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      border-radius: 4px;
+      width: 80px; height: 36px;
+      cursor: pointer;
+      font: inherit; font-size: 11px; letter-spacing: 0.1em;
+      transition: background .2s, box-shadow .2s;
     }
-    #send:hover  { background: var(--send-h); }
-    #send:active { transform: scale(.9); }
-    #send:disabled { opacity: .35; cursor: not-allowed; transform: none; }
-    #send svg { width: 18px; height: 18px; }
+    #send:hover:not(:disabled) {
+      background: rgba(0, 212, 255, 0.15);
+      box-shadow: 0 0 12px var(--cyan-dim);
+    }
+    #send:disabled { opacity: .35; cursor: not-allowed; }
 
-    @media (min-width: 600px) {
-      #messages { padding: 28px 24px; }
-      .row { max-width: 72%; }
+    /* ── Decorative hex grid background on center ── */
+    #center::after {
+      content: '';
+      position: absolute; inset: 0;
+      pointer-events: none;
+      opacity: 0.04;
+      background-image:
+        radial-gradient(circle at 50% 50%, rgba(0,212,255,0.2) 0%, transparent 70%);
     }
+
+    /* ── Goal banner overlay ── */
+    #goal-banner {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      border: 1px solid var(--cyan-dim);
+      border-radius: 2px;
+      padding: 4px 14px;
+      font-size: 10px; letter-spacing: 0.16em; color: var(--cyan);
+      white-space: nowrap;
+      text-shadow: 0 0 10px var(--cyan);
+    }
+
+    /* scroll hint */
+    .scroll-bottom { display: none; }
   </style>
 </head>
 <body>
+<div id="hud">
 
-<header>
-  <div class="hdr-avatar">A</div>
-  <div>
-    <div class="hdr-name">AKSUMAEL</div>
-    <div class="hdr-sub">Engineering intelligence · robocar-hub</div>
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div class="tb-logo">AKSUMAEL</div>
+    <div class="tb-sep"></div>
+    <div class="tb-info">HOST <span>robocar-hub</span></div>
+    <div class="tb-info">IP <span>192.168.0.156</span></div>
+    <div class="tb-info">GPU <span>RTX 4050</span></div>
+    <div class="tb-right">
+      <div id="think-wrap">
+        <span id="think-label">STANDBY</span>
+        <div id="think-ring">
+          <svg viewBox="0 0 24 24">
+            <circle class="ring-track" cx="12" cy="12" r="10"/>
+            <circle class="ring-fill"  cx="12" cy="12" r="10"/>
+          </svg>
+        </div>
+      </div>
+      <div class="tb-sep"></div>
+      <div class="sdot" id="bot-dot">
+        <div class="sdot-circle"></div>
+        <span id="bot-status-text">BOT ONLINE</span>
+      </div>
+      <div class="sdot" id="cam-dot">
+        <div class="sdot-circle warn"></div>
+        <span>CAM</span>
+      </div>
+      <div class="tb-sep"></div>
+      <div class="tb-time" id="clock">00:00:00</div>
+    </div>
+  </header>
+
+  <!-- LEFT: Bot state -->
+  <div id="left">
+    <div class="panel-hdr">BOT STATE</div>
+    <div class="stat-row">
+      <span class="stat-label">GOAL</span>
+      <span class="stat-val hi" id="s-goal">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">FSM</span>
+      <span class="stat-val" id="s-fsm">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">TICK</span>
+      <span class="stat-val" id="s-tick">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">HEALTH</span>
+      <div class="bar-wrap"><div class="bar-fill hp" id="bar-hp" style="width:100%"></div></div>
+      <span class="stat-val" id="s-hp" style="min-width:32px;text-align:right">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">HUNGER</span>
+      <div class="bar-wrap"><div class="bar-fill food" id="bar-food" style="width:100%"></div></div>
+      <span class="stat-val" id="s-food" style="min-width:32px;text-align:right">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">REWARD</span>
+      <span class="stat-val" id="s-reward">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">KB2040</span>
+      <span class="stat-val" id="s-kb">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">CAMERA</span>
+      <span class="stat-val" id="s-cam">—</span>
+    </div>
+    <div class="panel-hdr" style="margin-top:auto">INNER MONOLOGUE</div>
+    <div id="monologue"></div>
   </div>
-  <div class="hdr-right">
-    <button class="clear-btn" id="clearBtn">Clear</button>
-    <div class="status-pill">
-      <div class="status-dot"></div>
-      <span>online</span>
+
+  <!-- CENTER: Camera -->
+  <div id="center">
+    <div id="cam-wrap">
+      <img id="cam" src="http://192.168.0.156:8765/stream"
+           alt="" crossorigin="anonymous" style="display:none"
+           onerror="camError()" onload="camLoaded()">
+      <div id="cam-offline">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+             stroke="#00d4ff" stroke-width="1.5">
+          <path d="M23 7 16 12 23 17V7z"/>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+        <span>NO CAMERA SIGNAL</span>
+        <span style="font-size:9px;opacity:.5">192.168.0.156:8765/stream</span>
+      </div>
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="corner corner-bl"></div>
+      <div class="corner corner-br"></div>
+      <div id="reticle"></div>
+      <div id="cam-badge">LIVE · /dev/video2</div>
+      <div id="goal-banner">GOAL: —</div>
     </div>
   </div>
-</header>
 
-<div id="messages">
-  <div class="welcome" id="welcome">
-    <div class="welcome-logo">AKSUMAEL</div>
-    <div class="welcome-tagline">ak-SOO-male · engineering AI for the Aksümal platform</div>
-    <div class="welcome-hint">Ask me anything — hardware, software, robotics, or what I am thinking.</div>
+  <!-- RIGHT: AURORA / system -->
+  <div id="right">
+    <div class="panel-hdr">SYSTEM</div>
+    <div class="stat-row">
+      <span class="stat-label">UPTIME</span>
+      <span class="stat-val" id="s-uptime">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">AURORA</span>
+      <span class="stat-val hi" id="s-aurora">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">PAIRS</span>
+      <span class="stat-val" id="s-pairs">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">LoRA</span>
+      <span class="stat-val" id="s-lora">—</span>
+    </div>
+    <div class="panel-hdr">RECENT ACTIONS</div>
+    <div id="aurora-feed"></div>
   </div>
-</div>
 
-<div id="bar">
-  <textarea id="inp" placeholder="Message AKSUMAEL..." rows="1"></textarea>
-  <button id="send" title="Send (Enter)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-         stroke-linecap="round" stroke-linejoin="round">
-      <line x1="22" y1="2" x2="11" y2="13"></line>
-      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-    </svg>
-  </button>
+  <!-- BOTTOM: Chat -->
+  <div id="bottom">
+    <div class="panel-hdr">JARVIS INTERFACE</div>
+    <div id="chat-inner">
+      <div id="messages"></div>
+    </div>
+    <div id="input-row">
+      <textarea id="inp" placeholder="Speak to AKSUMAEL..." rows="1"></textarea>
+      <button id="send">SEND</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
 (function () {
-  var msgs   = document.getElementById("messages");
-  var inp    = document.getElementById("inp");
-  var sendEl = document.getElementById("send");
-  var clearEl = document.getElementById("clearBtn");
-  var welcome = document.getElementById("welcome");
-  var busy   = false;
+  /* ── Clock ── */
+  function tick() {
+    var now = new Date();
+    document.getElementById('clock').textContent =
+      [now.getHours(), now.getMinutes(), now.getSeconds()]
+        .map(n => String(n).padStart(2,'0')).join(':');
+  }
+  tick(); setInterval(tick, 1000);
 
-  function scrollDown() {
-    msgs.scrollTop = msgs.scrollHeight;
+  /* ── Camera ── */
+  var camEl = document.getElementById('cam');
+  var camOffline = document.getElementById('cam-offline');
+  var camDot = document.getElementById('cam-dot').querySelector('.sdot-circle');
+  var _camRetry = null;
+
+  window.camLoaded = function () {
+    camEl.style.display = 'block';
+    camOffline.style.display = 'none';
+    camDot.className = 'sdot-circle';
+  };
+
+  window.camError = function () {
+    camEl.style.display = 'none';
+    camOffline.style.display = 'flex';
+    camDot.className = 'sdot-circle err';
+    clearTimeout(_camRetry);
+    _camRetry = setTimeout(function () {
+      camEl.src = 'http://192.168.0.156:8765/stream?t=' + Date.now();
+    }, 5000);
+  };
+
+  /* ── Bot state polling ── */
+  function pollState() {
+    fetch('http://192.168.0.156:7683/state', {
+      signal: AbortSignal.timeout(3000)
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(function(d) {
+      if (!d) return;
+      var s = d.snapshot || d;
+
+      setText('s-goal',   s.current_goal || s.goal || '—');
+      setText('s-fsm',    s.fsm_state || '—');
+      setText('s-tick',   s.tick || '—');
+      setText('s-uptime', fmtUptime(s.uptime_s || 0));
+      setText('s-reward', s.recent_avg_reward != null
+        ? Number(s.recent_avg_reward).toFixed(3) : '—');
+
+      var hp = s.health_pct;
+      if (hp != null) {
+        document.getElementById('bar-hp').style.width = hp + '%';
+        setText('s-hp', Math.round(hp) + '%',
+          hp < 30 ? 'err' : hp < 60 ? 'warn' : 'ok');
+      }
+      var food = s.hunger_pct;
+      if (food != null) {
+        document.getElementById('bar-food').style.width = food + '%';
+        setText('s-food', Math.round(food) + '%',
+          food < 30 ? 'err' : food < 60 ? 'warn' : 'ok');
+      }
+
+      var kb = s.kb2040 || s.ttyUSB0;
+      setText('s-kb', kb === false ? 'ABSENT' : kb === true ? 'OK' : kb || '—',
+        kb === false ? 'err' : 'ok');
+
+      var cam = s.camera || s.video2;
+      setText('s-cam', cam === false ? 'ABSENT' : cam === true ? 'OK' : cam || '—',
+        cam === false ? 'warn' : 'ok');
+
+      setText('goal-banner', 'GOAL: ' + (s.current_goal || s.goal || '—'));
+
+      // Aurora stats
+      if (s.aurora_episodes != null)
+        setText('s-aurora', s.aurora_episodes + ' episodes');
+      if (s.preference_pairs != null)
+        setText('s-pairs', s.preference_pairs + ' pairs');
+      if (s.lora_trained_at)
+        setText('s-lora', s.lora_trained_at.slice(11,16));
+    })
+    .catch(function() {})
+    .finally(function() {
+      setTimeout(pollState, 3000);
+    });
+  }
+  setTimeout(pollState, 1000);
+
+  /* ── Bridge state (health endpoint) ── */
+  function pollHealth() {
+    fetch('http://192.168.0.156:7683/health', {
+      signal: AbortSignal.timeout(3000)
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(function(d) {
+      var dot = document.getElementById('bot-dot').querySelector('.sdot-circle');
+      var txt = document.getElementById('bot-status-text');
+      if (d && d.running) {
+        dot.className = 'sdot-circle';
+        txt.textContent = 'BOT ONLINE';
+      } else {
+        dot.className = 'sdot-circle warn';
+        txt.textContent = 'BOT OFFLINE';
+      }
+    })
+    .catch(function() {
+      document.getElementById('bot-dot').querySelector('.sdot-circle').className = 'sdot-circle err';
+    })
+    .finally(function() { setTimeout(pollHealth, 5000); });
+  }
+  setTimeout(pollHealth, 2000);
+
+  /* ── AURORA feed ── */
+  function pollAurora() {
+    fetch('http://192.168.0.156:7683/state', {
+      signal: AbortSignal.timeout(3000)
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(function(d) {
+      // Aurora recent is embedded in state if available
+      var feed = document.getElementById('aurora-feed');
+      var items = (d && d.recent_actions) || [];
+      if (!items.length) return;
+      feed.innerHTML = '';
+      items.slice(0, 8).forEach(function(a) {
+        var div = document.createElement('div');
+        div.className = 'aurora-line';
+        div.innerHTML = '<span class="env">' + (a.env || 'bot') + '</span> '
+          + '<span class="act">' + (a.action || a).toString().slice(0,60) + '</span>';
+        feed.appendChild(div);
+      });
+    })
+    .catch(function() {})
+    .finally(function() { setTimeout(pollAurora, 5000); });
+  }
+  setTimeout(pollAurora, 3000);
+
+  /* ── Helpers ── */
+  function setText(id, val, cls) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    if (cls) el.className = 'stat-val ' + cls;
   }
 
-  function addRow(role, text) {
-    if (welcome) { welcome.remove(); welcome = null; }
+  function fmtUptime(s) {
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var ss = Math.floor(s % 60);
+    return [h,m,ss].map(n=>String(n).padStart(2,'0')).join(':');
+  }
 
-    var row  = document.createElement("div");
-    row.className = "row " + role;
+  /* ── Thinking ring ── */
+  var thinkRing  = document.getElementById('think-ring');
+  var thinkLabel = document.getElementById('think-label');
 
-    if (role === "bot") {
-      var av = document.createElement("div");
-      av.className = "row-avatar";
-      av.textContent = "A";
-      row.appendChild(av);
+  function setThinking(on) {
+    if (on) {
+      thinkRing.classList.add('thinking');
+      thinkLabel.textContent = 'PROCESSING';
+      thinkLabel.classList.add('active');
+    } else {
+      thinkRing.classList.remove('thinking');
+      thinkLabel.textContent = 'STANDBY';
+      thinkLabel.classList.remove('active');
     }
+  }
 
-    var bwrap = document.createElement("div");
-    bwrap.className = "bwrap";
+  /* ── Chat ── */
+  var msgs    = document.getElementById('messages');
+  var inp     = document.getElementById('inp');
+  var sendBtn = document.getElementById('send');
+  var busy    = false;
+  var typingEl = null;
 
-    var bname = document.createElement("div");
-    bname.className = "bname";
-    bname.textContent = role === "bot" ? "AKSUMAEL" : "You";
-    bwrap.appendChild(bname);
+  function addMsg(role, text) {
+    var row = document.createElement('div');
+    row.className = 'msg-row ' + role;
 
-    var bubble = document.createElement("div");
-    bubble.className = "bubble";
+    var bwrap = document.createElement('div');
+
+    var who = document.createElement('div');
+    who.className = 'msg-who';
+    who.textContent = role === 'bot' ? 'AKSUMAEL' : 'SCOTT';
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
     bubble.textContent = text;
-    bwrap.appendChild(bubble);
 
+    bwrap.appendChild(who);
+    bwrap.appendChild(bubble);
     row.appendChild(bwrap);
     msgs.appendChild(row);
-    scrollDown();
+    msgs.scrollTop = msgs.scrollHeight;
     return bubble;
   }
 
-  var typingRow = null;
-
   function showTyping() {
-    if (welcome) { welcome.remove(); welcome = null; }
-    typingRow = document.createElement("div");
-    typingRow.className = "row bot";
-
-    var av = document.createElement("div");
-    av.className = "row-avatar";
-    av.textContent = "A";
-    typingRow.appendChild(av);
-
-    var bwrap = document.createElement("div");
-    bwrap.className = "bwrap";
-
-    var bname = document.createElement("div");
-    bname.className = "bname";
-    bname.textContent = "AKSUMAEL";
-    bwrap.appendChild(bname);
-
-    var ti = document.createElement("div");
-    ti.className = "typing-bubble";
+    var row = document.createElement('div');
+    row.className = 'msg-row bot';
+    var bwrap = document.createElement('div');
+    var who = document.createElement('div');
+    who.className = 'msg-who'; who.textContent = 'AKSUMAEL';
+    var tb = document.createElement('div');
+    tb.className = 'think-bubble';
     for (var i = 0; i < 3; i++) {
-      var d = document.createElement("div");
-      d.className = "tdot";
-      ti.appendChild(d);
+      var d = document.createElement('div');
+      d.className = 'think-dot';
+      tb.appendChild(d);
     }
-    bwrap.appendChild(ti);
-    typingRow.appendChild(bwrap);
-    msgs.appendChild(typingRow);
-    scrollDown();
+    bwrap.appendChild(who); bwrap.appendChild(tb);
+    row.appendChild(bwrap);
+    msgs.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
+    typingEl = row;
   }
 
-  function removeTyping() {
-    if (typingRow) { typingRow.remove(); typingRow = null; }
+  function clearTyping() {
+    if (typingEl) { typingEl.remove(); typingEl = null; }
   }
 
   async function send() {
     var text = inp.value.trim();
     if (!text || busy) return;
+    busy = true; sendBtn.disabled = true;
+    inp.value = ''; inp.style.height = '';
 
-    busy = true;
-    sendEl.disabled = true;
-    inp.value = "";
-    inp.style.height = "";
-
-    addRow("user", text);
+    addMsg('user', text);
     showTyping();
+    setThinking(true);
 
     try {
-      var res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      var res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
       });
       var data = await res.json();
-      removeTyping();
-      addRow("bot", data.response || data.error || "(no response)");
-    } catch (err) {
-      removeTyping();
-      addRow("bot", "(Network error: " + err.message + ")");
+      clearTyping();
+      addMsg('bot', data.response || data.error || '(no response)');
+    } catch(e) {
+      clearTyping();
+      addMsg('bot', 'Network error: ' + e.message);
     }
 
-    busy = false;
-    sendEl.disabled = false;
+    setThinking(false);
+    busy = false; sendBtn.disabled = false;
     inp.focus();
   }
 
-  async function clearChat() {
-    try { await fetch("/reset", { method: "POST" }); } catch(e) {}
-    msgs.innerHTML = "";
-    var w = document.createElement("div");
-    w.className = "welcome";
-    w.id = "welcome";
-    w.innerHTML = '<div class="welcome-logo">AKSUMAEL</div>'
-      + '<div class="welcome-tagline">ak-SOO-male · engineering AI for the Aksumal platform</div>'
-      + '<div class="welcome-hint">Ask me anything — hardware, software, robotics, or what I am thinking.</div>';
-    msgs.appendChild(w);
-    welcome = w;
-  }
-
-  inp.addEventListener("input", function () {
-    this.style.height = "";
-    this.style.height = Math.min(this.scrollHeight, 140) + "px";
+  inp.addEventListener('input', function() {
+    this.style.height = '';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
   });
-
-  inp.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
-
-  sendEl.addEventListener("click", send);
-  clearEl.addEventListener("click", clearChat);
-
+  sendBtn.addEventListener('click', send);
   inp.focus();
 })();
 </script>
