@@ -52,7 +52,9 @@ def get_last_directive() -> dict:
 def _build_prompt(snapshot: dict) -> str:
     """Build the overseer prompt from the current agent snapshot."""
     return f"""{AKSUMAEL_IDENTITY}
-You are the Aksūmal Overseer — the strategic intelligence for an autonomous robot agent.
+You are operating as AKSUMAEL's tactical overseer — making fast per-tick decisions for the Minecraft FSM.
+Your executive voice (Jarvis) handles strategic planning on a 3-minute cycle; you handle immediate gameplay decisions.
+Respond only with a JSON directive, no prose.
 
 {snapshot.get('hardware', '')}
 

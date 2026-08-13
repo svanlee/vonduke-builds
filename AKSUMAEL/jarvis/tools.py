@@ -442,16 +442,50 @@ TOOL_SCHEMAS = [
         "name": "lora_train",
         "description": (
             "Start a LoRA fine-tuning run using the current preference pairs. "
-            "Trains a local TinyLlama model with DPO on data/learning/preferences.jsonl. "
-            "Runs in background on the GPU. Check data/learning/lora_stats.json for results. "
-            "Requires 50+ preference pairs and transformers/peft/trl packages."
+            "Trains a local TinyLlama model with SFT on data/learning/preferences.jsonl. "
+            "Auto-selects GPU or CPU based on available VRAM. "
+            "Check data/learning/lora_stats.json for results."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "max_steps": {"type": "integer", "description": "Training steps (default 200, ~10min on RTX 4050)"},
+                "max_steps": {"type": "integer", "description": "Training steps (default 200)"},
             },
             "required": [],
+        },
+    },
+    {
+        "name": "spawn_subagent",
+        "description": (
+            "Spawn a focused sub-agent to handle a complex task that would take too long "
+            "inline or requires deep research, planning, or multi-step analysis. "
+            "The sub-agent runs a separate Claude call with a focused system prompt and returns "
+            "a structured result. Use this for: crafting plans, threat assessment, terrain "
+            "analysis, skill design, exploration planning, or anything needing sustained focus. "
+            "You remain responsive during sub-agent execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Clear description of what the sub-agent should do and return.",
+                },
+                "domain": {
+                    "type": "string",
+                    "description": "Domain focus: minecraft, crafting, exploration, threat, hardware, planning, analysis",
+                    "enum": ["minecraft", "crafting", "exploration", "threat", "hardware", "planning", "analysis"],
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Relevant context to give the sub-agent (bot state, goal, inventory, etc.)",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Max tokens for the sub-agent response (default 600).",
+                },
+            },
+            "required": ["task", "domain"],
         },
     },
 ]
@@ -902,6 +936,10 @@ TOOL_DISPATCH = {
     "score_goal": lambda args: score_goal_tool(args["goal"], args.get("action", ""), args.get("belief", "")),
     "lora_infer": lambda args: lora_infer_tool(args["goal"], args.get("belief", "")),
     "lora_train": lambda args: lora_train_tool(args.get("max_steps", 200)),
+    "spawn_subagent": lambda args: spawn_subagent(
+        args["task"], args["domain"],
+        args.get("context", ""), args.get("max_tokens", 600)
+    ),
 }
 
 
@@ -1067,6 +1105,80 @@ def propose_improvement(area: str, suggestion: str, rationale: str = "") -> dict
         return {"status": "proposed", "area": area, "total_proposals": len(existing["proposals"])}
     except Exception as e:
         return {"error": str(e)}
+
+
+def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 600) -> dict:
+    """
+    Spawn a focused sub-agent Claude call for a task requiring sustained analysis.
+
+    The sub-agent is a disposable Claude instance with a domain-focused system prompt.
+    It has NO tools — it reasons from the context provided and returns a structured result.
+    Use this to offload deep planning or analysis without blocking the voice thread.
+
+    Architecture: AKSUMAEL (executive) → spawn_subagent → domain specialist → result
+    """
+    DOMAIN_PROMPTS = {
+        "minecraft": "You are AKSUMAEL's Minecraft specialist. Analyze gameplay situations and suggest optimal strategies, goal sequences, or survival priorities. Be concrete and specific.",
+        "crafting": "You are AKSUMAEL's crafting specialist. Given inventory and goals, produce the optimal crafting sequence with exact steps. Reference vanilla Minecraft recipes.",
+        "exploration": "You are AKSUMAEL's exploration specialist. Analyze terrain, biome, and structure data to suggest high-value exploration targets and navigation strategies.",
+        "threat": "You are AKSUMAEL's threat assessment specialist. Evaluate survival risks (health, hunger, mobs, environment) and recommend immediate priority actions.",
+        "hardware": "You are AKSUMAEL's hardware specialist. Analyze device state, sensor readings, and connectivity issues. Suggest diagnostics and fixes.",
+        "planning": "You are AKSUMAEL's planning specialist. Given a high-level goal, break it into an ordered sequence of achievable sub-goals with dependencies and estimated completion times.",
+        "analysis": "You are AKSUMAEL's data analysis specialist. Examine logs, metrics, and telemetry to surface patterns, anomalies, and actionable insights.",
+    }
+
+    system = (
+        DOMAIN_PROMPTS.get(domain, DOMAIN_PROMPTS["analysis"])
+        + "\n\nYou are operating as a sub-agent of AKSUMAEL. "
+        + "Return a concise, structured response — no markdown headers, no filler. "
+        + "Focus on actionable output."
+    )
+
+    key_file = os.path.expanduser("~/.config/anthropic/key")
+    try:
+        with open(key_file) as f:
+            api_key = f.read().strip()
+    except Exception:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if not api_key:
+        return {"error": "no API key found"}
+
+    user_msg = f"Task: {task}"
+    if context:
+        user_msg += f"\n\nContext:\n{context[:800]}"
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-fable-5",
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        result_text = resp.content[0].text if resp.content else ""
+
+        # Log to AURORA
+        try:
+            from memory import aurora_memory
+            aurora_memory.record(
+                env="subagent",
+                action=f"{domain}:{task[:80]}",
+                outcome=result_text[:200],
+                metadata={"domain": domain, "task": task[:200]},
+            )
+        except Exception:
+            pass
+
+        return {
+            "domain": domain,
+            "task": task,
+            "result": result_text,
+            "tokens_used": resp.usage.output_tokens if hasattr(resp, "usage") else None,
+        }
+    except Exception as e:
+        return {"error": str(e), "domain": domain, "task": task}
 
 
 def call_tool(name: str, args: dict) -> str:
