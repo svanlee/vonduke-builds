@@ -15,6 +15,7 @@ StandardOutput=append:/tmp/aksumael_live.log
 StandardError=append:/tmp/aksumael_live.log
 Environment=DISPLAY=:0
 Environment=NO_AT_BRIDGE=1
+Environment=AKSUMAEL_ACTIVE_ENV=minecraft
 
 [Install]
 WantedBy=default.target

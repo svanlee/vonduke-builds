@@ -120,7 +120,13 @@ class WorldMemory:
                 # crashed/restarted while y_level was corrupted (e.g. by a
                 # bad F3 OCR read) would otherwise reload the garbage value
                 # straight back in (2026-07-21).
-                self.y_level = _loaded_y if -128 <= _loaded_y <= 512 else 64
+                # Tighten the floor: single-digit Y values almost always mean
+                # a previous OCR misread got persisted (surface ~Y=64 → OCR
+                # dropped the '6' → stored Y=4). Loading a bad low value
+                # is worse than defaulting to 64 because it makes the jump
+                # check block every subsequent real surface read.
+                _y_safe = _loaded_y if (-128 <= _loaded_y <= 512) else 64
+                self.y_level = _y_safe if _y_safe >= 10 else 64
                 self.biome         = d.get('biome', 'unknown')
                 self.wood_count    = d.get('wood_count', 0)
                 self.food_items    = d.get('food_items', [])
@@ -260,8 +266,11 @@ class WorldMemory:
             # Reject implausible single-tick jumps as OCR noise.
             # A real teleport/respawn sets y_level via a different path;
             # legitimate F3 reads can't jump >50 blocks per cycle.
-            # Bootstrap exception: prev_y == 0 means we haven't read Y yet.
-            if prev_y and abs(_new_y - prev_y) > Y_JUMP_REJECT_LIMIT:
+            # Bootstrap exception: first F3 read this session (_ticks_since_f3
+            # still at init value 9999) always accepted so the bot doesn't
+            # spend the whole session blocked on a stale persisted Y.
+            _first_f3 = self._ticks_since_f3 >= 9999
+            if not _first_f3 and prev_y and abs(_new_y - prev_y) > Y_JUMP_REJECT_LIMIT:
                 print(f'[F3] Y={_new_y} rejected: jump |{_new_y}-{prev_y}|'
                       f'>{Y_JUMP_REJECT_LIMIT} — likely OCR noise')
             else:

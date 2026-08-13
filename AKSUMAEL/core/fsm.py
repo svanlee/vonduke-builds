@@ -124,7 +124,8 @@ TREE_TARGETS = {
 
 PASSIVE_MOBS = {
     'cow', 'sheep', 'pig', 'chicken',
-    'duck',   # class 75 added in 76-class retrain (2026-07-31)
+    'duck',       # class 75 added in 76-class retrain (2026-07-31)
+    'sheep_wool', # class 41 — YOLO often fires on wool texture, not full sheep body
 }
 
 FISH_TARGETS = {'water'}

@@ -37,7 +37,7 @@ _HUD_BAR_LABELS = set(_HUD_BAR_REGIONS)
 # at tiny box sizes (≤30 px).  Reject mob detections whose *larger* side is
 # below this threshold to suppress false-positives from small decor items.
 _MOB_LABELS = {
-    'sheep', 'cow', 'pig', 'chicken',
+    'sheep', 'sheep_wool', 'cow', 'pig', 'chicken',
     'zombie', 'skeleton', 'spider', 'creeper', 'enderman',
 }
 _MOB_MIN_SIDE_PX = 35   # smaller dimension must be at least this many pixels
