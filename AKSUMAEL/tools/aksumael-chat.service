@@ -1,0 +1,13 @@
+[Unit]
+Description=AKSUMAEL Conversational Chat Interface (port 7684)
+After=network.target mesh-llm.service
+Wants=mesh-llm.service
+
+[Service]
+WorkingDirectory=/home/ros/vonduke-builds/AKSUMAEL
+ExecStart=/home/ros/vonduke-builds/AKSUMAEL/venv/bin/python3 tools/chat_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
