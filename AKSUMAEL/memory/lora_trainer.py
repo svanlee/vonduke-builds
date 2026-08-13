@@ -44,24 +44,29 @@ BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 MIN_PAIRS = 20  # minimum pairs before fine-tuning makes sense
 
 
-def _pair_to_dpo_sample(pair: dict) -> dict:
-    """Convert a preference pair to DPO format for TRL."""
+def _pair_to_sft_sample(pair: dict) -> dict:
+    """Convert a preference pair to SFT format (train on chosen/high-reward responses).
+
+    SFT is used instead of DPO because DPO requires two simultaneous forward passes
+    (policy + reference), which exceeds 6GB VRAM even with 4-bit quantization.
+    SFT on chosen responses provides equivalent training signal for small datasets.
+    """
     goal = pair.get("goal", "unknown")
     chosen = pair.get("chosen", {})
-    rejected = pair.get("rejected", {})
+    action = chosen.get("action", {})
+    belief = chosen.get("belief", {})
+    reward = chosen.get("reward", 0)
 
-    def _format(entry: dict) -> str:
-        action = entry.get("action", {})
-        belief = entry.get("belief", {})
-        action_str = action.get("type", str(action))[:100] if isinstance(action, dict) else str(action)[:100]
-        belief_str = str(belief)[:200] if belief else "unknown"
-        reward = entry.get("reward", 0)
-        return f"Goal: {goal}\nState: {belief_str}\nAction: {action_str}\nReward: {reward:.3f}"
+    action_str = action.get("type", str(action))[:100] if isinstance(action, dict) else str(action)[:100]
+    belief_str = str(belief)[:200] if belief else "unknown"
 
     return {
-        "prompt": f"[AKSUMAEL] Goal: {goal}\nChoose the best action:",
-        "chosen": _format(chosen),
-        "rejected": _format(rejected),
+        "text": (
+            f"[AKSUMAEL] Goal: {goal}\n"
+            f"State: {belief_str}\n"
+            f"Best action: {action_str}\n"
+            f"Reward: {reward:.3f}"
+        )
     }
 
 
@@ -114,15 +119,18 @@ def _load_pairs() -> list[dict]:
 
 def train(max_steps: int = 200, batch_size: int = 1) -> dict:
     """
-    Fine-tune the base model with LoRA + DPO on preference pairs.
-    Runs on GPU (RTX 4050 Laptop, 6GB VRAM) with 4-bit quantization.
+    Fine-tune the base model with LoRA + SFT on high-reward (chosen) actions.
+
+    Uses SFT (Supervised Fine-Tuning) instead of DPO because DPO requires two
+    simultaneous forward passes (policy + reference model), which exceeds 6GB VRAM.
+    SFT trains the model to produce the best known action for each goal+state,
+    providing equivalent practical benefit for small datasets (< 100 pairs).
 
     Memory strategy:
-    - ref_model=None: TRL uses frozen base (adapters disabled) as ref — avoids
-      loading a second copy of TinyLlama (would be 2×1.1B = OOM on 6GB)
-    - gradient_checkpointing: trades compute for activation memory
-    - prepare_model_for_kbit_training: enables proper gradient flow through 4-bit layers
-    - batch_size=1, grad_accum=8: effective batch 8 with minimal memory
+    - SFT: single model forward pass, no reference model needed
+    - 4-bit quantization + gradient checkpointing
+    - max_seq_length=256: truncates long samples, reduces activation memory
+    - batch_size=1, grad_accum=8: effective batch 8 with minimal peak VRAM
     """
     readiness = check_readiness()
     if readiness.get("missing_packages"):
@@ -134,7 +142,7 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
     if len(pairs) < MIN_PAIRS:
         return {"error": f"need {MIN_PAIRS} preference pairs, have {len(pairs)}. Keep running the bot to collect more."}
 
-    print(f"[LORA] Starting DPO fine-tune: {len(pairs)} pairs, base={BASE_MODEL}")
+    print(f"[LORA] Starting SFT fine-tune on {len(pairs)} chosen actions, base={BASE_MODEL}")
     start = time.time()
 
     try:
@@ -142,14 +150,14 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
         from datasets import Dataset
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-        from trl import DPOTrainer, DPOConfig
+        from trl import SFTTrainer, SFTConfig
 
         # 4-bit quantization to fit in 6GB VRAM
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,  # fp16 more stable than bf16 on laptop GPU
+            bnb_4bit_compute_dtype=torch.float16,
         )
 
         print(f"[LORA] Loading {BASE_MODEL}...")
@@ -166,47 +174,46 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
         # Enable gradient checkpointing + kbit training before applying LoRA
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
-        # LoRA adapter: r=8 saves VRAM vs r=16, still meaningful fine-tuning signal
+        # LoRA adapter config
         lora_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             r=8,
             lora_alpha=16,
             lora_dropout=0.05,
-            target_modules=["q_proj", "v_proj"],  # fewer targets = less VRAM
+            target_modules=["q_proj", "v_proj"],
             bias="none",
         )
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
 
-        # Build dataset
-        samples = [_pair_to_dpo_sample(p) for p in pairs]
+        # SFT dataset: train on high-reward (chosen) action texts
+        samples = [_pair_to_sft_sample(p) for p in pairs]
         dataset = Dataset.from_list(samples)
 
-        # DPO training config
-        dpo_config = DPOConfig(
+        # SFT training config
+        sft_config = SFTConfig(
             output_dir=str(LORA_PATH),
-            num_train_epochs=1,
+            num_train_epochs=3,
             max_steps=max_steps,
-            per_device_train_batch_size=batch_size,  # 1 to minimize peak VRAM
-            gradient_accumulation_steps=8,           # effective batch = 8
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=8,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.1,
             logging_steps=20,
             save_steps=100,
-            fp16=True,           # fp16 instead of bf16 for 6GB laptop VRAM
+            fp16=True,
             remove_unused_columns=False,
             report_to="none",
+            dataset_text_field="text",
+            max_seq_length=256,
         )
 
-        # ref_model=None: TRL uses the base model (adapters disabled) as reference
-        # This avoids loading a second full copy of TinyLlama — critical for 6GB VRAM
-        trainer = DPOTrainer(
+        trainer = SFTTrainer(
             model=model,
-            ref_model=None,
-            args=dpo_config,
+            args=sft_config,
             train_dataset=dataset,
-            processing_class=tokenizer,  # renamed from tokenizer in TRL >= 0.12
+            processing_class=tokenizer,
         )
 
         print(f"[LORA] Training for {max_steps} steps...")
@@ -248,7 +255,7 @@ def infer(goal: str, belief: str = "", max_new_tokens: int = 80) -> Optional[str
         model = PeftModel.from_pretrained(base, str(LORA_PATH))
         model.eval()
 
-        prompt = f"[AKSUMAEL] Goal: {goal}\nState: {belief[:200] if belief else 'unknown'}\nChoose the best action:"
+        prompt = f"[AKSUMAEL] Goal: {goal}\nState: {belief[:200] if belief else 'unknown'}\nBest action:"
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=max_new_tokens)
         result = pipe(prompt)[0]["generated_text"]
         return result[len(prompt):].strip()
