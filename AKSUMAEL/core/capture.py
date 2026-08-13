@@ -1068,35 +1068,118 @@ class VideoCapturePipeline:
         VideoCapturePipeline._JARVIS_FRAME += 1
         fnum = VideoCapturePipeline._JARVIS_FRAME
 
+        import math as _math
+
         # ── Colours (BGR) ──────────────────────────────────────────────
-        BG     = (12,   8,   2)      # very dark navy
-        CYAN   = (255, 212,  0)      # #00d4ff bright
-        DCYAN  = (70,   50,  0)      # dim cyan
-        PANEL  = (22,  14,  4)       # panel bg
-        GREEN  = (80,  220, 60)      # ok / health
-        WHITE  = (200, 200, 185)     # monologue body
-        ORANGE = (20,  155, 255)     # voice active
-        RED    = (50,   40, 220)     # warn
+        BG     = (10,   6,   2)       # near-black navy
+        CYAN   = (255, 212,  0)       # #00d4ff — BGR for cyan
+        CYAN2  = (180, 150,  0)       # mid cyan
+        DCYAN  = (55,   40,  0)       # dim cyan
+        VCYAN  = (25,   18,  0)       # very dim
+        PANEL  = (18,  12,  3)        # sidebar bg
+        GREEN  = (60,  230, 40)       # health green
+        DGREEN = (15,   60, 10)       # dim green (bar bg)
+        ORANGE = (10,  140, 255)      # hunger / voice
+        DORANGE= (5,   40,  80)       # dim orange
+        WHITE  = (190, 195, 185)      # text
+        RED    = (40,   30, 220)      # warn
         FONT   = cv2.FONT_HERSHEY_SIMPLEX
+
+        # ── Glow helpers ───────────────────────────────────────────────
+        def _gline(img, p1, p2, col, dim, thick=1):
+            """Line with glow halo (dim wide stroke + bright thin stroke)."""
+            cv2.line(img, p1, p2, dim, thick + 4, cv2.LINE_AA)
+            cv2.line(img, p1, p2, col, thick,     cv2.LINE_AA)
+
+        def _gcircle(img, ctr, r, col, dim, thick=1):
+            cv2.circle(img, ctr, r + 3, dim, thick + 4, cv2.LINE_AA)
+            cv2.circle(img, ctr, r,     col, thick,     cv2.LINE_AA)
+
+        def _garc(img, ctr, r, start_deg, end_deg, col, dim, thick=2):
+            cv2.ellipse(img, ctr, (r, r), 0, start_deg, end_deg, dim, thick + 4, cv2.LINE_AA)
+            cv2.ellipse(img, ctr, (r, r), 0, start_deg, end_deg, col, thick,     cv2.LINE_AA)
+
+        def _gtext(img, txt, pos, scale, col, dim, thick=1):
+            cv2.putText(img, txt, pos, FONT, scale, dim, thick + 2, cv2.LINE_AA)
+            cv2.putText(img, txt, pos, FONT, scale, col, thick,     cv2.LINE_AA)
+
+        def _corner_bracket(img, x, y, dx, dy, size, col, dim):
+            """Draw L-shaped corner bracket with glow. dx/dy = ±1 direction."""
+            ex, ey = x + dx * size, y + dy * size
+            _gline(img, (x, y), (ex, y), col, dim, 2)
+            _gline(img, (x, y), (x, ey), col, dim, 2)
+            # small tick at tip
+            cv2.line(img, (ex - dx * 4, y - 1), (ex - dx * 4, y + 1), col, 1)
+
+        def _arc_gauge(img, cx, cy, r, pct, col_full, col_dim, col_bg,
+                       start_deg=135, sweep=270):
+            """270° arc gauge: start_deg → start_deg+sweep filled by pct."""
+            # Background arc
+            cv2.ellipse(img, (cx, cy), (r, r), 0, start_deg,
+                        start_deg + sweep, col_bg, 4, cv2.LINE_AA)
+            # Filled portion
+            fill_end = start_deg + sweep * max(0.0, min(1.0, pct))
+            if fill_end > start_deg + 1:
+                _garc(img, (cx, cy), r, start_deg, fill_end, col_full, col_dim, 3)
+            # Tick marks around ring
+            for i in range(11):
+                a_deg = start_deg + sweep * i / 10
+                a_rad = _math.radians(a_deg)
+                r1 = r + 5; r2 = r + (9 if i % 5 == 0 else 7)
+                px1 = int(cx + r1 * _math.cos(a_rad))
+                py1 = int(cy + r1 * _math.sin(a_rad))
+                px2 = int(cx + r2 * _math.cos(a_rad))
+                py2 = int(cy + r2 * _math.sin(a_rad))
+                tcol = col_full if i % 5 == 0 else col_dim
+                cv2.line(img, (px1, py1), (px2, py2), tcol, 1, cv2.LINE_AA)
+
+        def _radar_sweep(img, cx, cy, r, angle_deg, col, dim):
+            """Radar sweep wedge + leading line."""
+            a1 = _math.radians(angle_deg)
+            a2 = _math.radians(angle_deg - 40)
+            # Dim wedge fill
+            pts = []
+            pts.append([cx, cy])
+            for a in range(int(angle_deg) - 40, int(angle_deg) + 1, 2):
+                ar = _math.radians(a)
+                pts.append([int(cx + r * _math.cos(ar)),
+                             int(cy + r * _math.sin(ar))])
+            if len(pts) > 2:
+                import numpy as _np2
+                pts_arr = _np2.array(pts, dtype=_np2.int32)
+                overlay = img.copy()
+                cv2.fillPoly(overlay, [pts_arr], dim)
+                cv2.addWeighted(overlay, 0.35, img, 0.65, 0, img)
+            # Leading sweep line
+            lx = int(cx + r * _math.cos(a1))
+            ly = int(cy + r * _math.sin(a1))
+            _gline(img, (cx, cy), (lx, ly), col, (col[0]//3, col[1]//3, col[2]//3), 1)
+            # Outer ring
+            cv2.ellipse(img, (cx, cy), (r, r), 0, 0, 360, dim, 1, cv2.LINE_AA)
+            # Cross hairs
+            cv2.line(img, (cx - r, cy), (cx + r, cy), (col[0]//8, col[1]//8, col[2]//8), 1)
+            cv2.line(img, (cx, cy - r), (cx, cy + r), (col[0]//8, col[1]//8, col[2]//8), 1)
 
         # ── Canvas dimensions ──────────────────────────────────────────
         WIN_W  = 1280
         WIN_H  = 720
-        HDR_H  = 42
-        FOOT_H = 40
-        SIDE_W = 310
+        HDR_H  = 48
+        FOOT_H = 36
+        SIDE_W = 300
         CAM_W  = WIN_W - SIDE_W
         CAM_H  = WIN_H - HDR_H - FOOT_H
 
         canvas = np.zeros((WIN_H, WIN_W, 3), dtype=np.uint8)
         canvas[:] = BG
 
-        # ── HUD state from frame_server ────────────────────────────────
+        # ── HUD state ─────────────────────────────────────────────────
         goal       = 'idle'
         mode       = 'live'
         tick       = 0
         voice_text = ''
         thinking   = False
+        hp_pct     = 1.0
+        food_pct   = 1.0
         try:
             from core import frame_server as _fs
             with _fs._hud_lock:
@@ -1105,152 +1188,225 @@ class VideoCapturePipeline:
                 tick       = _fs._hud_state.get('tick', 0)
                 voice_text = _fs._hud_state.get('voice_text', '')
                 thinking   = bool(_fs._hud_state.get('thinking', False))
+                hp_pct     = float(_fs._hud_state.get('health_pct', 100)) / 100.0
+                food_pct   = float(_fs._hud_state.get('hunger_pct', 100)) / 100.0
         except Exception:
             pass
 
         uptime_s   = int(time.time() - VideoCapturePipeline._JARVIS_START)
-        uptime_str = (f'{uptime_s // 3600:02d}h '
-                      f'{(uptime_s % 3600) // 60:02d}m '
-                      f'{uptime_s % 60:02d}s')
-        thoughts = _monologue_render_lines()
+        uptime_str = f'{uptime_s // 3600:02d}:{(uptime_s % 3600) // 60:02d}:{uptime_s % 60:02d}'
+        thoughts   = _monologue_render_lines()
 
-        # ── Header ─────────────────────────────────────────────────────
+        # ══════════════════════════════════════════════════════════════
+        # HEADER
+        # ══════════════════════════════════════════════════════════════
         cv2.rectangle(canvas, (0, 0), (WIN_W, HDR_H), PANEL, -1)
-        cv2.line(canvas, (0, HDR_H), (WIN_W, HDR_H), CYAN, 1)
-        # logo
-        cv2.putText(canvas, 'A K S U M A E L', (12, 28),
-                    FONT, 0.7, CYAN, 2, cv2.LINE_AA)
-        # tick / mode / uptime
-        cv2.putText(canvas,
-                    f'TICK {tick:07d}   MODE {mode.upper():<8s}   UP {uptime_str}',
-                    (270, 28), FONT, 0.40, DCYAN, 1, cv2.LINE_AA)
+        # Bottom glow line
+        _gline(canvas, (0, HDR_H - 1), (WIN_W, HDR_H - 1), CYAN2, DCYAN, 1)
 
-        # ── Thinking pulse (top-right of header) ──────────────────────
-        # Spinning arc when active; dim steady ring when idle
-        pulse_cx = WIN_W - 30
-        pulse_cy = HDR_H // 2 + 1
-        pulse_r  = 14
+        # Logo with glow
+        _gtext(canvas, 'A K S U M A E L', (12, 32), 0.72, CYAN, DCYAN, 2)
+
+        # Info
+        info = f'TICK {tick:07d}   {mode.upper():<8s}   UP {uptime_str}'
+        cv2.putText(canvas, info, (280, 32), FONT, 0.38, CYAN2, 1, cv2.LINE_AA)
+
+        # ── Thinking ring cluster (right of header) ────────────────────
+        rc_x = WIN_W - 55
+        rc_y = HDR_H // 2 + 2
+
         if thinking:
-            # Bright spinning arc (360° / 60 frames per rev ≈ 6°/frame)
-            angle = int(fnum * 6) % 360
-            arc_color = CYAN
-            cv2.ellipse(canvas,
-                        (pulse_cx, pulse_cy), (pulse_r, pulse_r),
-                        0, angle, angle + 240, arc_color, 2, cv2.LINE_AA)
-            # Label
-            cv2.putText(canvas, 'PROCESSING', (WIN_W - 140, 28),
-                        FONT, 0.32, CYAN, 1, cv2.LINE_AA)
+            ang = (fnum * 5) % 360
+            ang2 = (fnum * 8 + 120) % 360
+            # Outer spinning arc
+            _garc(canvas, (rc_x, rc_y), 20, ang, ang + 200, CYAN, DCYAN, 2)
+            # Inner counter-spinning arc
+            _garc(canvas, (rc_x, rc_y), 13, -ang2, -ang2 + 130, CYAN2,
+                  (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1)
+            # Core dot
+            _gcircle(canvas, (rc_x, rc_y), 4, CYAN, DCYAN, -1)
+            _gtext(canvas, 'PROCESSING', (WIN_W - 180, 32), 0.32, CYAN, DCYAN)
         else:
-            # Dim idle ring with slow pulse (brightness oscillates ~1Hz)
-            phase = (fnum % 30) / 30.0          # 0..1 over 30 frames
-            bright = int(40 + 20 * abs(phase - 0.5) * 2)
-            idle_col = (bright, bright // 2, 0)
-            cv2.circle(canvas, (pulse_cx, pulse_cy), pulse_r, idle_col, 1,
-                       cv2.LINE_AA)
-            cv2.putText(canvas, 'STANDBY', (WIN_W - 110, 28),
-                        FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
+            # Idle: dim pulsing ring
+            phase = abs(_math.sin(fnum * 0.04))
+            bc = int(30 + 25 * phase)
+            ic = (bc, bc // 2, 0)
+            cv2.circle(canvas, (rc_x, rc_y), 20, ic, 1, cv2.LINE_AA)
+            cv2.circle(canvas, (rc_x, rc_y), 13, ic, 1, cv2.LINE_AA)
+            cv2.circle(canvas, (rc_x, rc_y), 4,
+                       (bc // 2, bc // 2, 0), -1, cv2.LINE_AA)
+            cv2.putText(canvas, 'STANDBY', (WIN_W - 140, 32),
+                        FONT, 0.30, DCYAN, 1, cv2.LINE_AA)
 
-        # ── Camera feed (main, left+center) ───────────────────────────
+        # Circuit trace deco: short dashes after logo
+        for xi in range(220, 260, 8):
+            cv2.rectangle(canvas, (xi, 18), (xi + 4, 20), VCYAN, -1)
+
+        # ══════════════════════════════════════════════════════════════
+        # CAMERA FEED
+        # ══════════════════════════════════════════════════════════════
         cam_x0, cam_y0 = 0, HDR_H
         if frame is not None:
             cam_frame = cv2.resize(frame, (CAM_W, CAM_H))
             canvas[cam_y0:cam_y0 + CAM_H, cam_x0:cam_x0 + CAM_W] = cam_frame
         else:
-            # No signal — dark panel with text
             cv2.rectangle(canvas, (cam_x0, cam_y0),
-                          (cam_x0 + CAM_W, cam_y0 + CAM_H), (6, 4, 2), -1)
-            cv2.putText(canvas, 'NO CAMERA SIGNAL',
-                        (CAM_W // 2 - 110, cam_y0 + CAM_H // 2),
-                        FONT, 0.8, DCYAN, 2, cv2.LINE_AA)
-        # Corner brackets on camera
-        blen = 18
-        for bx, by, dx, dy in [
-            (cam_x0, cam_y0, 1, 1),
-            (cam_x0 + CAM_W - blen, cam_y0, -1, 1),
-            (cam_x0, cam_y0 + CAM_H - blen, 1, -1),
-            (cam_x0 + CAM_W - blen, cam_y0 + CAM_H - blen, -1, -1),
-        ]:
-            cv2.line(canvas, (bx, by), (bx + dx * blen, by), CYAN, 2)
-            cv2.line(canvas, (bx, by), (bx, by + dy * blen), CYAN, 2)
-        # Camera label
-        cv2.putText(canvas, 'LIVE · /dev/video2',
-                    (cam_x0 + 6, cam_y0 + 16),
-                    FONT, 0.35, (CYAN[0] // 2, CYAN[1] // 2, CYAN[2] // 2),
-                    1, cv2.LINE_AA)
+                          (cam_x0 + CAM_W, cam_y0 + CAM_H), (5, 3, 1), -1)
+            _gtext(canvas, 'NO CAMERA SIGNAL',
+                   (CAM_W // 2 - 120, cam_y0 + CAM_H // 2),
+                   0.9, DCYAN, VCYAN, 2)
 
-        # ── Right sidebar ──────────────────────────────────────────────
-        sx = CAM_W  # sidebar starts here
-        cv2.rectangle(canvas, (sx, HDR_H), (WIN_W, WIN_H - FOOT_H), PANEL, -1)
-        cv2.line(canvas, (sx, HDR_H), (sx, WIN_H), CYAN, 1)
-        px = sx + 8
-        sy = HDR_H + 14
+        # ── Extended corner brackets ─────────────────────────────────
+        BLEN = 30
+        _corner_bracket(canvas, cam_x0,        cam_y0,        1,  1, BLEN, CYAN, DCYAN)
+        _corner_bracket(canvas, cam_x0 + CAM_W, cam_y0,       -1,  1, BLEN, CYAN, DCYAN)
+        _corner_bracket(canvas, cam_x0,         cam_y0 + CAM_H, 1, -1, BLEN, CYAN, DCYAN)
+        _corner_bracket(canvas, cam_x0 + CAM_W, cam_y0 + CAM_H,-1, -1, BLEN, CYAN, DCYAN)
 
-        # --- COGNITIVE STATE ---
-        cv2.putText(canvas, 'COGNITIVE STATE', (px, sy),
-                    FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
-        sy += 6
-        cv2.line(canvas, (px, sy), (WIN_W - 4, sy), DCYAN, 1)
+        # ── Top overlay strip on camera ──────────────────────────────
+        strip_h = 20
+        overlay = canvas.copy()
+        cv2.rectangle(overlay, (cam_x0, cam_y0), (cam_x0 + CAM_W, cam_y0 + strip_h),
+                      (5, 3, 1), -1)
+        cv2.addWeighted(overlay, 0.55, canvas, 0.45, 0, canvas)
+        cv2.putText(canvas, 'LIVE  /dev/video2', (cam_x0 + 6, cam_y0 + 14),
+                    FONT, 0.33, CYAN2, 1, cv2.LINE_AA)
+        # Right side of strip: mode
+        cv2.putText(canvas, f'MODE:{mode.upper()}', (cam_x0 + CAM_W - 100, cam_y0 + 14),
+                    FONT, 0.33, CYAN2, 1, cv2.LINE_AA)
+
+        # ── Radar sweep (bottom-left of camera) ──────────────────────
+        rad_cx = cam_x0 + 70
+        rad_cy = cam_y0 + CAM_H - 70
+        rad_r  = 55
+        rad_ang = (fnum * 3) % 360
+        _radar_sweep(canvas, rad_cx, rad_cy, rad_r, rad_ang, CYAN2, DCYAN)
+        # Blip if detections
+        n_blips = min(len(objs or []), 4)
+        for bi in range(n_blips):
+            ba = _math.radians(bi * 90 + fnum * 1.5)
+            br = rad_r * (0.4 + bi * 0.15)
+            bx2 = int(rad_cx + br * _math.cos(ba))
+            by2 = int(rad_cy + br * _math.sin(ba))
+            _gcircle(canvas, (bx2, by2), 3, GREEN, DGREEN, -1)
+        cv2.putText(canvas, 'RADAR', (rad_cx - rad_r, rad_cy - rad_r - 4),
+                    FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+
+        # ══════════════════════════════════════════════════════════════
+        # RIGHT SIDEBAR
+        # ══════════════════════════════════════════════════════════════
+        sx = CAM_W
+        cv2.rectangle(canvas, (sx, HDR_H), (WIN_W, WIN_H), PANEL, -1)
+        # Left border with glow
+        _gline(canvas, (sx, HDR_H), (sx, WIN_H), CYAN2, DCYAN, 1)
+        px = sx + 10
+
+        # ── Section: COGNITIVE STATE ──────────────────────────────────
+        sy = HDR_H + 12
+        _gtext(canvas, 'COGNITIVE STATE', (px, sy), 0.33, CYAN2, DCYAN)
+        sy += 5
+        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
         sy += 14
 
-        LINE_H   = 17
-        SIDE_TXT = SIDE_W - 16
-        avail_h  = (WIN_H - FOOT_H) - sy - 110   # leave room for detections
+        LINE_H = 16
+        chars  = (SIDE_W - 20) * 2 // 7
+        avail_h = (WIN_H - FOOT_H) - sy - 170  # reserve for gauges + detections
         max_lines = max(1, avail_h // LINE_H)
-        recent_thoughts = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
-        for i, line in enumerate(recent_thoughts):
-            is_latest = (i == len(recent_thoughts) - 1)
-            col = CYAN if is_latest else (WHITE if i >= len(recent_thoughts) - 4 else DCYAN)
-            prefix = '> ' if is_latest else '  '
-            chars = (SIDE_TXT * 2) // 7   # approx chars that fit at scale 0.36
-            disp  = (line[:chars] + '..') if len(line) > chars else line
+        recent = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
+        for i, line in enumerate(recent):
+            is_last = (i == len(recent) - 1)
+            col = CYAN if is_last else (WHITE if i >= len(recent) - 3 else DCYAN)
+            prefix = '> ' if is_last else '  '
+            disp = (line[:chars] + '..') if len(line) > chars else line
             cv2.putText(canvas, f'{prefix}{disp}',
-                        (px, sy + i * LINE_H),
-                        FONT, 0.34, col, 1, cv2.LINE_AA)
-        sy += max_lines * LINE_H + 8
+                        (px, sy + i * LINE_H), FONT, 0.32, col, 1, cv2.LINE_AA)
+        sy += max_lines * LINE_H + 6
 
-        # --- DETECTIONS ---
-        cv2.line(canvas, (px, sy), (WIN_W - 4, sy), DCYAN, 1)
-        sy += 12
-        cv2.putText(canvas, 'DETECTIONS', (px, sy),
-                    FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
+        # ── Arc gauges: HP + HUNGER side by side ──────────────────────
+        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
+        sy += 10
+        gauge_r = 34
+        g1_cx = sx + SIDE_W // 4
+        g2_cx = sx + 3 * SIDE_W // 4
+        g_cy  = sy + gauge_r + 10
+
+        # HP gauge
+        hp_col  = RED if hp_pct < 0.3 else (ORANGE if hp_pct < 0.6 else GREEN)
+        hp_dim  = (hp_col[0]//4, hp_col[1]//4, hp_col[2]//4)
+        _arc_gauge(canvas, g1_cx, g_cy, gauge_r, hp_pct,
+                   hp_col, hp_dim, VCYAN)
+        hp_str = f'{int(hp_pct * 100)}%'
+        (tw, th), _ = cv2.getTextSize(hp_str, FONT, 0.35, 1)
+        cv2.putText(canvas, hp_str,
+                    (g1_cx - tw // 2, g_cy + th // 2), FONT, 0.35, hp_col, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'HP',
+                    (g1_cx - 7, g_cy + th // 2 + 13), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+
+        # HUNGER gauge
+        food_col = RED if food_pct < 0.3 else ORANGE
+        food_dim = (food_col[0]//4, food_col[1]//4, food_col[2]//4)
+        _arc_gauge(canvas, g2_cx, g_cy, gauge_r, food_pct,
+                   food_col, food_dim, VCYAN)
+        fd_str = f'{int(food_pct * 100)}%'
+        (tw2, th2), _ = cv2.getTextSize(fd_str, FONT, 0.35, 1)
+        cv2.putText(canvas, fd_str,
+                    (g2_cx - tw2 // 2, g_cy + th2 // 2), FONT, 0.35, food_col, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'FOOD',
+                    (g2_cx - 12, g_cy + th2 // 2 + 13), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+
+        sy = g_cy + gauge_r + 16
+
+        # ── Detections ────────────────────────────────────────────────
+        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
+        sy += 10
+        _gtext(canvas, 'DETECTIONS', (px, sy), 0.32, CYAN2, DCYAN)
         sy += 14
-        bar_max = SIDE_W - 20
-        for obj in (objs or [])[:7]:
-            if sy >= WIN_H - FOOT_H - 8:
+        bar_max = SIDE_W - 22
+        for obj in (objs or [])[:6]:
+            if sy >= WIN_H - FOOT_H - 6:
                 break
-            label  = str(obj.get('label', obj.get('class_name', '?')))[:14]
-            conf   = float(obj.get('confidence', obj.get('conf', 0.0)))
-            bar_w  = int(bar_max * conf)
-            cv2.rectangle(canvas, (px, sy - 8), (px + bar_w, sy - 2),
-                          (0, 40, 40), -1)
-            cv2.putText(canvas, f'{label:<14s}{conf:3.0%}',
-                        (px, sy - 1), FONT, 0.33, GREEN, 1, cv2.LINE_AA)
+            label = str(obj.get('label', obj.get('class_name', '?')))[:13]
+            conf  = float(obj.get('confidence', obj.get('conf', 0.0)))
+            bar_w = int(bar_max * conf)
+            # bar bg
+            cv2.rectangle(canvas, (px, sy - 9), (px + bar_max, sy - 3), VCYAN, -1)
+            # bar fill
+            fill_col = (GREEN[0]//2, GREEN[1]//2, GREEN[2]//2)
+            cv2.rectangle(canvas, (px, sy - 9), (px + bar_w, sy - 3), fill_col, -1)
+            cv2.putText(canvas, f'{label:<13s} {conf:3.0%}',
+                        (px, sy - 2), FONT, 0.30, GREEN, 1, cv2.LINE_AA)
             sy += 13
         if not objs:
             cv2.putText(canvas, 'no detections', (px, sy),
-                        FONT, 0.33, DCYAN, 1, cv2.LINE_AA)
+                        FONT, 0.30, DCYAN, 1, cv2.LINE_AA)
 
-        # ── Footer strip (full width) ──────────────────────────────────
+        # ══════════════════════════════════════════════════════════════
+        # FOOTER
+        # ══════════════════════════════════════════════════════════════
         fy = WIN_H - FOOT_H
         cv2.rectangle(canvas, (0, fy), (WIN_W, WIN_H), PANEL, -1)
-        cv2.line(canvas, (0, fy), (WIN_W, fy), CYAN, 1)
-        fmy = fy + 14
+        _gline(canvas, (0, fy), (WIN_W, fy), CYAN2, DCYAN, 1)
+        fmy = fy + 22
 
-        # Voice indicator
+        # Voice dot + text
         if voice_text:
-            cv2.circle(canvas, (18, fmy - 3), 6, ORANGE, -1)
-            vt = (voice_text[:100] + '...') if len(voice_text) > 100 else voice_text
-            cv2.putText(canvas, vt, (32, fmy), FONT, 0.42, ORANGE, 1, cv2.LINE_AA)
+            pulse_r2 = 5 + int(3 * abs(_math.sin(fnum * 0.1)))
+            _gcircle(canvas, (18, fmy - 5), pulse_r2, ORANGE, DORANGE, -1)
+            vt = (voice_text[:80] + '…') if len(voice_text) > 80 else voice_text
+            cv2.putText(canvas, vt, (32, fmy), FONT, 0.38, ORANGE, 1, cv2.LINE_AA)
         else:
-            cv2.circle(canvas, (18, fmy - 3), 6, DCYAN, 1)
-            cv2.putText(canvas, 'voice ready  (F9 = PTT)',
-                        (32, fmy), FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
+            cv2.circle(canvas, (18, fmy - 5), 5, DCYAN, 1, cv2.LINE_AA)
+            cv2.putText(canvas, 'VOICE READY  F9=PTT',
+                        (32, fmy), FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
 
-        # Objective (right-aligned in footer)
-        obj_str = f'OBJECTIVE: {goal[:50]}'
-        (tw, _), _ = cv2.getTextSize(obj_str, FONT, 0.40, 1)
-        cv2.putText(canvas, obj_str, (WIN_W - tw - 10, fmy),
-                    FONT, 0.40, GREEN, 1, cv2.LINE_AA)
+        # Objective right-aligned
+        obj_label = f'>> {goal[:55]}'
+        (tw3, _), _ = cv2.getTextSize(obj_label, FONT, 0.38, 1)
+        _gtext(canvas, obj_label, (WIN_W - tw3 - 10, fmy), 0.38, CYAN, DCYAN)
+
+        # Circuit dash decoration centre-footer
+        for xi in range(WIN_W // 2 - 60, WIN_W // 2 + 60, 10):
+            cv2.rectangle(canvas, (xi, fy + 10), (xi + 5, fy + 11), VCYAN, -1)
 
         cv2.imshow(window_name, canvas)
 
