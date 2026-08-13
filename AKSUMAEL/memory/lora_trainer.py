@@ -206,7 +206,6 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
             remove_unused_columns=False,
             report_to="none",
             dataset_text_field="text",
-            max_seq_length=256,
         )
 
         trainer = SFTTrainer(
@@ -214,6 +213,7 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
             args=sft_config,
             train_dataset=dataset,
             processing_class=tokenizer,
+            max_seq_length=256,  # passed to SFTTrainer directly (not SFTConfig) in TRL 1.9.2
         )
 
         print(f"[LORA] Training for {max_steps} steps...")
