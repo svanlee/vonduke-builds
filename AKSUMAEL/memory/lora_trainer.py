@@ -117,62 +117,87 @@ def _load_pairs() -> list[dict]:
     return pairs
 
 
+GPU_VRAM_MIN_MB = 3000  # minimum free VRAM needed for GPU training
+
+
+def _get_gpu_free_mb() -> int:
+    """Return free GPU VRAM in MiB, or 0 if no GPU."""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return 0
+        props = torch.cuda.get_device_properties(0)
+        # Use subprocess to get real free memory (torch reports total, not free)
+        import subprocess
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            text=True
+        ).strip()
+        return int(out.splitlines()[0].strip())
+    except Exception:
+        return 0
+
+
 def train(max_steps: int = 200, batch_size: int = 1) -> dict:
     """
     Fine-tune the base model with LoRA + SFT on high-reward (chosen) actions.
 
     Uses SFT (Supervised Fine-Tuning) instead of DPO because DPO requires two
-    simultaneous forward passes (policy + reference model), which exceeds 6GB VRAM.
-    SFT trains the model to produce the best known action for each goal+state,
-    providing equivalent practical benefit for small datasets (< 100 pairs).
+    simultaneous forward passes (policy + reference model), which exceeds 6GB VRAM
+    when the bot service is also running (YOLO + llama-server consume ~5.6GB).
 
-    Memory strategy:
-    - SFT: single model forward pass, no reference model needed
-    - 4-bit quantization + gradient checkpointing
-    - max_seq_length=256: truncates long samples, reduces activation memory
-    - batch_size=1, grad_accum=8: effective batch 8 with minimal peak VRAM
+    Falls back to CPU training automatically if GPU VRAM is too low.
+    CPU training is ~10× slower but reliable and non-disruptive to live services.
     """
     readiness = check_readiness()
     if readiness.get("missing_packages"):
         return {"error": f"missing packages: {readiness['missing_packages']}", "install": readiness.get("install_cmd")}
-    if not readiness.get("cuda_available"):
-        return {"error": "CUDA not available — GPU required for LoRA training"}
 
     pairs = _load_pairs()
     if len(pairs) < MIN_PAIRS:
         return {"error": f"need {MIN_PAIRS} preference pairs, have {len(pairs)}. Keep running the bot to collect more."}
 
+    # Decide GPU vs CPU
+    free_mb = _get_gpu_free_mb()
+    use_gpu = free_mb >= GPU_VRAM_MIN_MB
+    print(f"[LORA] GPU free VRAM: {free_mb} MiB — {'using GPU' if use_gpu else 'falling back to CPU (bot using GPU)'}")
     print(f"[LORA] Starting SFT fine-tune on {len(pairs)} chosen actions, base={BASE_MODEL}")
     start = time.time()
 
     try:
         import torch
         from datasets import Dataset
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
+        from peft import LoraConfig, get_peft_model, TaskType
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from trl import SFTTrainer, SFTConfig
-
-        # 4-bit quantization to fit in 6GB VRAM
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-        )
 
         print(f"[LORA] Loading {BASE_MODEL}...")
         tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
         tokenizer.pad_token = tokenizer.eos_token
 
-        model = AutoModelForCausalLM.from_pretrained(
-            BASE_MODEL,
-            quantization_config=bnb_config,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-
-        # Enable gradient checkpointing + kbit training before applying LoRA
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+        if use_gpu:
+            from peft import prepare_model_for_kbit_training
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                BASE_MODEL,
+                quantization_config=bnb_config,
+                device_map="auto",
+                trust_remote_code=True,
+            )
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+        else:
+            # CPU training: load in float32, no quantization needed
+            model = AutoModelForCausalLM.from_pretrained(
+                BASE_MODEL,
+                torch_dtype=torch.float32,
+                device_map="cpu",
+                trust_remote_code=True,
+            )
 
         # LoRA adapter config
         lora_config = LoraConfig(
@@ -196,13 +221,14 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
             num_train_epochs=3,
             max_steps=max_steps,
             per_device_train_batch_size=batch_size,
-            gradient_accumulation_steps=8,
+            gradient_accumulation_steps=4,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.1,
-            logging_steps=20,
+            logging_steps=10,
             save_steps=100,
-            fp16=True,
+            fp16=use_gpu,   # fp16 only on GPU; CPU uses fp32
+            no_cuda=not use_gpu,
             remove_unused_columns=False,
             report_to="none",
             dataset_text_field="text",
@@ -213,7 +239,7 @@ def train(max_steps: int = 200, batch_size: int = 1) -> dict:
             args=sft_config,
             train_dataset=dataset,
             processing_class=tokenizer,
-            max_seq_length=256,  # passed to SFTTrainer directly (not SFTConfig) in TRL 1.9.2
+            max_seq_length=256,
         )
 
         print(f"[LORA] Training for {max_steps} steps...")
