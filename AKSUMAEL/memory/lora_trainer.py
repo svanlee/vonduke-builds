@@ -193,7 +193,7 @@ def train(max_steps: int = 200, batch_size: int = 2) -> dict:
             model=model,
             args=dpo_config,
             train_dataset=dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,  # renamed from tokenizer in TRL >= 0.12
         )
 
         print(f"[LORA] Training for {max_steps} steps...")
