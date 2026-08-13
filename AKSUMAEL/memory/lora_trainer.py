@@ -112,10 +112,17 @@ def _load_pairs() -> list[dict]:
     return pairs
 
 
-def train(max_steps: int = 200, batch_size: int = 2) -> dict:
+def train(max_steps: int = 200, batch_size: int = 1) -> dict:
     """
     Fine-tune the base model with LoRA + DPO on preference pairs.
-    Runs on GPU (RTX 4050, 6GB VRAM) with 4-bit quantization.
+    Runs on GPU (RTX 4050 Laptop, 6GB VRAM) with 4-bit quantization.
+
+    Memory strategy:
+    - ref_model=None: TRL uses frozen base (adapters disabled) as ref — avoids
+      loading a second copy of TinyLlama (would be 2×1.1B = OOM on 6GB)
+    - gradient_checkpointing: trades compute for activation memory
+    - prepare_model_for_kbit_training: enables proper gradient flow through 4-bit layers
+    - batch_size=1, grad_accum=8: effective batch 8 with minimal memory
     """
     readiness = check_readiness()
     if readiness.get("missing_packages"):
@@ -133,7 +140,7 @@ def train(max_steps: int = 200, batch_size: int = 2) -> dict:
     try:
         import torch
         from datasets import Dataset
-        from peft import LoraConfig, get_peft_model, TaskType
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from trl import DPOTrainer, DPOConfig
 
@@ -142,7 +149,7 @@ def train(max_steps: int = 200, batch_size: int = 2) -> dict:
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_compute_dtype=torch.float16,  # fp16 more stable than bf16 on laptop GPU
         )
 
         print(f"[LORA] Loading {BASE_MODEL}...")
@@ -156,13 +163,16 @@ def train(max_steps: int = 200, batch_size: int = 2) -> dict:
             trust_remote_code=True,
         )
 
-        # LoRA adapter: lightweight, trainable attention projections
+        # Enable gradient checkpointing + kbit training before applying LoRA
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+
+        # LoRA adapter: r=8 saves VRAM vs r=16, still meaningful fine-tuning signal
         lora_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
-            r=16,
-            lora_alpha=32,
+            r=8,
+            lora_alpha=16,
             lora_dropout=0.05,
-            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+            target_modules=["q_proj", "v_proj"],  # fewer targets = less VRAM
             bias="none",
         )
         model = get_peft_model(model, lora_config)
@@ -177,20 +187,23 @@ def train(max_steps: int = 200, batch_size: int = 2) -> dict:
             output_dir=str(LORA_PATH),
             num_train_epochs=1,
             max_steps=max_steps,
-            per_device_train_batch_size=batch_size,
-            gradient_accumulation_steps=4,
+            per_device_train_batch_size=batch_size,  # 1 to minimize peak VRAM
+            gradient_accumulation_steps=8,           # effective batch = 8
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.1,
             logging_steps=20,
             save_steps=100,
-            bf16=True,
+            fp16=True,           # fp16 instead of bf16 for 6GB laptop VRAM
             remove_unused_columns=False,
             report_to="none",
         )
 
+        # ref_model=None: TRL uses the base model (adapters disabled) as reference
+        # This avoids loading a second full copy of TinyLlama — critical for 6GB VRAM
         trainer = DPOTrainer(
             model=model,
+            ref_model=None,
             args=dpo_config,
             train_dataset=dataset,
             processing_class=tokenizer,  # renamed from tokenizer in TRL >= 0.12
