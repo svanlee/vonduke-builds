@@ -307,20 +307,16 @@ class JarvisBrain:
         self._history.append({"role": "user", "content": user_text})
 
         answer = None
-        # Try local first
+        # Local ONLY — no cloud fallback (prevents API spend when local is down)
         try:
             answer = self._respond_local(user_text, TOOL_SCHEMAS)
             self._using_local = True
             provider = 'local'
         except Exception as local_err:
-            print(f'[JARVIS] local failed ({local_err}), falling back to Claude')
+            print(f'[JARVIS] local failed ({local_err}), staying offline (no cloud fallback)')
             self._using_local = False
-            try:
-                answer = self._respond_claude(user_text, TOOL_SCHEMAS)
-                provider = 'claude'
-            except Exception as cloud_err:
-                answer = f"I'm offline — both local and cloud failed: {cloud_err}"
-                provider = 'none'
+            answer = "Local model is loading — try again in a moment."
+            provider = 'none'
 
         if not answer:
             answer = "I didn't get a response — please try again."

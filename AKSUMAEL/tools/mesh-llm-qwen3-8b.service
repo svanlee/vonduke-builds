@@ -1,0 +1,24 @@
+[Unit]
+Description=LLaMA Server — Qwen3-8B-Q4_K_M (reasoning, local)
+After=network.target
+
+[Service]
+Environment=LD_LIBRARY_PATH=/home/ros/cuda-12.6/targets/x86_64-linux/lib
+ExecStart=/home/ros/llama.cpp/build/bin/llama-server \
+  --model /home/ros/models/qwen3-8b/Qwen_Qwen3-8B-Q4_K_M.gguf \
+  --host 0.0.0.0 \
+  --port 9337 \
+  --ctx-size 8192 \
+  --parallel 1 \
+  --cache-type-k q8_0 \
+  --cache-type-v q8_0 \
+  -fa on \
+  --n-gpu-layers 28 \
+  -ngl 28 \
+  --temp 0.2 \
+  --repeat-penalty 1.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
