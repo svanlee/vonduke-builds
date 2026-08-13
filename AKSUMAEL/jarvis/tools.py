@@ -508,6 +508,21 @@ def inject_goal(goal: str, priority: int = 5, reason: str = "") -> dict:
     with open(injected_path, "w") as f:
         json.dump({"queue": queue}, f, indent=2)
 
+    # Persist intent so overseer can re-inject after restarts
+    intent_path = BASE_DIR / "data" / "last_intent.json"
+    try:
+        with open(intent_path, "w") as f:
+            json.dump({
+                "goal": goal,
+                "priority": priority,
+                "authority": authority,
+                "reason": reason,
+                "ts": time.time(),
+                "ts_human": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }, f, indent=2)
+    except Exception:
+        pass
+
     return {"status": "injected", "goal": goal, "authority": authority}
 
 

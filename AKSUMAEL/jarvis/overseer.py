@@ -488,9 +488,29 @@ class JarvisOverseer(threading.Thread):
         combined = "\n\n".join(domain_ctx[:5])  # cap at 5 files
         return f"\n\nTraining domain results from prior sessions:\n{combined}"
 
+    def _restore_last_intent(self):
+        """Re-inject the last Jarvis-requested goal if it's recent (< 4 hours old).
+        This ensures goal continuity across bot restarts without LLM involvement."""
+        intent_path = BASE_DIR / "data" / "last_intent.json"
+        try:
+            import json as _json
+            data = _json.loads(intent_path.read_text())
+            age_h = (time.time() - data.get("ts", 0)) / 3600
+            if age_h < 4.0:
+                goal = data.get("goal", "")
+                priority = data.get("priority", 5)
+                if goal:
+                    from jarvis.tools import inject_goal
+                    inject_goal(goal, priority=priority, reason="restart_restore")
+                    _log(f"restored last intent: {goal} (age {age_h:.1f}h)")
+        except Exception:
+            pass  # no intent file or too old — start fresh
+
     def _startup_briefing(self):
         """On first start, ask the brain to assess system state using AURORA context.
         This gives Jarvis awareness of what happened in prior sessions."""
+        # Restore last injected goal before briefing the LLM
+        self._restore_last_intent()
         try:
             from memory import aurora_memory
             ep_count = 0

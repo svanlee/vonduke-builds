@@ -132,6 +132,29 @@ def _observe() -> dict:
     except Exception:
         pass
 
+    # 7. LoRA model suggestion (fast local pre-screen if adapter exists)
+    try:
+        lora_path = BASE_DIR / "data" / "learning" / "lora_adapter"
+        if lora_path.exists():
+            current_goal = obs.get("current_goal") or obs.get("recent_goal") or "explore"
+            belief_str = json.dumps(obs.get("bot_state", {}))[:200]
+            from memory.lora_trainer import infer as _lora_infer
+            suggestion = _lora_infer(current_goal, belief=belief_str, max_new_tokens=40)
+            if suggestion and not suggestion.startswith("[infer error"):
+                obs["lora_suggestion"] = suggestion.strip()[:100]
+    except Exception:
+        pass  # LoRA not available yet — that's fine
+
+    # 8. LoRA training status
+    try:
+        lora_stats_path = BASE_DIR / "data" / "learning" / "lora_stats.json"
+        if lora_stats_path.exists():
+            stats = json.loads(lora_stats_path.read_text())
+            obs["lora_trained_at"] = stats.get("trained_at")
+            obs["lora_n_pairs"] = stats.get("n_pairs")
+    except Exception:
+        pass
+
     return obs
 
 
@@ -146,6 +169,10 @@ def _orient(obs: dict) -> str:
         f"preference_pairs={obs.get('preference_pairs', 0)}",
         f"training_domains={obs.get('training_domain_files', 0)}",
     ]
+    if obs.get("lora_suggestion"):
+        parts.append(f"lora_suggests={obs['lora_suggestion']}")
+    if obs.get("lora_trained_at"):
+        parts.append(f"lora_trained={obs['lora_trained_at']}(n={obs.get('lora_n_pairs')})")
     return " | ".join(parts)
 
 
@@ -182,9 +209,13 @@ class JarvisPlanner(threading.Thread):
         situation = _orient(obs)
         self._plan_count += 1
 
+        lora_hint = (
+            f" Local LoRA model suggests: '{obs.get('lora_suggestion')}' — consider if it aligns with best_known_goal."
+            if obs.get("lora_suggestion") else ""
+        )
         prompt = (
             f"[JARVIS PLANNER — OODA cycle #{self._plan_count}] "
-            f"Situation: {situation}. "
+            f"Situation: {situation}.{lora_hint} "
             f"You are the autonomous decision-maker for AKSUMAEL. "
             f"Based on this state and your AURORA memory, decide ONE action to take: "
             f"(a) inject a specific goal if the current goal is underperforming, "
