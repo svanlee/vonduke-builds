@@ -1036,14 +1036,22 @@ class VideoCapturePipeline:
 
     # ── Jarvis HUD renderer ───────────────────────────────────────────────
     _JARVIS_START = None   # set lazily on first render
+    _JARVIS_FRAME = 0      # incremented every render call for animations
 
     def _jarvis_imshow(self, window_name: str, frame, objs):
-        """Render a Jarvis/Ultron-style HUD — cognitive brain as main panel,
-        camera feed as a small PiP inset in the top-right corner.
+        """Render a Jarvis-style HUD — camera feed as the main display,
+        cognitive state / detections in a right sidebar, thinking pulse in header.
 
         Layout:
-          ┌─────────── header ───────────────────────────────────────┐
-          │  AKSUMAEL  TICK  MODE  UPTIME                           │
+          ┌─────────── header: AKSUMAEL | TICK | MODE | UP | [THINK PULSE] ──┐
+          │  CAMERA FEED (big, with YOLO boxes)    │  COGNITIVE STATE         │
+          │                                        │  > thought lines ...     │
+          │                                        ├──────────────────────────│
+          │                                        │  DETECTIONS              │
+          │                                        │  ore  91% ████           │
+          ├────────────────────────────────────────┴──────────────────────────│
+          │  VOICE ◉  [transcript]          OBJECTIVE: mine_diamonds           │
+          └───────────────────────────────────────────────────────────────────┘
           ├──────────────────────────────────────┬──────────────────┤
           │  COGNITIVE STATE / INNER MONOLOGUE   │  ┌─ PiP cam ─┐  │
           │  (large scrolling thought stream)    │  │  camera   │  │
@@ -1057,23 +1065,28 @@ class VideoCapturePipeline:
         """
         if VideoCapturePipeline._JARVIS_START is None:
             VideoCapturePipeline._JARVIS_START = time.time()
+        VideoCapturePipeline._JARVIS_FRAME += 1
+        fnum = VideoCapturePipeline._JARVIS_FRAME
 
         # ── Colours (BGR) ──────────────────────────────────────────────
-        BG     = (16,  12,  2)       # #020c10
-        CYAN   = (255, 212,  0)      # #00d4ff — bright accent
-        DCYAN  = (80,   60,  0)      # dim accent
-        PANEL  = (28,  18,  2)       # sidebar/panel bg
-        GREEN  = (100, 210, 60)      # detection bars
-        WHITE  = (210, 210, 195)     # monologue text
-        ORANGE = (30,  160, 255)     # voice active
+        BG     = (12,   8,   2)      # very dark navy
+        CYAN   = (255, 212,  0)      # #00d4ff bright
+        DCYAN  = (70,   50,  0)      # dim cyan
+        PANEL  = (22,  14,  4)       # panel bg
+        GREEN  = (80,  220, 60)      # ok / health
+        WHITE  = (200, 200, 185)     # monologue body
+        ORANGE = (20,  155, 255)     # voice active
+        RED    = (50,   40, 220)     # warn
         FONT   = cv2.FONT_HERSHEY_SIMPLEX
 
         # ── Canvas dimensions ──────────────────────────────────────────
-        WIN_W  = 1100
-        WIN_H  = 680
-        HDR_H  = 38
-        SIDE_W = 280          # right panel width
-        MAIN_W = WIN_W - SIDE_W
+        WIN_W  = 1280
+        WIN_H  = 720
+        HDR_H  = 42
+        FOOT_H = 40
+        SIDE_W = 310
+        CAM_W  = WIN_W - SIDE_W
+        CAM_H  = WIN_H - HDR_H - FOOT_H
 
         canvas = np.zeros((WIN_H, WIN_W, 3), dtype=np.uint8)
         canvas[:] = BG
@@ -1083,6 +1096,7 @@ class VideoCapturePipeline:
         mode       = 'live'
         tick       = 0
         voice_text = ''
+        thinking   = False
         try:
             from core import frame_server as _fs
             with _fs._hud_lock:
@@ -1090,113 +1104,153 @@ class VideoCapturePipeline:
                 mode       = _fs._hud_state.get('mode', 'live') or 'live'
                 tick       = _fs._hud_state.get('tick', 0)
                 voice_text = _fs._hud_state.get('voice_text', '')
+                thinking   = bool(_fs._hud_state.get('thinking', False))
         except Exception:
             pass
 
         uptime_s   = int(time.time() - VideoCapturePipeline._JARVIS_START)
-        uptime_str = f'{uptime_s // 3600:02d}h {(uptime_s % 3600) // 60:02d}m {uptime_s % 60:02d}s'
-        thoughts   = _monologue_render_lines()
+        uptime_str = (f'{uptime_s // 3600:02d}h '
+                      f'{(uptime_s % 3600) // 60:02d}m '
+                      f'{uptime_s % 60:02d}s')
+        thoughts = _monologue_render_lines()
 
-        # ── Header bar ─────────────────────────────────────────────────
+        # ── Header ─────────────────────────────────────────────────────
         cv2.rectangle(canvas, (0, 0), (WIN_W, HDR_H), PANEL, -1)
         cv2.line(canvas, (0, HDR_H), (WIN_W, HDR_H), CYAN, 1)
-        cv2.putText(canvas, 'A K S U M A E L', (10, 26),
-                    FONT, 0.65, CYAN, 2, cv2.LINE_AA)
+        # logo
+        cv2.putText(canvas, 'A K S U M A E L', (12, 28),
+                    FONT, 0.7, CYAN, 2, cv2.LINE_AA)
+        # tick / mode / uptime
         cv2.putText(canvas,
-                    f'TICK:{tick:07d}   MODE:{mode.upper():<8s}   UP:{uptime_str}',
-                    (230, 26), FONT, 0.42, DCYAN, 1, cv2.LINE_AA)
+                    f'TICK {tick:07d}   MODE {mode.upper():<8s}   UP {uptime_str}',
+                    (270, 28), FONT, 0.40, DCYAN, 1, cv2.LINE_AA)
 
-        # ── Main cognitive panel (left) ────────────────────────────────
-        body_y0 = HDR_H + 1
-        body_h  = WIN_H - body_y0
-
-        # Section label
-        cy = body_y0 + 18
-        cv2.putText(canvas, 'COGNITIVE STATE', (14, cy),
-                    FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
-        cv2.line(canvas, (14, cy + 4), (MAIN_W - 14, cy + 4), DCYAN, 1)
-        cy += 22
-
-        # Thought stream — show up to 18 lines, newest at bottom
-        LINE_H = 22
-        MAX_LINES = (WIN_H - cy - 80) // LINE_H
-        recent = thoughts[-MAX_LINES:] if len(thoughts) > MAX_LINES else thoughts
-        for i, line in enumerate(recent):
-            # Fade older lines (alternate brightness)
-            is_latest = (i == len(recent) - 1)
-            color = CYAN if is_latest else (WHITE if i >= len(recent) - 4 else DCYAN)
-            prefix = '▶ ' if is_latest else '  '
-            disp = (line[:90] + '...') if len(line) > 90 else line
-            cv2.putText(canvas, f'{prefix}{disp}',
-                        (14, cy + i * LINE_H),
-                        FONT, 0.40, color, 1, cv2.LINE_AA)
-
-        # ── Voice strip (bottom of main panel) ────────────────────────
-        vy = WIN_H - 55
-        cv2.line(canvas, (8, vy), (MAIN_W - 8, vy), DCYAN, 1)
-        vy += 18
-        if voice_text:
-            cv2.circle(canvas, (22, vy - 4), 6, ORANGE, -1)
-            vt = (voice_text[:85] + '...') if len(voice_text) > 85 else voice_text
-            cv2.putText(canvas, vt, (36, vy),
-                        FONT, 0.45, ORANGE, 1, cv2.LINE_AA)
+        # ── Thinking pulse (top-right of header) ──────────────────────
+        # Spinning arc when active; dim steady ring when idle
+        pulse_cx = WIN_W - 30
+        pulse_cy = HDR_H // 2 + 1
+        pulse_r  = 14
+        if thinking:
+            # Bright spinning arc (360° / 60 frames per rev ≈ 6°/frame)
+            angle = int(fnum * 6) % 360
+            arc_color = CYAN
+            cv2.ellipse(canvas,
+                        (pulse_cx, pulse_cy), (pulse_r, pulse_r),
+                        0, angle, angle + 240, arc_color, 2, cv2.LINE_AA)
+            # Label
+            cv2.putText(canvas, 'PROCESSING', (WIN_W - 140, 28),
+                        FONT, 0.32, CYAN, 1, cv2.LINE_AA)
         else:
-            cv2.circle(canvas, (22, vy - 4), 6, DCYAN, 1)
-            cv2.putText(canvas, 'listening...',
-                        (36, vy), FONT, 0.40, DCYAN, 1, cv2.LINE_AA)
-        vy += 20
-        cv2.putText(canvas, f'OBJECTIVE: {goal[:70]}',
-                    (14, vy), FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
+            # Dim idle ring with slow pulse (brightness oscillates ~1Hz)
+            phase = (fnum % 30) / 30.0          # 0..1 over 30 frames
+            bright = int(40 + 20 * abs(phase - 0.5) * 2)
+            idle_col = (bright, bright // 2, 0)
+            cv2.circle(canvas, (pulse_cx, pulse_cy), pulse_r, idle_col, 1,
+                       cv2.LINE_AA)
+            cv2.putText(canvas, 'STANDBY', (WIN_W - 110, 28),
+                        FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
 
-        # ── Right panel divider ────────────────────────────────────────
-        cv2.rectangle(canvas, (MAIN_W, HDR_H), (WIN_W, WIN_H), PANEL, -1)
-        cv2.line(canvas, (MAIN_W, HDR_H), (MAIN_W, WIN_H), CYAN, 1)
-
-        # ── PiP camera (top of right panel) ────────────────────────────
-        PIP_W = SIDE_W - 8
-        PIP_H = int(PIP_W * 9 / 16)
-        pip_x = MAIN_W + 4
-        pip_y = HDR_H + 6
-
+        # ── Camera feed (main, left+center) ───────────────────────────
+        cam_x0, cam_y0 = 0, HDR_H
         if frame is not None:
-            pip_frame = cv2.resize(frame, (PIP_W, PIP_H))
-            canvas[pip_y:pip_y + PIP_H, pip_x:pip_x + PIP_W] = pip_frame
-        # PiP border + corner brackets
-        cv2.rectangle(canvas, (pip_x, pip_y), (pip_x + PIP_W, pip_y + PIP_H),
-                      DCYAN, 1)
-        blen = 10
-        for cx2, cy2, dx, dy in [
-            (pip_x, pip_y, 1, 1), (pip_x + PIP_W - blen, pip_y, -1, 1),
-            (pip_x, pip_y + PIP_H - blen, 1, -1),
-            (pip_x + PIP_W - blen, pip_y + PIP_H - blen, -1, -1)
+            cam_frame = cv2.resize(frame, (CAM_W, CAM_H))
+            canvas[cam_y0:cam_y0 + CAM_H, cam_x0:cam_x0 + CAM_W] = cam_frame
+        else:
+            # No signal — dark panel with text
+            cv2.rectangle(canvas, (cam_x0, cam_y0),
+                          (cam_x0 + CAM_W, cam_y0 + CAM_H), (6, 4, 2), -1)
+            cv2.putText(canvas, 'NO CAMERA SIGNAL',
+                        (CAM_W // 2 - 110, cam_y0 + CAM_H // 2),
+                        FONT, 0.8, DCYAN, 2, cv2.LINE_AA)
+        # Corner brackets on camera
+        blen = 18
+        for bx, by, dx, dy in [
+            (cam_x0, cam_y0, 1, 1),
+            (cam_x0 + CAM_W - blen, cam_y0, -1, 1),
+            (cam_x0, cam_y0 + CAM_H - blen, 1, -1),
+            (cam_x0 + CAM_W - blen, cam_y0 + CAM_H - blen, -1, -1),
         ]:
-            cv2.line(canvas, (cx2, cy2), (cx2 + dx * blen, cy2), CYAN, 2)
-            cv2.line(canvas, (cx2, cy2), (cx2, cy2 + dy * blen), CYAN, 2)
+            cv2.line(canvas, (bx, by), (bx + dx * blen, by), CYAN, 2)
+            cv2.line(canvas, (bx, by), (bx, by + dy * blen), CYAN, 2)
+        # Camera label
+        cv2.putText(canvas, 'LIVE · /dev/video2',
+                    (cam_x0 + 6, cam_y0 + 16),
+                    FONT, 0.35, (CYAN[0] // 2, CYAN[1] // 2, CYAN[2] // 2),
+                    1, cv2.LINE_AA)
 
-        # ── Detections (below PiP) ─────────────────────────────────────
-        px = MAIN_W + 10
-        dy2 = pip_y + PIP_H + 14
-        cv2.putText(canvas, 'DETECTIONS', (px, dy2),
-                    FONT, 0.36, DCYAN, 1, cv2.LINE_AA)
-        dy2 += 16
-        cv2.line(canvas, (px, dy2), (WIN_W - 6, dy2), DCYAN, 1)
-        dy2 += 12
+        # ── Right sidebar ──────────────────────────────────────────────
+        sx = CAM_W  # sidebar starts here
+        cv2.rectangle(canvas, (sx, HDR_H), (WIN_W, WIN_H - FOOT_H), PANEL, -1)
+        cv2.line(canvas, (sx, HDR_H), (sx, WIN_H), CYAN, 1)
+        px = sx + 8
+        sy = HDR_H + 14
 
-        bar_max = SIDE_W - 18
-        for obj in (objs or [])[:8]:
-            if dy2 >= WIN_H - 20:
+        # --- COGNITIVE STATE ---
+        cv2.putText(canvas, 'COGNITIVE STATE', (px, sy),
+                    FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
+        sy += 6
+        cv2.line(canvas, (px, sy), (WIN_W - 4, sy), DCYAN, 1)
+        sy += 14
+
+        LINE_H   = 17
+        SIDE_TXT = SIDE_W - 16
+        avail_h  = (WIN_H - FOOT_H) - sy - 110   # leave room for detections
+        max_lines = max(1, avail_h // LINE_H)
+        recent_thoughts = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
+        for i, line in enumerate(recent_thoughts):
+            is_latest = (i == len(recent_thoughts) - 1)
+            col = CYAN if is_latest else (WHITE if i >= len(recent_thoughts) - 4 else DCYAN)
+            prefix = '> ' if is_latest else '  '
+            chars = (SIDE_TXT * 2) // 7   # approx chars that fit at scale 0.36
+            disp  = (line[:chars] + '..') if len(line) > chars else line
+            cv2.putText(canvas, f'{prefix}{disp}',
+                        (px, sy + i * LINE_H),
+                        FONT, 0.34, col, 1, cv2.LINE_AA)
+        sy += max_lines * LINE_H + 8
+
+        # --- DETECTIONS ---
+        cv2.line(canvas, (px, sy), (WIN_W - 4, sy), DCYAN, 1)
+        sy += 12
+        cv2.putText(canvas, 'DETECTIONS', (px, sy),
+                    FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
+        sy += 14
+        bar_max = SIDE_W - 20
+        for obj in (objs or [])[:7]:
+            if sy >= WIN_H - FOOT_H - 8:
                 break
-            label = obj.get('label', obj.get('class_name', '?'))
-            conf  = float(obj.get('confidence', 0.0))
-            bar_w = int(bar_max * conf)
-            cv2.rectangle(canvas, (px, dy2 - 9), (px + bar_w, dy2 - 1),
-                          (0, 55, 55), -1)
-            cv2.putText(canvas, f'{label[:16]:<16s}{conf:3.0%}',
-                        (px, dy2 - 1), FONT, 0.35, GREEN, 1, cv2.LINE_AA)
-            dy2 += 14
+            label  = str(obj.get('label', obj.get('class_name', '?')))[:14]
+            conf   = float(obj.get('confidence', obj.get('conf', 0.0)))
+            bar_w  = int(bar_max * conf)
+            cv2.rectangle(canvas, (px, sy - 8), (px + bar_w, sy - 2),
+                          (0, 40, 40), -1)
+            cv2.putText(canvas, f'{label:<14s}{conf:3.0%}',
+                        (px, sy - 1), FONT, 0.33, GREEN, 1, cv2.LINE_AA)
+            sy += 13
         if not objs:
-            cv2.putText(canvas, 'no detections', (px, dy2),
-                        FONT, 0.35, DCYAN, 1, cv2.LINE_AA)
+            cv2.putText(canvas, 'no detections', (px, sy),
+                        FONT, 0.33, DCYAN, 1, cv2.LINE_AA)
+
+        # ── Footer strip (full width) ──────────────────────────────────
+        fy = WIN_H - FOOT_H
+        cv2.rectangle(canvas, (0, fy), (WIN_W, WIN_H), PANEL, -1)
+        cv2.line(canvas, (0, fy), (WIN_W, fy), CYAN, 1)
+        fmy = fy + 14
+
+        # Voice indicator
+        if voice_text:
+            cv2.circle(canvas, (18, fmy - 3), 6, ORANGE, -1)
+            vt = (voice_text[:100] + '...') if len(voice_text) > 100 else voice_text
+            cv2.putText(canvas, vt, (32, fmy), FONT, 0.42, ORANGE, 1, cv2.LINE_AA)
+        else:
+            cv2.circle(canvas, (18, fmy - 3), 6, DCYAN, 1)
+            cv2.putText(canvas, 'voice ready  (F9 = PTT)',
+                        (32, fmy), FONT, 0.38, DCYAN, 1, cv2.LINE_AA)
+
+        # Objective (right-aligned in footer)
+        obj_str = f'OBJECTIVE: {goal[:50]}'
+        (tw, _), _ = cv2.getTextSize(obj_str, FONT, 0.40, 1)
+        cv2.putText(canvas, obj_str, (WIN_W - tw - 10, fmy),
+                    FONT, 0.40, GREEN, 1, cv2.LINE_AA)
 
         cv2.imshow(window_name, canvas)
 
