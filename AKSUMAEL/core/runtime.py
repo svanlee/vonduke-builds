@@ -463,6 +463,10 @@ def run():
                                    memory_context=mem_context)
     if voice_thread is None:
         print('[VOICE] not running — bot continues without voice')
+    elif voice_thread.speaker is not None:
+        # Hand device ownership to VoiceThread.Speaker so TTSEngine never
+        # opens a second ALSA stream.  Must happen before tts.say_line() below.
+        tts.register_speaker(voice_thread.speaker)
 
     tts.say_line('startup')
 

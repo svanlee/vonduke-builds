@@ -16,6 +16,14 @@ class TTSEngine:
     """
     Non-blocking TTS. Calls are queued so AKSUMAEL never
     blocks the main loop waiting for speech to finish.
+
+    Audio output is normally handled by VoiceThread.Speaker (piper → pyttsx3
+    → espeak) which holds the ALSA device exclusively.  Call
+    ``register_speaker(voice_thread.speaker)`` once VoiceThread has started
+    and TTSEngine will delegate every utterance there, skipping its own
+    device probe entirely and eliminating ALSA contention.  If no Speaker
+    is registered the engine falls back to its own pyttsx3/ElevenLabs path
+    (lazy-initialised on first speak so the probe never races VoiceThread).
     """
 
     def __init__(self):
@@ -27,12 +35,43 @@ class TTSEngine:
         self._running = False
         self._out_device = None
         self._out_alsa   = None
+        # Set by register_speaker(); when set, audio goes through this object
+        # and TTSEngine never opens its own ALSA stream.
+        self._voice_speaker = None
 
         if self.enabled:
+            # Device probe is deferred to _ensure_engine() so that a
+            # VoiceThread registered after construction can claim the device
+            # without a race.  Worker thread starts immediately — utterances
+            # queued before voice starts are held and spoken once the engine
+            # (or speaker) is ready.
+            self._start_worker()
+
+    # ── Speaker delegation ──────────────────────────────────────────────────
+    def register_speaker(self, speaker) -> None:
+        """Hand off audio output to VoiceThread's Speaker singleton.
+
+        Call this once after VoiceThread.start() succeeds.  From that point
+        TTSEngine never opens its own ALSA device; all utterances are
+        forwarded to ``speaker.say(text)`` which is already serialised by
+        Speaker's own lock.
+        """
+        self._voice_speaker = speaker
+        print('[TTS] delegating audio output to VoiceThread.speaker (piper/pyttsx3)')
+
+    def _ensure_engine(self):
+        """Lazy engine init — only if no voice speaker has been registered."""
+        if self._voice_speaker is not None:
+            return   # VoiceThread owns the device; nothing to init here
+        if self._engine is not None:
+            return   # already initialised
+        if self.engine_name == 'elevenlabs' and hasattr(self, '_el_key'):
+            return   # ElevenLabs already initialised
+        # First speak without a registered speaker — probe now.
+        if self._out_device is None:
             _, _, _, self._out_device = select_devices()
             self._out_alsa = alsa_card(self._out_device)
-            self._init_engine()
-            self._start_worker()
+        self._init_engine()
 
     def _init_engine(self):
         if self.engine_name == 'elevenlabs':
@@ -107,6 +146,14 @@ class TTSEngine:
 
     def _speak_now(self, text: str):
         """Blocking speak — called from worker thread only."""
+        if self._voice_speaker is not None:
+            # Delegate to VoiceThread.Speaker — it holds the device.
+            self._voice_speaker.say(text)
+            return
+        # No speaker registered yet (or voice disabled) — use own engine.
+        self._ensure_engine()
+        if not self.enabled:
+            return
         if self.engine_name == 'elevenlabs':
             self._speak_elevenlabs(text)
         else:
