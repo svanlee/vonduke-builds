@@ -1109,11 +1109,10 @@ def propose_improvement(area: str, suggestion: str, rationale: str = "") -> dict
 
 def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 600) -> dict:
     """
-    Spawn a focused sub-agent Claude call for a task requiring sustained analysis.
+    Spawn a focused sub-agent (local mesh-llm) for a task requiring sustained analysis.
 
-    The sub-agent is a disposable Claude instance with a domain-focused system prompt.
-    It has NO tools — it reasons from the context provided and returns a structured result.
-    Use this to offload deep planning or analysis without blocking the voice thread.
+    Fully local — no API calls. Uses the domain-specific system prompt to give the
+    local model a focused persona, then runs a single-turn completion via llm_router.
 
     Architecture: AKSUMAEL (executive) → spawn_subagent → domain specialist → result
     """
@@ -1134,30 +1133,26 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
         + "Focus on actionable output."
     )
 
-    key_file = os.path.expanduser("~/.config/anthropic/key")
-    try:
-        with open(key_file) as f:
-            api_key = f.read().strip()
-    except Exception:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-
-    if not api_key:
-        return {"error": "no API key found"}
-
     user_msg = f"Task: {task}"
     if context:
         user_msg += f"\n\nContext:\n{context[:800]}"
 
+    # Route entirely through local mesh-llm — no cloud calls ever.
+    # The system parameter is passed as a leading system message (see llm_router._try_local).
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model="claude-fable-5",
+        from core.llm_router import call_claude_direct
+        result_text = call_claude_direct(
+            prompt=user_msg,
             max_tokens=max_tokens,
+            timeout=60.0,
             system=system,
-            messages=[{"role": "user", "content": user_msg}],
         )
-        result_text = resp.content[0].text if resp.content else ""
+        if result_text is None:
+            return {
+                "error": "local mesh-llm unavailable — check llama-server at localhost:9337",
+                "domain": domain,
+                "task": task,
+            }
 
         # Log to AURORA
         try:
@@ -1166,7 +1161,7 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
                 env="subagent",
                 action=f"{domain}:{task[:80]}",
                 outcome=result_text[:200],
-                metadata={"domain": domain, "task": task[:200]},
+                metadata={"domain": domain, "task": task[:200], "model": "local"},
             )
         except Exception:
             pass
@@ -1175,7 +1170,7 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
             "domain": domain,
             "task": task,
             "result": result_text,
-            "tokens_used": resp.usage.output_tokens if hasattr(resp, "usage") else None,
+            "model": "local",
         }
     except Exception as e:
         return {"error": str(e), "domain": domain, "task": task}
