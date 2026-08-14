@@ -1434,8 +1434,13 @@ class VideoCapturePipeline:
                 self.display.quit = True
                 return False
             key = self._safe_wait_key()
-        elif config.ENABLE_DISPLAY_UI:
+        elif config.ENABLE_DISPLAY_UI and os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
             # Jarvis/Ultron HUD window (replaces old plain imshow).
+            # Skipped when the wrapper detected no X display and set offscreen
+            # mode — cv2.imshow calls C++ terminate() (not a catchable Python
+            # exception) when GTK/X11 isn't available, which crashes the whole
+            # process. The offscreen flag is set by aksumael_wrapper.sh when
+            # xdpyinfo -display $DISPLAY fails.
             self._jarvis_imshow(window_name, frame, objs)
             key = self._safe_wait_key()
         else:
