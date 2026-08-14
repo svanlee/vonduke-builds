@@ -19,6 +19,22 @@ import cv2
 import numpy as np
 import config
 
+# ── Display backend probe ──────────────────────────────────────────────────────
+# cv2.imshow calls C++ terminate() (not a catchable Python exception) when built
+# without a GUI backend. Check getBuildInformation() at import time — safe,
+# requires no display. If GTK/Qt is absent, disable all imshow calls for the
+# session rather than crashing on the first tick.
+try:
+    _build = cv2.getBuildInformation()
+    _CV2_GUI_OK = any(
+        pat in _build for pat in ('GTK', 'QT', 'Qt', 'Carbon', 'Cocoa', 'WIN32UI')
+    )
+    if not _CV2_GUI_OK:
+        print('[DISPLAY] cv2 built without GUI backend (GTK/Qt absent) — '
+              'imshow disabled for this session')
+except Exception:
+    _CV2_GUI_OK = False  # assume broken if we can't even check
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Camera probing — find *a* working device, or report that there is none.
@@ -1409,7 +1425,8 @@ class VideoCapturePipeline:
         for xi in range(WIN_W // 2 - 60, WIN_W // 2 + 60, 10):
             cv2.rectangle(canvas, (xi, fy + 10), (xi + 5, fy + 11), VCYAN, -1)
 
-        cv2.imshow(window_name, canvas)
+        if _CV2_GUI_OK:
+            cv2.imshow(window_name, canvas)
 
     # ── Display pump (main-thread only) ──────────────────────────────────
 
@@ -1435,13 +1452,11 @@ class VideoCapturePipeline:
                 self.display.quit = True
                 return False
             key = self._safe_wait_key()
-        elif config.ENABLE_DISPLAY_UI and os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
+        elif config.ENABLE_DISPLAY_UI and _CV2_GUI_OK:
             # Jarvis/Ultron HUD window (replaces old plain imshow).
-            # Skipped when the wrapper detected no X display and set offscreen
-            # mode — cv2.imshow calls C++ terminate() (not a catchable Python
-            # exception) when GTK/X11 isn't available, which crashes the whole
-            # process. The offscreen flag is set by aksumael_wrapper.sh when
-            # xdpyinfo -display $DISPLAY fails.
+            # Gated on _CV2_GUI_OK (probed at module load via getBuildInformation):
+            # cv2 built without GTK/Qt calls C++ terminate() in imshow, which
+            # bypasses Python exception handling and crashes the whole process.
             self._jarvis_imshow(window_name, frame, objs)
             key = self._safe_wait_key()
         else:
