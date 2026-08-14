@@ -104,7 +104,7 @@ from core.world_model        import WorldModel
 from core.lerobot_recorder   import LeRobotRecorder
 from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
-from core.episode_memory     import EpisodeMemory
+from memory.episodic         import EpisodeMemory
 from core.curriculum         import CurriculumGenerator
 from core.overseer           import maybe_call as overseer_tick, get_last_directive
 from core                    import code_skill_generator
