@@ -10,6 +10,7 @@
 # ║  DisplayThread — cv2.imshow via LabelingUI at ~30 fps  ║
 # ╚══════════════════════════════════════════════════════╝
 
+import os
 import threading
 import queue
 import time
