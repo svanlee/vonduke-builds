@@ -1140,8 +1140,8 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
     # Route entirely through local mesh-llm — no cloud calls ever.
     # The system parameter is passed as a leading system message (see llm_router._try_local).
     try:
-        from core.llm_router import call_claude_direct
-        result_text = call_claude_direct(
+        from core.llm_router import call_local_llm
+        result_text = call_local_llm(
             prompt=user_msg,
             max_tokens=max_tokens,
             timeout=60.0,

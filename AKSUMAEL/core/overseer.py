@@ -19,7 +19,7 @@ import threading
 import time
 import config
 from core.identity import AKSUMAEL_IDENTITY
-from core.llm_router import call_claude_direct
+from core.llm_router import call_local_llm
 from core.capture import push_monologue_line
 
 OVERSEER_INTERVAL = 10        # ticks between overseer calls
@@ -189,8 +189,8 @@ def _call_overseer(tick: int, snapshot: dict):
             "Do NOT perform GUI inspection, accessibility tree analysis, or screen reading. "
             "Do NOT return lists, arrays, or StaticText structures."
         )
-        raw = call_claude_direct(prompt, max_tokens=300,
-                                  timeout=OVERSEER_TIMEOUT, system=_system)
+        raw = call_local_llm(prompt, max_tokens=300,
+                              timeout=OVERSEER_TIMEOUT, system=_system)
         if not raw:
             print(f'[Overseer] tick {tick} call failed — no response '
                   f'(check local mesh-llm server at {config.LOCAL_LLM_URL})')

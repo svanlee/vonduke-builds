@@ -335,18 +335,20 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
     return None, None
 
 
-def try_claude(prompt: str, max_tokens: int = 1024, images: list = None,
-                timeout: float = 15.0) -> str | None:
-    """Routes to local mesh-llm. Kept as a named entry point for callers
-    (e.g. tools/claude_autolabel.py) that previously wanted Claude
-    specifically for label-quality reasons — AKSUMAEL no longer calls
-    Claude directly, so this is now equivalent to route_llm_call() against
-    the local tier only. Returns the raw text response, or None on
-    failure — never raises."""
+def try_local_llm(prompt: str, max_tokens: int = 1024, images: list = None,
+                   timeout: float = 15.0) -> str | None:
+    """Routes to local mesh-llm. Named entry point for callers
+    (e.g. tools/claude_autolabel.py) that need a single local-only call
+    without the general route_llm_call() retry/fallback chain.
+    Returns the raw text response, or None on failure — never raises."""
     result = _try_local(prompt, max_tokens, images, timeout, retries=1)
     if result is not None:
         _record('local')
     return result
+
+
+# Backward-compat alias — remove once all callers updated.
+try_claude = try_local_llm
 
 
 def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
@@ -360,17 +362,15 @@ def llm_train_call(prompt: str, max_tokens: int = 800, images: list = None,
                            timeout=timeout, local_retries=local_retries)
 
 
-def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
-                        timeout: float = 15.0, system: str = None) -> str:
+def call_local_llm(prompt: str, max_tokens: int = 800, images: list = None,
+                    timeout: float = 15.0, system: str = None) -> str:
     """
-    Routes to local mesh-llm. Kept as a named entry point for callers
-    (e.g. core/overseer.py strategic decisions) that previously wanted
-    Claude specifically, skipping the general route_llm_call() path —
-    AKSUMAEL no longer calls Claude directly, so this is now equivalent to
-    a local-only call.
+    Routes to local mesh-llm — single call, no retry/fallback chain.
+    Use for latency-sensitive paths (overseer decisions, tool calls) where
+    route_llm_call()'s extra retries aren't worth the wait.
 
-    `system`, when given, is passed through to _try_local() as a leading
-    system message — see its docstring for why vision calls need this.
+    `system`, when given, is prepended as a system message — see
+    _try_local() for details.
 
     Returns the raw text response, or None on failure — never raises.
     """
@@ -378,3 +378,7 @@ def call_claude_direct(prompt: str, max_tokens: int = 800, images: list = None,
     if result is not None:
         _record('local')
     return result
+
+
+# Backward-compat alias — remove once all callers updated.
+call_claude_direct = call_local_llm
