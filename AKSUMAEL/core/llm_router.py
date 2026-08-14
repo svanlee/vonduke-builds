@@ -37,6 +37,12 @@ _call_counter  = 0
 _call_counts   = {'local': 0, 'gemini': 0, 'claude': 0}
 _last_provider = None
 
+# Latched True the first time the local server rejects an image payload
+# (HTTP 400, 422, or 500 with images).  Once set, all subsequent calls to
+# _try_local() silently strip images so the text-only Qwen3-8B never sees
+# vision data again until the server is restarted with a VLM.
+_model_rejects_images: bool = False
+
 # Liveness probe. llama-server's /health answers 200 off a flag set at model
 # load and never reads the generation path, so a wedged server — slots stuck,
 # KV cache exhausted, sampler hung — reports healthy while every completion
@@ -138,9 +144,9 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                retries: int, system: str = None) -> str:
     """Query the on-box Mesh-LLM server (OpenAI-compatible /v1/chat/completions).
     Tries a multimodal request first when `images` is given; if the loaded
-    model rejects image content (HTTP 400/422 — text-only model), retries
-    once with a text-only prompt that relies on whatever detection/context
-    text is already folded into `prompt`.
+    model rejects image content (HTTP 400/422/500 — text-only model), latches
+    _model_rejects_images and retries text-only.  All subsequent calls also
+    skip image encoding until the service is restarted with a VLM.
 
     `system`, when given, is sent as a leading {"role": "system", ...}
     message ahead of the user message — needed for vision calls, where the
@@ -151,11 +157,18 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
     Returns the raw text response on success, or None on any failure
     (connection refused, timeout, non-recoverable HTTP status).
     """
+    global _model_rejects_images
     if not config.LOCAL_LLM_ENABLED:
         return None
     if not mesh_llm_live():
         print('[LLM_ROUTER] mesh-llm not generating — treating as down')
         return None
+
+    # Qwen3-8B (and any other text-only model) returns HTTP 500 with
+    # "image input is not supported".  Once we've seen that once, strip
+    # images from every subsequent call rather than wasting tokens and RAM.
+    if _model_rejects_images and images:
+        images = None
 
     url     = f"{config.LOCAL_LLM_URL}/chat/completions"
     headers = {'Content-Type': 'application/json'}
@@ -202,8 +215,12 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
             # Empty completion: fall through to the retry/backoff below rather
             # than returning it, since an empty answer is the outage symptom.
         except urllib.error.HTTPError as e:
-            if images and e.code in (400, 422):
-                # Loaded model rejected multimodal content — retry text-only.
+            if images and e.code in (400, 422, 500):
+                # Loaded model rejected multimodal content — latch the flag so
+                # every future call skips image encoding, then retry text-only.
+                _model_rejects_images = True
+                print(f'[LLM_ROUTER] model rejects images (HTTP {e.code}) — '
+                      'switching to text-only mode for this session')
                 text_payload = {"model": config.LOCAL_LLM_MODEL,
                                 "temperature": LLM_TEMPERATURE,
                                 "max_tokens": max_tokens,
@@ -215,6 +232,7 @@ def _try_local(prompt: str, max_tokens: int, images: list, timeout: float,
                         return out
                 except Exception:
                     pass
+                return None   # text-only retry also failed; no point looping
             if e.code not in (429, 500, 502, 503, 529):
                 return None   # non-transient — don't retry
         except Exception:
