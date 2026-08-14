@@ -164,7 +164,23 @@ class JarvisBrain:
         except Exception:
             pass
 
-        return SYSTEM_PROMPT + memory_section + improvement_section
+        # ── Mode-aware context ────────────────────────────────────────────────
+        # In desktop mode, inject a recent screen/camera snapshot as text so
+        # the brain knows what's happening on the machine right now.
+        mode_section = ''
+        try:
+            from core.mode import current_mode
+            mode = current_mode()
+            if mode == 'desktop':
+                ctx_file = BASE_DIR / 'data' / 'desktop_context.txt'
+                if ctx_file.exists():
+                    mode_section = '\n\n' + ctx_file.read_text()[:600]
+            elif mode == 'game':
+                mode_section = '\n\n## Current Mode\nGame-agent mode active (capture card + KB2040 present).'
+        except Exception:
+            pass
+
+        return SYSTEM_PROMPT + memory_section + improvement_section + mode_section
 
     # ── Local inference (OpenAI-compatible) ──────────────────────────────────
     def _respond_local(self, user_text: str, tool_schemas: list) -> str:
@@ -327,6 +343,50 @@ class JarvisBrain:
             self._history = self._history[-HISTORY_KEEP:]
         self._save_history()
         return answer
+
+    def handle_gesture(self, command) -> bool:
+        """Route a GestureCommand through Jarvis tool dispatch.
+
+        Gestures are deterministic — no LLM round-trip needed. This method
+        calls call_tool() directly so gesture events use the same tool
+        infrastructure as voice commands without the latency of a full
+        respond() call.
+
+        Returns True if the command was dispatched, False if unrecognised.
+        """
+        from jarvis.tools import call_tool
+        try:
+            from gesture.recognizer import GestureCommand
+        except ImportError:
+            print('[JARVIS] gesture module not available')
+            return False
+
+        cmd_name = command.value if hasattr(command, 'value') else str(command)
+
+        if command == GestureCommand.HOLD:
+            print(f'[JARVIS/gesture] HOLD → clear_goals')
+            call_tool('clear_goals', {})
+            return True
+
+        if command == GestureCommand.STOP:
+            print(f'[JARVIS/gesture] STOP → inject_goal stop (priority 9)')
+            call_tool('inject_goal', {'goal': 'stop', 'priority': 9,
+                                       'reason': 'gesture:STOP'})
+            return True
+
+        if command == GestureCommand.FORWARD:
+            print(f'[JARVIS/gesture] FORWARD → inject_goal explore (priority 5)')
+            call_tool('inject_goal', {'goal': 'explore', 'priority': 5,
+                                       'reason': 'gesture:FORWARD'})
+            return True
+
+        if command in (GestureCommand.TURN_LEFT, GestureCommand.TURN_RIGHT):
+            # Drive commands — no goal injection; handled by UDP in dispatcher.
+            print(f'[JARVIS/gesture] {cmd_name} → UDP only (no goal injection)')
+            return True
+
+        print(f'[JARVIS/gesture] unrecognised gesture command: {cmd_name}')
+        return False
 
     def clear_history(self):
         """Reset conversation context and wipe persisted history."""

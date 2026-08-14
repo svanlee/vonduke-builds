@@ -102,21 +102,36 @@ class GestureDispatcher:
         return True
 
     def _inject_aksumael(self, command: GestureCommand):
-        """Inject a goal or clear goals in AKSUMAEL."""
+        """Inject a goal or clear goals in AKSUMAEL.
+
+        Prefers JarvisBrain.handle_gesture() (in-process tool dispatch) when
+        the brain singleton is available — same tool infrastructure used by
+        voice commands. Falls back to direct file injection when the brain
+        isn't loaded (e.g. gesture/run_gesture.py running standalone).
+        """
+        # ── Prefer in-process brain dispatch ──────────────────────────────
+        try:
+            from jarvis.brain import get_brain
+            brain = get_brain()
+            if brain.handle_gesture(command):
+                return
+        except Exception as e:
+            print(f'[GESTURE] brain dispatch failed ({e}), falling back to file injection')
+
+        # ── File-based fallback ────────────────────────────────────────────
         if command == GestureCommand.HOLD:
-            # Clear all goals — bot goes idle
             goals_path = BASE_DIR / "data" / "goals.json"
             try:
                 with open(goals_path, "w") as f:
                     json.dump({"current": None, "stack": []}, f)
-                print('[GESTURE] AKSUMAEL goals cleared')
+                print('[GESTURE] AKSUMAEL goals cleared (file fallback)')
             except Exception as e:
                 print(f'[GESTURE] clear goals failed: {e}')
             return
 
         goal_entry = GOAL_MAP.get(command)
         if goal_entry is None:
-            return  # TURN_LEFT / TURN_RIGHT are drive commands, not goals
+            return  # TURN_LEFT / TURN_RIGHT are drive commands only
 
         goal, priority = goal_entry
         injected_path = BASE_DIR / "data" / "injected_goals.json"
@@ -130,13 +145,13 @@ class GestureDispatcher:
                 existing = []
 
             existing.append({
-                "goal": goal,
+                "goal":     goal,
                 "priority": priority,
-                "source": f"gesture:{command.value}",
+                "source":   f"gesture:{command.value}",
             })
             with open(injected_path, "w") as f:
                 json.dump(existing, f, indent=2)
-            print(f'[GESTURE] AKSUMAEL → {goal} (priority {priority})')
+            print(f'[GESTURE] AKSUMAEL → {goal} (priority {priority}, file fallback)')
         except Exception as e:
             print(f'[GESTURE] inject goal failed: {e}')
 
