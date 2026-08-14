@@ -21,6 +21,27 @@ CTL_FILE="$AKSUMAEL_DIR/.aksumael_ctl"
 LOG_FILE="/tmp/aksumael_live.log"
 
 AKSUMAEL_PID=""
+
+# ── SIGTERM handler ────────────────────────────────────────────────────────────
+# systemd sends SIGTERM to this bash process on `systemctl stop aksumael`.
+# Without a trap, bash exits immediately and the Python child (AKSUMAEL_PID)
+# never receives SIGTERM, so its finally-block cleanup (goals.save, world.save,
+# executor.close, etc.) is skipped and systemd eventually SIGKILLs the orphan.
+#
+# With this trap, SIGTERM is forwarded to the Python process, which converts it
+# to KeyboardInterrupt (core/runtime.py line ~252), runs the finally block
+# (≤10s including TTS + saves), and exits cleanly before bash returns.
+_on_sigterm() {
+    echo "[WRAPPER] SIGTERM received — forwarding to AKSUMAEL (PID $AKSUMAEL_PID)..."
+    if [[ -n "$AKSUMAEL_PID" ]] && kill -0 "$AKSUMAEL_PID" 2>/dev/null; then
+        kill -TERM "$AKSUMAEL_PID"
+        wait "$AKSUMAEL_PID" 2>/dev/null
+        echo "[WRAPPER] AKSUMAEL exited cleanly."
+    fi
+    exit 0
+}
+trap '_on_sigterm' TERM
+
 # Any of these being present counts as "a camera is here" — main.py probes
 # config.CAMERA_INDEX then config.CAMERA_FALLBACK_INDICES and uses whichever
 # works, so pinning the wrapper to the capture card alone made it wait out
@@ -126,11 +147,19 @@ start_aksumael() {
     # instead of C++ std::terminate() that kills the whole process.
     export CUDA_LAUNCH_BLOCKING=1
     export PYTORCH_CUDA_ALLOC_CONF=garbage_collection_threshold:0.6
-    # Route AKSUMAEL's audio recording to the Rybozen capture card (game audio),
-    # not the laptop mic. PIPEWIRE_NODE tells PipeWire which source to connect
-    # this process's input streams to. axon/hub.py runs as a separate process
-    # and won't inherit this, so voice commands still capture from the default mic.
-    export PIPEWIRE_NODE='USB3.0 Video Analog Stereo'
+    # VAD energy threshold override: config.py has 0.08 (tuned for the Rybozen
+    # line-in, which is loud). The laptop's built-in DMIC is much quieter;
+    # 0.020 catches normal speech without false-triggering on ambient noise.
+    # Raise this if the mic keeps triggering on background sounds.
+    # Mic at 66%. Quiet room ambient ~0.065; threshold below speech (~0.08+).
+    export VOICE_VAD_ENERGY_THRESHOLD=0.070
+    # PIPEWIRE_NODE was previously set to 'USB3.0 Video Analog Stereo' (Rybozen
+    # capture card) but that device is not always connected — PortAudio crashes
+    # with PaUnixThread_Terminate when the node is missing. Leave unset so
+    # PipeWire/PortAudio use whatever audio source is available (laptop DMIC etc).
+    # Re-enable and point to the correct node name if/when game audio capture
+    # from an external card is needed again.
+    # export PIPEWIRE_NODE='USB3.0 Video Analog Stereo'
     # Use the existing DISPLAY if set; otherwise try :0 (X.Org login screen).
     # This lets cv2.imshow / LabelingUI open a real window on the Victus screen.
     export DISPLAY="${DISPLAY:-:0}"
