@@ -2905,6 +2905,28 @@ def _write_health_log(tick: int, goal: str, last_reward: float, cognitive,
     except Exception as e:
         print(f'[HEALTH] write failed: {e}')
 
+    # Also write a machine-readable state.json so jarvis/overseer.py's
+    # _snap_bot_state() can read live goal/reward/tick without log parsing.
+    # The overseer reads data/state.json — without this file it returns {} on
+    # every poll, making change-detection and LLM escalation effectively blind.
+    try:
+        import json as _json
+        state_data = {
+            'tick': tick,
+            'goal': goal or 'none',
+            'last_reward': round(last_reward, 4),
+            'camera': vision_source or 'NONE (vision-less)',
+            'ttyUSB0': tty_present,
+            'local_calls': vision_calls['local'],
+            'updated': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        }
+        state_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'state.json')
+        state_path = os.path.normpath(state_path)
+        with open(state_path, 'w') as f:
+            _json.dump(state_data, f)
+    except Exception as e:
+        print(f'[HEALTH] state.json write failed: {e}')
+
 
 # Learned skill names are built from their trigger objects (see
 # skills/skill_system.py _mine_recent), e.g. "diamond_ore_3da5b4",

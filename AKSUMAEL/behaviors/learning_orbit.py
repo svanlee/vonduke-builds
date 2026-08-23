@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -105,6 +106,16 @@ def _frame_to_b64(frame: np.ndarray) -> str:
 
 
 def _ask_qwen(b64_img: str, known: list) -> dict | None:
+    # Skip vision call if the loaded model is text-only (llm_router latches
+    # _model_rejects_images on first HTTP 500 from an image payload).
+    # This silences the recurring [LEARNER] Qwen error: HTTP Error 500 seen
+    # when Qwen3-4B (text-only+LoRA) is loaded instead of Qwen3-4B-Vision.
+    try:
+        from core.llm_router import _model_rejects_images as _mri
+        if _mri:
+            return None  # text-only model — vision watcher disabled silently
+    except Exception:
+        pass
     class_list = ', '.join(known[:80])
     system = (
         'You are a Minecraft computer vision assistant helping train a YOLO detector. '
@@ -160,6 +171,19 @@ def _ask_qwen(b64_img: str, known: list) -> dict | None:
             if text.startswith('json'):
                 text = text[4:]
         return json.loads(text)
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 422, 500):
+            # Model rejected image content (text-only model loaded).
+            # Latch the router flag so future calls skip immediately.
+            try:
+                import core.llm_router as _router
+                _router._model_rejects_images = True
+            except Exception:
+                pass
+            # Suppress the noisy error — this is expected with a text-only model.
+            return None
+        print(f'[LEARNER] Qwen HTTP error {e.code}: {e}')
+        return None
     except Exception as e:
         print(f'[LEARNER] Qwen error: {e}')
         return None

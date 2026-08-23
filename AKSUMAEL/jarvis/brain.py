@@ -180,7 +180,48 @@ class JarvisBrain:
         except Exception:
             pass
 
-        return SYSTEM_PROMPT + memory_section + improvement_section + mode_section
+        # ── Inner monologue (live self-generated thoughts) ────────────────────
+        # Reads the last 3 entries from data/cognitive/inner_monologue.json so
+        # Jarvis can answer "what are you thinking / doing?" with real-time
+        # situational awareness rather than relying on AURORA (which lags by
+        # the Honcho write cadence). Kept short — these are one-sentence
+        # thoughts, not the full history.
+        monologue_section = ''
+        try:
+            mono_path = BASE_DIR / 'data' / 'cognitive' / 'inner_monologue.json'
+            if mono_path.exists():
+                with open(mono_path) as _mf:
+                    _thoughts = json.load(_mf)
+                if _thoughts:
+                    recent = [t.get('thought', '') for t in _thoughts[-3:] if t.get('thought')]
+                    if recent:
+                        monologue_section = (
+                            '\n\n## Current Inner Monologue (live self-thoughts)\n'
+                            + '\n'.join(f'- {t}' for t in recent)
+                        )
+        except Exception:
+            pass
+
+        # ── Live bot state (goal / reward / tick) ────────────────────────────
+        # Reads data/state.json written by _write_health_log every tick.
+        # Gives the brain real-time situational context without a tool call.
+        bot_state_section = ''
+        try:
+            state_path = BASE_DIR / 'data' / 'state.json'
+            if state_path.exists():
+                with open(state_path) as _sf:
+                    _s = json.load(_sf)
+                bot_state_section = (
+                    f'\n\n## Live Bot State\n'
+                    f'goal={_s.get("goal","?")}  reward={_s.get("last_reward","?")} '
+                    f'tick={_s.get("tick","?")}  camera={_s.get("camera","?")} '
+                    f'updated={_s.get("updated","?")}'
+                )
+        except Exception:
+            pass
+
+        return (SYSTEM_PROMPT + memory_section + improvement_section
+                + mode_section + monologue_section + bot_state_section)
 
     # ── Local inference (OpenAI-compatible) ──────────────────────────────────
     def _respond_local(self, user_text: str, tool_schemas: list) -> str:

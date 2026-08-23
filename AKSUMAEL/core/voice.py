@@ -1049,7 +1049,21 @@ class VoiceThread:
         import whisper
         model_name = config.VOICE_WHISPER_MODEL
         print(f'[VOICE] loading whisper model "{model_name}" ...')
-        self._model = whisper.load_model(model_name)
+        # Try CUDA first (RTX 4050 has room alongside Qwen3-4B at ~2.7GB).
+        # Whisper base on CUDA uses ~145MB and transcribes ~5-10x faster than
+        # CPU. Fall back to CPU if torch/CUDA isn't available or VRAM is full.
+        try:
+            import torch
+            if torch.cuda.is_available():
+                self._model = whisper.load_model(model_name, device='cuda')
+                self._whisper_device = 'cuda'
+                print(f'[VOICE] whisper on CUDA ({torch.cuda.get_device_name(0)})')
+            else:
+                raise RuntimeError('CUDA not available')
+        except Exception as _we:
+            print(f'[VOICE] CUDA whisper failed ({_we}) — falling back to CPU')
+            self._model = whisper.load_model(model_name)
+            self._whisper_device = 'cpu'
         print('[VOICE] whisper ready')
 
     # ── mode handling ──────────────────────────────────────────────────────
@@ -1151,8 +1165,16 @@ class VoiceThread:
         return audio.flatten()
 
     def _transcribe(self, audio) -> str:
-        result = self._model.transcribe(audio, fp16=False, language='en')
-        return result.get('text', '').strip()
+        # fp16=True on CUDA for speed; fp16=False on CPU (causes warnings/errors
+        # on CPU-only torch builds). _whisper_device set by _load_model.
+        use_fp16 = getattr(self, '_whisper_device', 'cpu') == 'cuda'
+        t0 = time.monotonic()
+        result = self._model.transcribe(audio, fp16=use_fp16, language='en')
+        dt = time.monotonic() - t0
+        text = result.get('text', '').strip()
+        if text:
+            print(f'[VOICE] STT {dt:.2f}s → "{text[:60]}"')
+        return text
 
     def _say(self, text: str):
         """Speak, with the mic gated for the duration. In "on" mode the input
@@ -1305,12 +1327,20 @@ class VoiceThread:
         # Jarvis has tool_use so it can check bot state, inject goals, clear
         # goals, run shell commands, etc. without the rigid parse/keyword system.
         print(f'[VOICE] → jarvis: "{transcript}"')
+        _t_jarvis_start = time.monotonic()
         try:
             from jarvis.brain import get_brain
             brain = get_brain()
             response = brain.respond(transcript)
+            _t_brain = time.monotonic() - _t_jarvis_start
             if response:
+                _t_tts_start = time.monotonic()
                 self._say(response)
+                _t_tts = time.monotonic() - _t_tts_start
+                # Latency budget log: STT time is logged in _transcribe().
+                # Brain time + TTS time = end-to-end after STT.
+                print(f'[VOICE] latency: brain={_t_brain:.2f}s tts={_t_tts:.2f}s '
+                      f'total_after_stt={_t_brain + _t_tts:.2f}s')
         except Exception as e:
             print(f'[VOICE] jarvis error: {e}')
             # Fallback: try the old question handler
