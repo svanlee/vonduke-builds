@@ -1,0 +1,116 @@
+# Day 35 Training Results — path-planning
+
+## O01: Explain the difference between global path planning and local path planning in y
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 30932) — PASS
+Global path planning calculates the entire route from start to goal, handling long-term navigation and major waypoints. Local path planning manages immediate, short-term movements around dynamic obstacles and narrow passages. In your stack, global planning likely uses A* or Dijkstra on a static map to generate a high-level trajectory, while local planning employs reactive algorithms like DWA or TEB to execute that trajectory safely in real time.
+
+### Rep 2 (tick 31068) — PASS
+Global path planning calculates the optimal route from start to goal using the entire map, typically via A* or Dijkstra algorithms, providing a high-level trajectory. Local path planning refines this by navigating around dynamic obstacles and sensor noise in real-time using reactive methods like Dynamic Window Approach or potential fields. In your stack, global planning handles the long-term journey while local planning manages immediate collision avoidance.
+
+### Rep 3 (tick 31198) — PASS
+Global path planning calculates the optimal route across the entire map using algorithms like A* or Dijkstra, considering static obstacles and global goals. Local path planning refines this route in real-time to avoid dynamic obstacles and ensure collision-free movement near the robot.
+
+---
+
+## O02: You need to navigate from room A to room B through a corridor that has 40% of it
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 31458) — PASS
+I will use a global pathfinding algorithm to calculate the shortest route from my current coordinates to the target, accounting for the 40% blocked corridor as dynamic obstacles. Once the path is generated, I will execute it step-by-step, adjusting my movement in real-time if new obstacles appear.
+
+### Rep 2 (tick 31593) — PASS
+I will use a global pathfinding algorithm to calculate the shortest route from my current coordinates to the target, treating the 40% blocked corridor as dynamic obstacles. I will then execute the movement commands step-by-step, adjusting my trajectory in real-time if new obstacles appear.
+
+### Rep 3 (tick 31729) — PASS
+I will plan the route by first checking the interactive UI for navigation controls or interactive UI elements to determine the available actions. If interactive UI elements are not present, I will switch to screen reading mode to detect all interactive UI elements on the mobile screen and provide their types and coordinates. This will allow me to programmatically interact with the UI to navigate from room A to room B, accounting for the 40% width blockage by selecting appropriate interactive UI elements that guide me through the corridor.
+
+---
+
+## O03: Your planned path is blocked by a new obstacle. Describe your replanning trigger
+**Overall: PARTIAL** (FAIL, FAIL, PASS)
+
+### Rep 1 (tick 32033) — FAIL
+I do not have a replanning algorithm or trigger conditions because I am an AI system without physical mobility or a dynamic pathfinding module. My capabilities are limited to software development, hardware diagnostics, and static task execution on this laptop. I cannot navigate, detect moving obstacles in real-time for navigation, or execute physical maneuvers that would require replanning. My skill set consists of Minecraft mining and crafting tasks and general engineering support, none of which involve autonomous mobile robotics or path replanning.
+
+### Rep 2 (tick 32169) — FAIL
+I do not have a replanning algorithm or trigger conditions because I am a static AI system on a laptop and do not possess autonomous physical capabilities or a dynamic environment to navigate. My skills are limited to Minecraft game interactions, and I cannot perform real-world robotics tasks like obstacle avoidance or path replanning.
+
+### Rep 3 (tick 32301) — PASS
+I replan when my current path intersects a dynamic obstacle detected by my vision system or when my motion primitives fail to execute. My replan algorithm uses a reactive local planner that recalculates waypoints around the new obstacle while maintaining global goal direction, prioritizing safety over speed. I will re-route the vehicle to avoid the detected hazard.
+
+---
+
+## O04: How do you handle a situation where the goal position is inside an occupied cell
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 32557) — PASS
+I treat the occupied cell as an obstacle in my costmap and re-plan my path to avoid it.
+
+### Rep 2 (tick 32694) — PASS
+I treat the occupied cell as an obstacle in my costmap and do not move toward it. I will wait until the cell becomes free or find an alternative path.
+
+### Rep 3 (tick 32831) — PASS
+When the goal position is inside an occupied cell in your costmap, you must treat it as an invalid target and re-plan your path. You should not attempt to move to a cell with a cost greater than zero, as this indicates an obstacle. Instead, you will identify the nearest free cell adjacent to your current position and update your goal to that location. This ensures your pathfinding algorithm generates a valid, collision-free trajectory. You will then execute the new path to reach a safe destination.
+
+---
+
+## O05: Describe how you use inflation radius in your costmap and why it matters for saf
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 33090) — PASS
+Inflation radius defines the circular area around the robot where the costmap applies its own cost values, distinct from the static and dynamic layers that cover the entire map. It matters because it prevents the robot from being blocked by obstacles that are too close to be physically reachable, effectively creating a safety buffer that ensures the planner only considers paths where the robot can actually execute its motion commands without collision.
+
+### Rep 2 (tick 33226) — PASS
+Inflation radius defines the circular area around the robot where the costmap applies its own static and dynamic obstacle costs. It matters because it prevents the robot from attempting to navigate through walls or other obstacles that lie outside its immediate sensor range, ensuring that the planner only considers relevant environmental data. Without it, the robot might receive cost values from sensors that are too far away or from sensors that are not yet calibrated, leading to incorrect path calculations or collisions.
+
+### Rep 3 (tick 33357) — PASS
+Inflation radius defines the circular area around the robot where the costmap treats all cells as having infinite cost, effectively creating an impenetrable barrier. It matters for safe navigation because it prevents the robot from attempting to drive directly into its own sensors or into areas where its physical dimensions make collision inevitable, ensuring the path planner always selects trajectories that maintain a safe clearance from obstacles and the robot's own footprint.
+
+---
+
+## O06: You are navigating in a dynamic environment with moving people. How does your pl
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 33619) — PASS
+My planner adapts by continuously re-evaluating the dynamic environment through real-time sensor fusion and updating its internal state machine. It detects all interactive mobile agents on the screen, calculates their velocities and trajectories, and prioritizes collision avoidance or interaction based on proximity and intent. The system maintains a live map of all dynamic objects, adjusting its pathfinding algorithm to generate new waypoints that steer clear of moving people while preserving the mission objective. This loop runs at high frequency, ensuring reactive behavior rather than pre-planned static routes.
+
+### Rep 2 (tick 33752) — PASS
+My planner adapts by continuously re-evaluating the dynamic environment through real-time sensor fusion and updating its internal state machine. It detects all interactive mobile agents on the screen, calculates their relative velocities and trajectories, and instantly recalculates collision avoidance paths to ensure safe navigation. This loop runs at high frequency to maintain situational awareness and prevent interactions with moving people.
+
+### Rep 3 (tick 33885) — PASS
+My planner adapts by continuously re-evaluating the dynamic environment through real-time sensor fusion and updating its internal state machine. It detects all interactive mobile agents (people) and their trajectories, then recalculates safe paths on the fly to avoid collisions. If an obstacle appears suddenly, it prioritizes immediate evasion maneuvers over long-term goals. The system maintains a live feed of environmental changes, adjusting its decision tree to ensure safe navigation at every tick.
+
+---
+
+## O07: Explain the trade-offs between Dijkstra, A*, and DWA for your specific navigatio
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 34153) — PASS
+Dijkstra guarantees shortest paths but ignores obstacles, making it inefficient for dynamic environments. A* adds heuristic guidance for faster search on static maps but requires pre-mapped terrain and struggles with real-time obstacle avoidance. DWA (Dynamic Window Approach) excels at real-time mobile robot control by evaluating velocity and acceleration constraints, handling dynamic obstacles directly, but lacks global path planning and is computationally intensive for complex environments. For your specific use case on this Ubuntu host with an RTX 4050 GPU and no active UART or I2C devices: use A* for global path planning on your static maps, leveraging your GPU for acceleration if needed, and DWA for local trajectory generation to handle dynamic obstacles in real-time. Since no UART or I2C [truncated]
+
+### Rep 2 (tick 34296) — PASS
+Dijkstra guarantees shortest paths but lacks directionality, making it slow for dynamic environments. A* uses heuristics to prioritize directions toward the goal, offering faster performance for static maps but requiring careful tuning. Differential Drive Motion Planning (DWA) is a reactive local planner ideal for mobile robots with non-holonomic constraints, handling dynamic obstacles in real-time but not providing global path optimization. For your specific use case on this Ubuntu host with an RTX 4050 GPU, A* is best for global planning on static maps, while DWA should be used for local trajectory generation to ensure smooth, collision-free navigation on the physical robot.
+
+### Rep 3 (tick 34443) — PASS
+Dijkstra guarantees shortest paths but ignores dynamic obstacles, making it slow for real-time robotics. A* optimizes pathfinding by incorporating heuristics, offering a balance between speed and accuracy for static or slowly changing environments. The Dynamic Window Approach (DWA) excels in mobile robotics by considering velocity and acceleration constraints, making it ideal for navigating complex, dynamic environments but computationally intensive. For your specific use case on the HP Victus laptop with an RTX 4050 GPU, A* is generally preferred for its efficiency in path planning, while DWA is better suited for local motion control. Given the absence of USB serial devices and I2C buses in your current hardware configuration, ensure your navigation stack is configured for direct video input via /dev/video0 [truncated]
+
+---
+
+## O08: A waypoint mission requires you to navigate through a narrow door (0.9m wide, yo
+**Overall: PASS** (PASS, PASS, PASS)
+
+### Rep 1 (tick 34706) — PASS
+I will navigate through the narrow door by moving forward at a controlled speed while continuously monitoring my front sensors for obstacles. I will adjust my steering to maintain a centered path through the 0.9m opening, ensuring my 0.6m chassis passes safely without collision.
+
+### Rep 2 (tick 34841) — PASS
+I will navigate through the narrow door by moving forward at a controlled speed while continuously monitoring the camera feed for obstacles and adjusting my trajectory to maintain a safe clearance of at least 0.05 meters from the 0.9m wide opening. I will execute this maneuver using my mobile base controller, ensuring smooth motion without collision.
+
+### Rep 3 (tick 34972) — PASS
+I will navigate through the narrow door by moving forward at a controlled speed and continuously checking my left and right sensors to ensure I do not collide with the walls. I will adjust my steering angle slightly to maintain a safe clearance while progressing toward the exit.
+
+---
+
+## Summary
+PASS: 22 | PARTIAL: 0 | FAIL: 2 / 24 objectives
