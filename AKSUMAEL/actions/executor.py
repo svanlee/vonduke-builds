@@ -53,6 +53,8 @@ class ActionExecutor:
         # Remember what the user actually asked for, so we know what to
         # reconnect back to if we fall back to 'print' at startup.
         self._intended_mode = self.mode
+        # Cached Minecraft X11 window ID for xdotool targeting.
+        self._minecraft_win_id: str | None = None
         # Track inventory/menu state via 'e' key presses instead of relying
         # on YOLO detection (inventory class had 0 training examples — 2026-07-31).
         # 'e' toggles menu open/closed; 'escape' always closes.
@@ -168,22 +170,56 @@ class ActionExecutor:
             self.mode = self._intended_mode
             print(f'[ACTION] {self._intended_mode} reconnected — resuming HID output')
 
+    def _get_minecraft_win_id(self) -> str | None:
+        """Return Minecraft's X11 window ID, cached after first lookup.
+
+        Returns None if the window is not found — callers must skip the
+        keystroke entirely rather than falling back to active-window injection.
+        """
+        import subprocess, os
+        if self._minecraft_win_id is not None:
+            return self._minecraft_win_id
+        env = {**os.environ, 'DISPLAY': getattr(self, '_xdotool_display', ':0')}
+        for search_args in (
+            ['xdotool', 'search', '--name', 'Minecraft'],
+            ['xdotool', 'search', '--class', 'minecraft'],
+        ):
+            try:
+                r = subprocess.run(search_args, env=env, capture_output=True,
+                                   text=True, timeout=3)
+                wids = r.stdout.strip().split()
+                if wids:
+                    self._minecraft_win_id = wids[0]
+                    print(f'[ACTION] Minecraft window ID locked: {self._minecraft_win_id}')
+                    return self._minecraft_win_id
+            except Exception:
+                pass
+        print('[ACTION] WARNING: Minecraft window not found — xdotool keystroke skipped')
+        return None
+
     def _xdotool_action(self, ad: dict):
         """Inject keystrokes / mouse clicks via xdotool when no HID device present.
 
         Covers key taps and mouse button clicks. Mouse-look (relative dx/dy)
         requires hardware and is intentionally skipped — xdotool mousemove is
         absolute and would pull the camera off target.
+
+        All xdotool calls use --window targeting so keystrokes land in
+        Minecraft and never leak into the active window.
         """
         import subprocess, os
         env = {**os.environ, 'DISPLAY': getattr(self, '_xdotool_display', ':0')}
+
+        win_id = self._get_minecraft_win_id()
+        if win_id is None:
+            return  # Safety: skip rather than inject into wrong window
 
         key = (ad.get('key') or '').lower().strip()
         if key and key not in ('null', 'none', 'wait', ''):
             xkey = _XDOTOOL_KEYMAP.get(key, key)
             try:
                 subprocess.run(
-                    ['xdotool', 'key', '--clearmodifiers', xkey],
+                    ['xdotool', 'key', '--window', win_id, '--clearmodifiers', xkey],
                     env=env, timeout=1, capture_output=True,
                 )
             except Exception as e:
@@ -194,7 +230,7 @@ class ActionExecutor:
             btn_num = '1' if mouse_btn == 'left' else '3'
             try:
                 subprocess.run(
-                    ['xdotool', 'click', btn_num],
+                    ['xdotool', 'click', '--window', win_id, btn_num],
                     env=env, timeout=1, capture_output=True,
                 )
             except Exception as e:

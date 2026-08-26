@@ -783,20 +783,26 @@ def send_keystrokes(action: str, value: str, window_title: str = "") -> dict:
         return {"error": f"blocked: '{value}' matches safety filter"}
     try:
         env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+        win_args: list[str] = []
         if window_title:
-            # Focus the target window first
-            subprocess.run(
-                ["xdotool", "search", "--name", window_title, "windowfocus"],
+            # Resolve window ID so we use --window targeting instead of
+            # stealing focus (focus-then-type has a TOCTOU race).
+            sr = subprocess.run(
+                ["xdotool", "search", "--name", window_title],
                 capture_output=True, text=True, timeout=3, env=env
             )
+            wids = sr.stdout.strip().split()
+            if not wids:
+                return {"error": f"window not found: '{window_title}'"}
+            win_args = ["--window", wids[0]]
         if action == "type":
             r = subprocess.run(
-                ["xdotool", "type", "--clearmodifiers", "--", value],
+                ["xdotool", "type"] + win_args + ["--clearmodifiers", "--", value],
                 capture_output=True, text=True, timeout=5, env=env
             )
         else:  # key
             r = subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", value],
+                ["xdotool", "key"] + win_args + ["--clearmodifiers", value],
                 capture_output=True, text=True, timeout=5, env=env
             )
         if r.returncode == 0:
