@@ -1357,6 +1357,10 @@ class VideoCapturePipeline:
             s = _sscale * _fov / (_fov + zr2)
             return int(ncx + xr*s), int(ncy + yr2*s), zr2
 
+        # ── Holosphere state (gold, armillary, dense) ─────────────────
+        import numpy as _np, random as _rand
+        heat = VideoCapturePipeline._NN_HEAT
+
         # Organic deformation: each node breathes outward/inward along its own
         # normal vector. Heat pulls nodes inward — hot nodes cluster near the
         # core (inner shell r≈0.45), cold nodes sit on the outer shell (r≈1.0).
@@ -1373,10 +1377,6 @@ class VideoCapturePipeline:
             return _proj3(n['x3'] * _r, n['y3'] * _r, n['z3'] * _r)
 
         pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
-
-        # ── Holosphere state (gold, armillary, dense) ─────────────────
-        import numpy as _np, random as _rand
-        heat = VideoCapturePipeline._NN_HEAT
 
         if VideoCapturePipeline._NN_ADJ is None:
             adj = {i: [] for i in range(len(nn_nodes))}
