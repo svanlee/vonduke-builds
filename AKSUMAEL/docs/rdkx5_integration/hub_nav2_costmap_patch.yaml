@@ -1,0 +1,138 @@
+# =============================================================================
+# hub_nav2_costmap_patch.yaml
+# Nav2 costmap layer snippet — add to your hub's costmap_params.yaml
+#
+# Subscribes to /stereonet/depth (sensor_msgs/PointCloud2) published by the
+# RDK X5 over ROS2 DDS on ROS_DOMAIN_ID=42.
+#
+# HOW TO APPLY:
+#   Open your Nav2 costmap_params.yaml (typically
+#   <your_nav2_bringup>/params/nav2_params.yaml) and merge the sections below
+#   into the matching costmap stanzas.  See inline comments for placement.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.  LOCAL COSTMAP  (robot's near-field obstacle avoidance, ~5 m radius)
+#     Merge this block into: local_costmap → local_costmap → ros__parameters
+# ─────────────────────────────────────────────────────────────────────────────
+local_costmap:
+  local_costmap:
+    ros__parameters:
+
+      # Add "stereonet_obstacles" to your existing plugins list, e.g.:
+      # plugins: ["obstacle_layer", "inflation_layer", "stereonet_obstacles"]
+      # (Replace the list below with your actual existing plugins + this entry.)
+      plugins:
+        - obstacle_layer       # keep your existing layers
+        - inflation_layer      # keep your existing layers
+        - stereonet_obstacles  # ← NEW: RDK X5 depth cloud
+
+      stereonet_obstacles:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+
+        # ── Observation sources ─────────────────────────────────────────────
+        observation_sources: stereonet_cloud
+
+        stereonet_cloud:
+          topic: /stereonet/depth
+          data_type: PointCloud2
+          sensor_frame: stereo_link        # TF frame from the launch file
+          expected_update_rate: 0.5        # warn if no data for >0.5 s (25 FPS stream)
+          observation_persistence: 0.2     # seconds to keep stale points
+
+          # Obstacle marking band (height above floor)
+          min_obstacle_height: 0.02        # 2 cm — skip floor returns
+          max_obstacle_height: 2.00        # 2 m  — skip overhead structure
+
+          # Depth range gate (mirrors Nav2 costmap frustum)
+          obstacle_max_range: 3.0          # metres — reliable GS130W stereo range
+          obstacle_min_range: 0.1          # metres — avoid self-detection artefacts
+          raytrace_max_range:  3.5         # clear cells beyond this
+          raytrace_min_range:  0.0
+
+          marking: true
+          clearing: true
+
+          # QoS — matches RDK X5 default publisher profile
+          qos_overrides:
+            /stereonet/depth:
+              reliability: best_effort
+              history: keep_last
+              depth: 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2.  GLOBAL COSTMAP  (long-range map updates, optional — enable if robot
+#     maps while moving through large spaces)
+#     Merge into: global_costmap → global_costmap → ros__parameters
+# ─────────────────────────────────────────────────────────────────────────────
+global_costmap:
+  global_costmap:
+    ros__parameters:
+
+      # Add "stereonet_global" to your existing plugins list if desired.
+      # Leave global_costmap unchanged if you only want local avoidance.
+      plugins:
+        - static_layer           # keep existing
+        - inflation_layer        # keep existing
+        - stereonet_global       # ← OPTIONAL: enable for global map updates
+
+      stereonet_global:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+
+        observation_sources: stereonet_cloud_global
+
+        stereonet_cloud_global:
+          topic: /stereonet/depth
+          data_type: PointCloud2
+          sensor_frame: stereo_link
+          expected_update_rate: 1.0
+          observation_persistence: 1.0     # hold points longer in global map
+
+          min_obstacle_height: 0.05
+          max_obstacle_height: 2.00
+
+          obstacle_max_range: 3.0
+          obstacle_min_range: 0.3
+          raytrace_max_range:  3.5
+          raytrace_min_range:  0.0
+
+          marking: true
+          clearing: true
+
+          qos_overrides:
+            /stereonet/depth:
+              reliability: best_effort
+              history: keep_last
+              depth: 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3.  REQUIRED: TF FRAME  (stereo_link → base_link)
+#     This is published by the static_transform_publisher in gs130w_stereonet.launch.py.
+#     If you run Nav2 without that launch file on the hub, add a static TF here:
+#
+#     ros2 run tf2_ros static_transform_publisher \
+#         0.15 0.0 0.12 0 0 0 base_link stereo_link
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4.  DDS / DOMAIN NOTES
+#     Both the RDK X5 and robocar-hub must use ROS_DOMAIN_ID=42.
+#     On the hub, add to ~/.bashrc:
+#         export ROS_DOMAIN_ID=42
+#     On the X5, rdkx5_setup.sh handles this automatically.
+#
+#     For cross-subnet setups (X5 on WiFi 6, hub on Ethernet) you may need
+#     to set RMW_IMPLEMENTATION=rmw_cyclonedds_cpp on both machines and
+#     configure a CycloneDDS XML with explicit peer addresses:
+#
+#     export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+#     export CYCLONEDDS_URI="<CycloneDDS><Domain><General>
+#         <NetworkInterfaceAddress>192.168.0.156</NetworkInterfaceAddress>
+#         </General></Domain></CycloneDDS>"
+# ─────────────────────────────────────────────────────────────────────────────

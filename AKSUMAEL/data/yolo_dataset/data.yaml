@@ -1,7 +1,7 @@
 path: data/yolo_dataset
 train: images/train
 val: images/val
-nc: 76
+nc: 77
 names:
   0: health_bar
   1: hunger_bar
@@ -79,3 +79,4 @@ names:
   73: cloud
   74: magma_block
   75: duck
+  76: malar
