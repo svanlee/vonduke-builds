@@ -1422,10 +1422,15 @@ class VideoCapturePipeline:
             _bulge = _aa * _math.sin(_t_slow * _fa + _phase_n) \
                    + _ab * _math.cos(_t_slow * _fb + _phase_n * 1.3)
             _h = heat.get(idx, 0.0)
-            # heat 0.0 → outer shell (r=1.0), heat 1.0 → core (r=0.45)
             _layer_r = 1.0 - _h * 0.55
             _r = _layer_r + _bulge
-            return _proj3(n['x3'] * _r, n['y3'] * _r, n['z3'] * _r)
+            px, py, pz = _proj3(n['x3'] * _r, n['y3'] * _r, n['z3'] * _r)
+            # Brain-ellipse: wider than tall, slowly drifting asymmetry
+            _drift_x = _math.sin(fnum * 0.0009) * 9
+            _drift_y = _math.cos(fnum * 0.0007) * 6
+            px2 = int(ncx + (px - ncx) * 1.42 + _drift_x)
+            py2 = int(ncy + (py - ncy) * 0.68 + _drift_y)
+            return px2, py2, pz
 
         pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
 
@@ -1727,32 +1732,8 @@ class VideoCapturePipeline:
         cv2.putText(canvas, 'VISION', (_cam_cx - 17, _cam_ry + _cam_rh + 10),
                     FONT, 0.25, DCYAN, 1, cv2.LINE_AA)
 
-        # ── Sysstat mini — 4 arc dials, no bounding box ──────────────
-        _ss_x0 = nn_x0 + 16; _ss_y0 = nn_y0 + 12
-        _ss_r = 22; _ss_gap = 52
-        _ss_items = [
-            (_ss_x0 + _ss_r,            _ss_y0 + _ss_r,            cpu_pct,  'CPU',
-             GREEN if cpu_pct  < 0.65 else (ORANGE if cpu_pct  < 0.85 else RED)),
-            (_ss_x0 + _ss_r + _ss_gap,  _ss_y0 + _ss_r,            gpu_util, 'GPU',
-             CYAN  if gpu_util < 0.65 else (ORANGE if gpu_util < 0.85 else RED)),
-            (_ss_x0 + _ss_r,            _ss_y0 + _ss_r + _ss_gap,  ram_pct,  'RAM',
-             GREEN if ram_pct  < 0.75 else (ORANGE if ram_pct  < 0.90 else RED)),
-            (_ss_x0 + _ss_r + _ss_gap,  _ss_y0 + _ss_r + _ss_gap,  gpu_mem,  'VRAM',
-             CYAN  if gpu_mem  < 0.75 else (ORANGE if gpu_mem  < 0.90 else RED)),
-        ]
-        # Update click rect to match visual extent
-        _PM['sysstat']['mini_rect'] = (
-            _ss_x0 - 4, _ss_y0 - 4,
-            _ss_r * 2 + _ss_gap + 8, _ss_r * 2 + _ss_gap + 8)
-        for _gx, _gy, _pct, _lbl, _col in _ss_items:
-            _dim = (_col[0]//4, _col[1]//4, _col[2]//4)
-            _arc_gauge(canvas, _gx, _gy, _ss_r, _pct, _col, _dim, VCYAN)
-            _gs = f'{int(_pct * 100)}%'
-            (_gtw, _gth), _ = cv2.getTextSize(_gs, FONT, 0.28, 1)
-            cv2.putText(canvas, _gs, (_gx - _gtw // 2, _gy + _gth // 2),
-                        FONT, 0.28, _col, 1, cv2.LINE_AA)
-            cv2.putText(canvas, _lbl, (_gx - len(_lbl) * 3, _gy + _gth // 2 + 11),
-                        FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
+        # Sysstat mini removed — large gauges in sidebar replace it
+        _PM['sysstat']['mini_rect'] = (nn_x0 + 16, nn_y0 + 12, 4, 4)  # zero-area, click disabled
 
         # ── Goals mini — arc node cluster ─────────────────────────────
         _gl_rx, _gl_ry, _gl_rw, _gl_rh = _PM['goals']['mini_rect']
@@ -2071,10 +2052,17 @@ class VideoCapturePipeline:
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(window_name, WIN_W, WIN_H)
                 VideoCapturePipeline._WINDOW_CREATED = True
-                # Remove window manager decorations (title bar / border)
+                # Go fullscreen — eliminates title bar and border entirely
+                try:
+                    cv2.setWindowProperty(window_name,
+                                          cv2.WND_PROP_FULLSCREEN,
+                                          cv2.WINDOW_FULLSCREEN)
+                except Exception:
+                    pass
+                # Fallback: strip WM decorations via xprop if fullscreen fails
                 try:
                     import subprocess as _sp2, time as _t2
-                    _t2.sleep(0.3)   # wait for WM to register the window
+                    _t2.sleep(0.4)
                     _wid = _sp2.check_output(
                         ['xdotool', 'search', '--name', window_name],
                         timeout=2).decode().split()[0]
@@ -2082,7 +2070,7 @@ class VideoCapturePipeline:
                                 '-f', '_MOTIF_WM_HINTS', '32c',
                                 '-set', '_MOTIF_WM_HINTS', '2, 0, 0, 0, 0'])
                 except Exception:
-                    pass  # xdotool/xprop not available — border stays
+                    pass
             cv2.imshow(window_name, canvas)
 
     # ── Display pump (main-thread only) ──────────────────────────────────
