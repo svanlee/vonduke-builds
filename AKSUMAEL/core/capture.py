@@ -1059,9 +1059,21 @@ class VideoCapturePipeline:
     _NN_PULSES = []        # active pulses traversing edges
     _NN_HEAT   = {}        # per-node heat value 0.0-1.0
     _NN_ADJ    = None      # adjacency list built once from edges
-    _PIP_EXPANDED = False  # True = pip shows at 2× size
-    _PIP_RECT  = (0, 0, 1, 1)  # (x, y, w, h) of pip — set each frame for click-detection
+    # ── Expandable panel system ──────────────────────────────────────────
+    # Each panel: scale=current lerp (0=mini,1=full), target=animation target,
+    # exp_scale=how much of screen when expanded (0.3-0.96, scroll to adjust),
+    # mini_rect set each frame during draw.
+    _PANELS = {
+        'camera':  {'scale': 0.0, 'target': 0.0, 'exp_scale': 0.62, 'mini_rect': (0,0,1,1)},
+        'sysstat': {'scale': 0.0, 'target': 0.0, 'exp_scale': 0.72, 'mini_rect': (0,0,1,1)},
+        'goals':   {'scale': 0.0, 'target': 0.0, 'exp_scale': 0.68, 'mini_rect': (0,0,1,1)},
+        'thought': {'scale': 0.0, 'target': 0.0, 'exp_scale': 0.82, 'mini_rect': (0,0,1,1)},
+    }
     _MOUSE_CB_SET = False  # mouse callback registered on window?
+    _FULLSCREEN   = False  # toggle with 'f' key
+    # Sysstat cached — refresh every 2 s to avoid per-frame nvidia-smi calls
+    _SYSSTAT = {'cpu': 0.0, 'gpu': 0.0, 'gpu_mem': 0.0, 'ram': 0.0}
+    _SYSSTAT_NEXT = 0.0
 
     def _jarvis_imshow(self, window_name: str, frame, objs):
         """Render a Jarvis-style HUD — camera feed as the main display,
@@ -1597,43 +1609,221 @@ class VideoCapturePipeline:
         cv2.putText(canvas,f'{goal.upper().replace("_"," ")}',
                     (nn_x0+8,nn_y0+30),FONT,0.30,gc,1,cv2.LINE_AA)
 
-        # ── PiP camera (click to expand/collapse) ────────────────────
-        # Small: 224×126 in corner. Expanded: 448×252 (2×) centered in sphere area.
-        if VideoCapturePipeline._PIP_EXPANDED:
-            PIP_W, PIP_H = 448, 252
-            pip_x = nn_x0 + (nn_w - PIP_W) // 2
-            pip_y = nn_y0 + (nn_h - PIP_H) // 2
-        else:
-            PIP_W, PIP_H = 224, 126
-            pip_x = nn_x0 + nn_w - PIP_W - 8
-            pip_y = nn_y0 + 8
-        VideoCapturePipeline._PIP_RECT = (pip_x, pip_y, PIP_W, PIP_H)
+        # ══════════════════════════════════════════════════════════════
+        # EXPANDABLE MINI PANELS
+        # Four panels sit in the corners of the sphere area. Click any
+        # mini panel to expand it to a variable-scale overlay.  Scroll
+        # wheel adjusts the expansion fraction (0.3-0.96). Click
+        # anywhere outside a panel's expanded view to collapse it.
+        # Only one panel can be expanded at a time.
+        # ══════════════════════════════════════════════════════════════
 
-        # Register mouse callback once
+        # ── Animate panel scales ──────────────────────────────────────
+        LERP = 0.18
+        for _p in VideoCapturePipeline._PANELS.values():
+            _p['scale'] += (_p['target'] - _p['scale']) * LERP
+            if _p['scale'] < 0.003:
+                _p['scale'] = 0.0
+
+        # ── Set mini_rect positions (top-left, bottom-left, bottom-mid, top-right)
+        _PM = VideoCapturePipeline._PANELS
+        _PM['sysstat']['mini_rect'] = (nn_x0 + 8, nn_y0 + 8,               170, 100)
+        _PM['goals'  ]['mini_rect'] = (nn_x0 + 8, nn_y0 + nn_h - 85 - 8,  200, 80 )
+        _PM['thought']['mini_rect'] = (nn_x0 + nn_w//2 - 120, nn_y0 + nn_h - 75 - 8, 240, 70)
+        _PM['camera' ]['mini_rect'] = (nn_x0 + nn_w - 224 - 8, nn_y0 + 8, 224, 126)
+
+        # ── Register mouse/scroll callback once ──────────────────────
         if not VideoCapturePipeline._MOUSE_CB_SET:
             def _on_mouse(event, mx, my, flags, param):
-                if event == cv2.EVENT_LBUTTONDOWN:
-                    rx, ry, rw, rh = VideoCapturePipeline._PIP_RECT
+                panels = VideoCapturePipeline._PANELS
+                # Scroll wheel — adjust exp_scale of the open panel
+                if event == cv2.EVENT_MOUSEWHEEL:
+                    for _pp in panels.values():
+                        if _pp['target'] > 0.05:
+                            _delta = 0.05 if flags > 0 else -0.05
+                            _pp['exp_scale'] = max(0.30, min(0.96, _pp['exp_scale'] + _delta))
+                            _pp['target'] = _pp['exp_scale']
+                    return
+                if event != cv2.EVENT_LBUTTONDOWN:
+                    return
+                # If any panel is expanded, a click collapses it
+                _any_open = any(_pp['target'] > 0.05 for _pp in panels.values())
+                if _any_open:
+                    for _pp in panels.values():
+                        _pp['target'] = 0.0
+                    return
+                # Click on a mini rect → expand it, collapse others
+                for _pid, _pp in panels.items():
+                    rx, ry, rw, rh = _pp['mini_rect']
                     if rx <= mx < rx + rw and ry <= my < ry + rh:
-                        VideoCapturePipeline._PIP_EXPANDED = not VideoCapturePipeline._PIP_EXPANDED
+                        for _qp in panels.values():
+                            _qp['target'] = 0.0
+                        _pp['target'] = _pp['exp_scale']
+                        return
             try:
                 cv2.setMouseCallback(window_name, _on_mouse)
                 VideoCapturePipeline._MOUSE_CB_SET = True
             except Exception:
                 pass
 
+        # ── Helper: draw one mini panel border + title ────────────────
+        def _draw_mini(pid, title, content_lines):
+            rx, ry, rw, rh = _PM[pid]['mini_rect']
+            # Dim background
+            cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), (12, 8, 2), -1)
+            cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), DCYAN, 1)
+            _corner_bracket(canvas, rx,      ry,      1, 1, 6, CYAN2, DCYAN)
+            _corner_bracket(canvas, rx + rw, ry,     -1, 1, 6, CYAN2, DCYAN)
+            _corner_bracket(canvas, rx,      ry + rh, 1,-1, 6, CYAN2, DCYAN)
+            _corner_bracket(canvas, rx + rw, ry + rh,-1,-1, 6, CYAN2, DCYAN)
+            cv2.putText(canvas, title, (rx + 5, ry + 11), FONT, 0.28, CYAN2, 1, cv2.LINE_AA)
+            cv2.line(canvas, (rx + 4, ry + 14), (rx + rw - 4, ry + 14), DCYAN, 1)
+            for li, ln in enumerate(content_lines[:4]):
+                cy2 = ry + 26 + li * 14
+                if cy2 > ry + rh - 4:
+                    break
+                cv2.putText(canvas, ln, (rx + 5, cy2), FONT, 0.27, WHITE, 1, cv2.LINE_AA)
+
+        # ── Draw mini panels (only when not expanded) ─────────────────
+        def _bar_str(pct, width=12):
+            filled = int(width * max(0., min(1., pct)))
+            return '|' * filled + ' ' * (width - filled) + f' {pct*100:.0f}%'
+
+        # Camera mini
+        cam_rx, cam_ry, cam_rw, cam_rh = _PM['camera']['mini_rect']
         if frame is not None:
-            pip_frame = cv2.resize(frame, (PIP_W, PIP_H))
-            canvas[pip_y:pip_y+PIP_H, pip_x:pip_x+PIP_W] = pip_frame
+            _mf = cv2.resize(frame, (cam_rw, cam_rh))
+            canvas[cam_ry:cam_ry+cam_rh, cam_rx:cam_rx+cam_rw] = _mf
         else:
-            cv2.rectangle(canvas,(pip_x,pip_y),(pip_x+PIP_W,pip_y+PIP_H),(4,3,2),-1)
-        cv2.rectangle(canvas,(pip_x,pip_y),(pip_x+PIP_W,pip_y+PIP_H),DCYAN,1)
-        _expand_label = 'VISION [click to shrink]' if VideoCapturePipeline._PIP_EXPANDED else 'VISION [click to expand]'
-        cv2.putText(canvas,_expand_label,(pip_x+4,pip_y+10),FONT,0.26,CYAN2,1,cv2.LINE_AA)
-        _corner_bracket(canvas,pip_x,       pip_y,        1, 1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas,pip_x+PIP_W, pip_y,       -1, 1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas,pip_x,        pip_y+PIP_H,  1,-1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas,pip_x+PIP_W,  pip_y+PIP_H,-1,-1,8,CYAN2,DCYAN)
+            cv2.rectangle(canvas, (cam_rx, cam_ry), (cam_rx+cam_rw, cam_ry+cam_rh), (4,3,2), -1)
+        cv2.rectangle(canvas, (cam_rx, cam_ry), (cam_rx+cam_rw, cam_ry+cam_rh), DCYAN, 1)
+        cv2.putText(canvas, 'VISION  [click]', (cam_rx+4, cam_ry+11), FONT, 0.26, CYAN2, 1, cv2.LINE_AA)
+        _corner_bracket(canvas, cam_rx,          cam_ry,           1, 1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas, cam_rx + cam_rw, cam_ry,          -1, 1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas, cam_rx,           cam_ry + cam_rh, 1,-1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas, cam_rx + cam_rw,  cam_ry + cam_rh,-1,-1,8,CYAN2,DCYAN)
+
+        # SysStat mini
+        _draw_mini('sysstat', 'SYS STAT  [click]', [
+            f'CPU  {_bar_str(cpu_pct,  9)}',
+            f'GPU  {_bar_str(gpu_util, 9)}',
+            f'VRAM {_bar_str(gpu_mem,  9)}',
+            f'RAM  {_bar_str(ram_pct,  9)}',
+        ])
+
+        # Goals mini
+        _goal_lines = [f'> {goal[:28]}']
+        try:
+            import json as _js
+            with open('data/state.json') as _sf:
+                _st = _js.load(_sf)
+            _stk = _st.get('goal_stack', [])
+            for _g in (_stk or [])[:2]:
+                _goal_lines.append(f'  {str(_g)[:28]}')
+        except Exception:
+            pass
+        _draw_mini('goals', 'GOAL STACK  [click]', _goal_lines)
+
+        # Thought mini
+        _th_lines = [ln[:36] for ln in (thoughts or ['...'])[-3:]]
+        _draw_mini('thought', 'COGNITION  [click]', _th_lines)
+
+        # ── Draw expanded panel overlay ───────────────────────────────
+        for _eid, _ep in VideoCapturePipeline._PANELS.items():
+            _es = _ep['scale']
+            if _es < 0.02:
+                continue
+            _ew = int(WIN_W * _ep['exp_scale'] * 0.92)
+            _eh = int(WIN_H * _ep['exp_scale'] * 0.92)
+            _ex = (WIN_W - _ew) // 2
+            _ey = (WIN_H - _eh) // 2
+            # Dim everything behind the panel
+            _overlay = canvas.copy()
+            cv2.rectangle(_overlay, (0, 0), (WIN_W, WIN_H), (0, 0, 0), -1)
+            cv2.addWeighted(_overlay, 0.55 * _es, canvas, 1.0, 0, canvas)
+            # Panel background
+            _pw = int(_ew * _es); _ph = int(_eh * _es)
+            _px2 = (WIN_W - _pw) // 2; _py2 = (WIN_H - _ph) // 2
+            cv2.rectangle(canvas, (_px2, _py2), (_px2+_pw, _py2+_ph), (14, 9, 2), -1)
+            cv2.rectangle(canvas, (_px2, _py2), (_px2+_pw, _py2+_ph), CYAN, 1)
+            # Corner brackets
+            _bsz = 14
+            _corner_bracket(canvas, _px2,       _py2,       1, 1,_bsz, CYAN, DCYAN)
+            _corner_bracket(canvas, _px2+_pw,   _py2,      -1, 1,_bsz, CYAN, DCYAN)
+            _corner_bracket(canvas, _px2,       _py2+_ph,   1,-1,_bsz, CYAN, DCYAN)
+            _corner_bracket(canvas, _px2+_pw,   _py2+_ph,  -1,-1,_bsz, CYAN, DCYAN)
+            # Title bar
+            _etitle = {'camera':'VISION', 'sysstat':'SYSTEM STATUS',
+                       'goals':'GOAL STACK', 'thought':'INNER MONOLOGUE'}.get(_eid, _eid.upper())
+            _gtext(canvas, _etitle, (_px2+12, _py2+20), 0.55, CYAN, DCYAN, 1)
+            cv2.putText(canvas, '[click anywhere to close]  [scroll to resize]',
+                        (_px2+12, _py2+34), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+            cv2.line(canvas, (_px2+4, _py2+38), (_px2+_pw-4, _py2+38), DCYAN, 1)
+            _cy_e = _py2 + 52
+            _cx_e = _px2 + 16
+            _cw_e = _pw - 32
+
+            if _eid == 'camera':
+                if frame is not None:
+                    _vw = _cw_e; _vh = int(_cw_e * 9 / 16)
+                    if _vh > _ph - 56: _vh = _ph - 56; _vw = int(_vh * 16 / 9)
+                    _ef = cv2.resize(frame, (_vw, _vh))
+                    _vx = _px2 + (_pw - _vw) // 2
+                    canvas[_cy_e:_cy_e+_vh, _vx:_vx+_vw] = _ef
+                    cv2.rectangle(canvas, (_vx, _cy_e), (_vx+_vw, _cy_e+_vh), DCYAN, 1)
+
+            elif _eid == 'sysstat':
+                _gr = min(38, (_ph - 56) // 3)
+                _row1_cy = _cy_e + _gr + 10
+                _row2_cy = _cy_e + 3*_gr + 30
+                _g1x = _px2 + _pw//4;  _g2x = _px2 + 3*_pw//4
+                for _gcx, _gpct, _glbl, _gcol in [
+                    (_g1x, cpu_pct,  'CPU',  GREEN if cpu_pct < 0.65 else (ORANGE if cpu_pct < 0.85 else RED)),
+                    (_g2x, gpu_util, 'GPU',  CYAN  if gpu_util < 0.65 else (ORANGE if gpu_util < 0.85 else RED)),
+                ]:
+                    _gc = (_gcol[0]//4, _gcol[1]//4, _gcol[2]//4)
+                    _arc_gauge(canvas, _gcx, _row1_cy, _gr, _gpct, _gcol, _gc, VCYAN)
+                    _gs = f'{int(_gpct*100)}%'
+                    (_gtw,_gth),_ = cv2.getTextSize(_gs, FONT, 0.45, 1)
+                    cv2.putText(canvas, _gs, (_gcx-_gtw//2, _row1_cy+_gth//2), FONT, 0.45, _gcol, 1, cv2.LINE_AA)
+                    cv2.putText(canvas, _glbl, (_gcx-12, _row1_cy+_gth//2+16), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
+                _g3x = _px2 + _pw//4;  _g4x = _px2 + 3*_pw//4
+                for _gcx, _gpct, _glbl, _gcol in [
+                    (_g3x, ram_pct, 'RAM',  GREEN if ram_pct < 0.75 else (ORANGE if ram_pct < 0.90 else RED)),
+                    (_g4x, gpu_mem, 'VRAM', CYAN  if gpu_mem  < 0.75 else (ORANGE if gpu_mem  < 0.90 else RED)),
+                ]:
+                    _gc = (_gcol[0]//4, _gcol[1]//4, _gcol[2]//4)
+                    _arc_gauge(canvas, _gcx, _row2_cy, _gr, _gpct, _gcol, _gc, VCYAN)
+                    _gs = f'{int(_gpct*100)}%'
+                    (_gtw,_gth),_ = cv2.getTextSize(_gs, FONT, 0.45, 1)
+                    cv2.putText(canvas, _gs, (_gcx-_gtw//2, _row2_cy+_gth//2), FONT, 0.45, _gcol, 1, cv2.LINE_AA)
+                    cv2.putText(canvas, _glbl, (_gcx-14, _row2_cy+_gth//2+16), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
+
+            elif _eid == 'goals':
+                cv2.putText(canvas, f'ACTIVE: {goal}', (_cx_e, _cy_e+14), FONT, 0.55, CYAN, 1, cv2.LINE_AA)
+                _cy_e += 30
+                try:
+                    import json as _js2
+                    with open('data/state.json') as _sf2:
+                        _st2 = _js2.load(_sf2)
+                    _stk2 = _st2.get('goal_stack', []) or []
+                    for _gi2, _gs2 in enumerate(_stk2[:12]):
+                        cv2.putText(canvas, f'  {_gi2+1}. {str(_gs2)[:60]}',
+                                    (_cx_e, _cy_e + 20 + _gi2*22), FONT, 0.40, WHITE, 1, cv2.LINE_AA)
+                except Exception:
+                    pass
+
+            elif _eid == 'thought':
+                _lh_e = max(14, (_ph - 56) // max(1, min(20, len(thoughts or ['']))))
+                _max_e = max(1, (_ph - 56) // _lh_e)
+                _chars_e = _cw_e * 2 // 7
+                for _ti, _tl in enumerate((thoughts or [])[-_max_e:]):
+                    _is_last = _ti == min(_max_e, len(thoughts)) - 1
+                    _tc = CYAN if _is_last else (WHITE if _ti >= _max_e - 4 else DCYAN)
+                    _td = (_tl[:_chars_e] + '..') if len(_tl) > _chars_e else _tl
+                    cv2.putText(canvas, ('> ' if _is_last else '  ') + _td,
+                                (_cx_e, _cy_e + _ti*_lh_e), FONT, 0.32, _tc, 1, cv2.LINE_AA)
+            break  # only one expanded at a time
 
         # ══════════════════════════════════════════════════════════════
         # RIGHT SIDEBAR
@@ -1673,24 +1863,32 @@ class VideoCapturePipeline:
         g2_cx = sx + 3 * SIDE_W // 4
         g_cy  = sy + gauge_r + 10
 
-        # Fetch CPU and GPU usage
-        try:
-            import psutil as _ps
-            cpu_pct = _ps.cpu_percent(interval=None) / 100.0
-        except Exception:
-            cpu_pct = 0.0
-        try:
-            import subprocess as _sp
-            _smi = _sp.run(
-                ['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total',
-                 '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, timeout=1)
-            _vals = _smi.stdout.strip().split(',')
-            gpu_util = float(_vals[0].strip()) / 100.0
-            gpu_mem  = float(_vals[1].strip()) / float(_vals[2].strip())
-        except Exception:
-            gpu_util = 0.0
-            gpu_mem  = 0.0
+        # Fetch CPU / GPU / RAM — cached every 2 s to avoid per-frame nvidia-smi
+        _now = time.time()
+        if _now >= VideoCapturePipeline._SYSSTAT_NEXT:
+            VideoCapturePipeline._SYSSTAT_NEXT = _now + 2.0
+            try:
+                import psutil as _ps
+                VideoCapturePipeline._SYSSTAT['cpu'] = _ps.cpu_percent(interval=None) / 100.0
+                _vm = _ps.virtual_memory()
+                VideoCapturePipeline._SYSSTAT['ram'] = _vm.percent / 100.0
+            except Exception:
+                pass
+            try:
+                import subprocess as _sp
+                _smi = _sp.run(
+                    ['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total',
+                     '--format=csv,noheader,nounits'],
+                    capture_output=True, text=True, timeout=1)
+                _vals = _smi.stdout.strip().split(',')
+                VideoCapturePipeline._SYSSTAT['gpu']     = float(_vals[0].strip()) / 100.0
+                VideoCapturePipeline._SYSSTAT['gpu_mem'] = float(_vals[1].strip()) / float(_vals[2].strip())
+            except Exception:
+                pass
+        cpu_pct  = VideoCapturePipeline._SYSSTAT['cpu']
+        gpu_util = VideoCapturePipeline._SYSSTAT['gpu']
+        gpu_mem  = VideoCapturePipeline._SYSSTAT['gpu_mem']
+        ram_pct  = VideoCapturePipeline._SYSSTAT['ram']
 
         # CPU gauge
         cpu_col = RED if cpu_pct > 0.85 else (ORANGE if cpu_pct > 0.65 else GREEN)
@@ -1769,11 +1967,23 @@ class VideoCapturePipeline:
             cv2.rectangle(canvas, (xi, fy + 10), (xi + 5, fy + 11), VCYAN, -1)
 
         if _CV2_GUI_OK:
-            # Make window resizable on first render
+            # Make window resizable on first render; strip OS decoration
             if not getattr(VideoCapturePipeline, '_WINDOW_CREATED', False):
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(window_name, WIN_W, WIN_H)
                 VideoCapturePipeline._WINDOW_CREATED = True
+                # Remove window manager decorations (title bar / border)
+                try:
+                    import subprocess as _sp2, time as _t2
+                    _t2.sleep(0.3)   # wait for WM to register the window
+                    _wid = _sp2.check_output(
+                        ['xdotool', 'search', '--name', window_name],
+                        timeout=2).decode().split()[0]
+                    _sp2.Popen(['xprop', '-id', _wid,
+                                '-f', '_MOTIF_WM_HINTS', '32c',
+                                '-set', '_MOTIF_WM_HINTS', '2, 0, 0, 0, 0'])
+                except Exception:
+                    pass  # xdotool/xprop not available — border stays
             cv2.imshow(window_name, canvas)
 
     # ── Display pump (main-thread only) ──────────────────────────────────
@@ -1813,6 +2023,10 @@ class VideoCapturePipeline:
         if key == ord('q'):
             self.display.quit = True
             return False
+        if key == ord('f') and _CV2_GUI_OK:
+            VideoCapturePipeline._FULLSCREEN = not VideoCapturePipeline._FULLSCREEN
+            prop = cv2.WINDOW_FULLSCREEN if VideoCapturePipeline._FULLSCREEN else cv2.WINDOW_NORMAL
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, prop)
         return True
 
     @staticmethod
