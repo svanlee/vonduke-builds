@@ -123,6 +123,7 @@ class GoalStack:
         """Heuristic goal updates based on world state."""
         # Hunger overrides everything — only when ENABLE_EAT is on
         import config as _cfg
+        _game_env = getattr(_cfg, 'ACTIVE_ENV', '') in getattr(_cfg, 'GAME_ENVS', set())
         if (_cfg.ENABLE_EAT
                 and hasattr(world_memory, 'hunger_pct')
                 and world_memory.hunger_pct < 0.30):
@@ -130,6 +131,10 @@ class GoalStack:
                 self.push("eat")
         elif self.current == "eat" and hasattr(world_memory, 'hunger_pct') and world_memory.hunger_pct > 0.70:
             self.pop()
+
+        # Game-env-only goal heuristics — never fire in Jarvis base mode
+        if not _game_env:
+            return
 
         # Diamond goal if we have a pickaxe and not too many diamonds
         diamonds = inventory.items.get("diamond", 0)

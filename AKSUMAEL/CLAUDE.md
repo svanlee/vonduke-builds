@@ -54,12 +54,33 @@ Prune weekly; past ~50 lines rules get ignored.
 
 ---
 
+## LLM — local only
+
+- **NO external API calls. Ever.** All inference routes through mesh-llm
+  (localhost:9337). If intelligence is lacking, train/fine-tune — don't add
+  an API key fallback.
+- `LLM_TEMPERATURE` stays at 0.2 in `core/llm_router.py`.
+
+---
+
 ## Security
 
 - API keys live at `~/.config/anthropic/key`, `~/.config/google/key`,
   `~/.config/roboflow/key`. Never print values. Never commit.
 - `.notes/` is gitignored. Never commit files from it.
-- `LLM_TEMPERATURE` stays at 0.2 in `core/llm_router.py`.
+
+---
+
+## Jarvis base mode
+
+- Jarvis IS the default runtime. There is no `JARVIS_MODE` flag. Do not
+  re-add one.
+- Game behaviors gate on `_game_env = ACTIVE_ENV in GAME_ENVS`. Add new
+  envs to `GAME_ENVS` in `config.py`; never pollute base mode with
+  game-specific imports.
+- If Jarvis gives wrong/looping voice responses: clear poisoned history with
+  `echo '[]' > data/jarvis_history.json` and reset `data/state.json` goal
+  to `"idle"`. These files are gitignored runtime state.
 
 ---
 
