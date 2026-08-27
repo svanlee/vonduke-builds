@@ -1263,9 +1263,10 @@ class VideoCapturePipeline:
         # ══════════════════════════════════════════════════════════════
         # HEADER
         # ══════════════════════════════════════════════════════════════
-        cv2.rectangle(canvas, (0, 0), (WIN_W, HDR_H), PANEL, -1)
-        # Bottom glow line
-        _gline(canvas, (0, HDR_H - 1), (WIN_W, HDR_H - 1), CYAN2, DCYAN, 1)
+        # Header — no fill, elements float on black
+        # Thin arc sweep instead of a full-width solid bar
+        cv2.ellipse(canvas, (WIN_W // 2, 0), (WIN_W // 2, HDR_H + 6),
+                    0, 0, 180, (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
 
         # Logo with glow
         _gtext(canvas, 'A K S U M A E L', (12, 32), 0.72, CYAN, DCYAN, 2)
@@ -1915,22 +1916,24 @@ class VideoCapturePipeline:
         # ══════════════════════════════════════════════════════════════
         # RIGHT SIDEBAR
         # ══════════════════════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════════
+        # RIGHT SIDE — floating elements on black, no panel fill
+        # ══════════════════════════════════════════════════════════════
         sx = CAM_W
-        cv2.rectangle(canvas, (sx, HDR_H), (WIN_W, WIN_H), PANEL, -1)
-        # Left border with glow
-        _gline(canvas, (sx, HDR_H), (sx, WIN_H), CYAN2, DCYAN, 1)
-        px = sx + 10
+        px = sx + 14
 
-        # ── Section: COGNITIVE STATE ──────────────────────────────────
-        sy = HDR_H + 12
-        _gtext(canvas, 'COGNITIVE STATE', (px, sy), 0.33, CYAN2, DCYAN)
-        sy += 5
-        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
-        sy += 14
+        # ── Cognitive state — text floats on black ────────────────────
+        sy = HDR_H + 16
+        _gtext(canvas, 'COGNITIVE STATE', (px, sy), 0.30, CYAN2, DCYAN)
+        sy += 12
+        # Thin arc underline instead of a line
+        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
+                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
+        sy += 8
 
-        LINE_H = 16
+        LINE_H = 15
         chars  = (SIDE_W - 20) * 2 // 7
-        avail_h = (WIN_H - FOOT_H) - sy - 170  # reserve for gauges + detections
+        avail_h = (WIN_H - FOOT_H) - sy - 220  # reserve for large gauges + detections
         max_lines = max(1, avail_h // LINE_H)
         recent = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
         for i, line in enumerate(recent):
@@ -1939,73 +1942,106 @@ class VideoCapturePipeline:
             prefix = '> ' if is_last else '  '
             disp = (line[:chars] + '..') if len(line) > chars else line
             cv2.putText(canvas, f'{prefix}{disp}',
-                        (px, sy + i * LINE_H), FONT, 0.32, col, 1, cv2.LINE_AA)
-        sy += max_lines * LINE_H + 6
+                        (px, sy + i * LINE_H), FONT, 0.30, col, 1, cv2.LINE_AA)
+        sy += max_lines * LINE_H + 10
 
-        # ── Arc gauges: CPU + GPU side by side ────────────────────────
-        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
+        # ── Large arc gauges — 4 dials floating in the sidebar ────────
+        # Arc separator
+        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
+                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
         sy += 10
-        gauge_r = 40
+        gauge_r = 62          # much bigger than before (was 40)
         g1_cx = sx + SIDE_W // 4
         g2_cx = sx + 3 * SIDE_W // 4
-        g_cy  = sy + gauge_r + 10
-
-        # cpu_pct / gpu_util / gpu_mem / ram_pct — fetched near top of function
+        g_cy  = sy + gauge_r + 8
 
         # CPU gauge
         cpu_col = RED if cpu_pct > 0.85 else (ORANGE if cpu_pct > 0.65 else GREEN)
         cpu_dim = (cpu_col[0]//4, cpu_col[1]//4, cpu_col[2]//4)
         _arc_gauge(canvas, g1_cx, g_cy, gauge_r, cpu_pct, cpu_col, cpu_dim, VCYAN)
         cpu_str = f'{int(cpu_pct*100)}%'
-        (tw, th), _ = cv2.getTextSize(cpu_str, FONT, 0.38, 1)
+        (tw, th), _ = cv2.getTextSize(cpu_str, FONT, 0.50, 1)
         cv2.putText(canvas, cpu_str,
-                    (g1_cx - tw//2, g_cy + th//2), FONT, 0.38, cpu_col, 1, cv2.LINE_AA)
+                    (g1_cx - tw//2, g_cy + th//2), FONT, 0.50, cpu_col, 1, cv2.LINE_AA)
         cv2.putText(canvas, 'CPU',
-                    (g1_cx - 9, g_cy + th//2 + 14), FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+                    (g1_cx - 11, g_cy + th//2 + 18), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
 
-        # GPU gauge (utilization)
+        # GPU gauge
         gpu_col = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
         gpu_dim = (gpu_col[0]//4, gpu_col[1]//4, gpu_col[2]//4)
         _arc_gauge(canvas, g2_cx, g_cy, gauge_r, gpu_util, gpu_col, gpu_dim, VCYAN)
         gpu_str = f'{int(gpu_util*100)}%'
-        (tw2, th2), _ = cv2.getTextSize(gpu_str, FONT, 0.38, 1)
+        (tw2, th2), _ = cv2.getTextSize(gpu_str, FONT, 0.50, 1)
         cv2.putText(canvas, gpu_str,
-                    (g2_cx - tw2//2, g_cy + th2//2), FONT, 0.38, gpu_col, 1, cv2.LINE_AA)
+                    (g2_cx - tw2//2, g_cy + th2//2), FONT, 0.50, gpu_col, 1, cv2.LINE_AA)
         cv2.putText(canvas, 'GPU',
-                    (g2_cx - 9, g_cy + th2//2 + 14), FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+                    (g2_cx - 11, g_cy + th2//2 + 18), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
 
-        sy = g_cy + gauge_r + 20
+        sy = g_cy + gauge_r + 14
 
-        # ── Detections ────────────────────────────────────────────────
-        _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
-        sy += 10
-        _gtext(canvas, 'DETECTIONS', (px, sy), 0.32, CYAN2, DCYAN)
+        # RAM + VRAM row — slightly smaller
+        gauge_r2 = 44
+        gm1_cx = sx + SIDE_W // 4
+        gm2_cx = sx + 3 * SIDE_W // 4
+        gm_cy  = sy + gauge_r2 + 6
+        ram_col  = GREEN if ram_pct < 0.75 else (ORANGE if ram_pct  < 0.90 else RED)
+        vram_col = CYAN  if gpu_mem < 0.75 else (ORANGE if gpu_mem  < 0.90 else RED)
+        _arc_gauge(canvas, gm1_cx, gm_cy, gauge_r2, ram_pct,  ram_col,
+                   (ram_col[0]//4,  ram_col[1]//4,  ram_col[2]//4),  VCYAN)
+        _arc_gauge(canvas, gm2_cx, gm_cy, gauge_r2, gpu_mem,  vram_col,
+                   (vram_col[0]//4, vram_col[1]//4, vram_col[2]//4), VCYAN)
+        for _gcx2, _gpct2, _glbl2, _gcol2 in [
+            (gm1_cx, ram_pct, 'RAM',  ram_col),
+            (gm2_cx, gpu_mem, 'VRAM', vram_col),
+        ]:
+            _gs2 = f'{int(_gpct2*100)}%'
+            (_gtw2, _gth2), _ = cv2.getTextSize(_gs2, FONT, 0.38, 1)
+            cv2.putText(canvas, _gs2, (_gcx2-_gtw2//2, gm_cy+_gth2//2),
+                        FONT, 0.38, _gcol2, 1, cv2.LINE_AA)
+            cv2.putText(canvas, _glbl2, (_gcx2-len(_glbl2)*4, gm_cy+_gth2//2+14),
+                        FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+
+        sy = gm_cy + gauge_r2 + 14
+
+        # ── Detections — arc confidence rings, no bars ────────────────
+        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
+                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
+        sy += 8
+        _gtext(canvas, 'DETECTIONS', (px, sy), 0.30, CYAN2, DCYAN)
         sy += 14
-        bar_max = SIDE_W - 22
-        for obj in (objs or [])[:6]:
-            if sy >= WIN_H - FOOT_H - 6:
+        _det_r = 10
+        _det_cols = max(1, (SIDE_W - 20) // 70)
+        for _di, obj in enumerate((objs or [])[:6]):
+            if sy + _det_r * 2 + 4 >= WIN_H - FOOT_H:
                 break
-            label = str(obj.get('label', obj.get('class_name', '?')))[:13]
+            label = str(obj.get('label', obj.get('class_name', '?')))[:10]
             conf  = float(obj.get('confidence', obj.get('conf', 0.0)))
-            bar_w = int(bar_max * conf)
-            # bar bg
-            cv2.rectangle(canvas, (px, sy - 9), (px + bar_max, sy - 3), VCYAN, -1)
-            # bar fill
-            fill_col = (GREEN[0]//2, GREEN[1]//2, GREEN[2]//2)
-            cv2.rectangle(canvas, (px, sy - 9), (px + bar_w, sy - 3), fill_col, -1)
-            cv2.putText(canvas, f'{label:<13s} {conf:3.0%}',
-                        (px, sy - 2), FONT, 0.30, GREEN, 1, cv2.LINE_AA)
-            sy += 13
+            _dix = px + (_di % _det_cols) * 70 + _det_r + 4
+            _diy = sy + _det_r
+            if _di % _det_cols == 0 and _di > 0:
+                sy += _det_r * 2 + 14
+                _diy = sy + _det_r
+            _arc_gauge(canvas, _dix, _diy, _det_r, conf,
+                       GREEN, (GREEN[0]//4, GREEN[1]//4, GREEN[2]//4), VCYAN)
+            _cs = f'{int(conf*100)}%'
+            (_cw, _ch), _ = cv2.getTextSize(_cs, FONT, 0.22, 1)
+            cv2.putText(canvas, _cs, (_dix-_cw//2, _diy+_ch//2),
+                        FONT, 0.22, GREEN, 1, cv2.LINE_AA)
+            cv2.putText(canvas, label, (_dix - len(label)*3, _diy + _det_r + 10),
+                        FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
         if not objs:
             cv2.putText(canvas, 'no detections', (px, sy),
-                        FONT, 0.30, DCYAN, 1, cv2.LINE_AA)
+                        FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
 
         # ══════════════════════════════════════════════════════════════
         # FOOTER
         # ══════════════════════════════════════════════════════════════
+        # Footer — no fill, floating on black
         fy = WIN_H - FOOT_H
-        cv2.rectangle(canvas, (0, fy), (WIN_W, WIN_H), PANEL, -1)
-        _gline(canvas, (0, fy), (WIN_W, fy), CYAN2, DCYAN, 1)
+        # Arc sweep instead of a solid bar
+        cv2.ellipse(canvas, (WIN_W // 2, WIN_H),
+                    (WIN_W // 2, FOOT_H + 6), 0, 180, 360,
+                    (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
         fmy = fy + 22
 
         # Voice dot + text
@@ -2024,9 +2060,10 @@ class VideoCapturePipeline:
         (tw3, _), _ = cv2.getTextSize(obj_label, FONT, 0.38, 1)
         _gtext(canvas, obj_label, (WIN_W - tw3 - 10, fmy), 0.38, CYAN, DCYAN)
 
-        # Circuit dash decoration centre-footer
-        for xi in range(WIN_W // 2 - 60, WIN_W // 2 + 60, 10):
-            cv2.rectangle(canvas, (xi, fy + 10), (xi + 5, fy + 11), VCYAN, -1)
+        # Dot constellation centre-footer (no rectangles)
+        for _fi, xi in enumerate(range(WIN_W // 2 - 60, WIN_W // 2 + 61, 12)):
+            _fr = 2 if _fi % 3 == 0 else 1
+            cv2.circle(canvas, (xi, fy + 10), _fr, VCYAN, -1, cv2.LINE_AA)
 
         if _CV2_GUI_OK:
             # Make window resizable on first render; strip OS decoration
