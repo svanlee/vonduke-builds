@@ -2092,16 +2092,10 @@ class VideoCapturePipeline:
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(window_name, WIN_W, WIN_H)
                 VideoCapturePipeline._WINDOW_CREATED = True
-                # Strip title bar — try multiple methods
+                # Strip WM title bar/border only — NOT fullscreen
+                # Press F in the window to toggle fullscreen manually
                 import subprocess as _sp2, time as _t2
-                _t2.sleep(0.5)  # give WM time to register
-                # Method 1: wmctrl fullscreen (works on most GNOME/X11)
-                try:
-                    _sp2.Popen(['wmctrl', '-r', window_name,
-                                '-b', 'add,fullscreen'])
-                except FileNotFoundError:
-                    pass
-                # Method 2: xprop remove decorations
+                _t2.sleep(0.5)
                 try:
                     _wid = _sp2.check_output(
                         ['xdotool', 'search', '--name', window_name],
@@ -2109,13 +2103,6 @@ class VideoCapturePipeline:
                     _sp2.Popen(['xprop', '-id', _wid,
                                 '-f', '_MOTIF_WM_HINTS', '32c',
                                 '-set', '_MOTIF_WM_HINTS', '2, 0, 0, 0, 0'])
-                except Exception:
-                    pass
-                # Method 3: cv2 fullscreen flag
-                try:
-                    cv2.setWindowProperty(window_name,
-                                          cv2.WND_PROP_FULLSCREEN,
-                                          cv2.WINDOW_FULLSCREEN)
                 except Exception:
                     pass
             cv2.imshow(window_name, canvas)
