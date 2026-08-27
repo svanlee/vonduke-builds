@@ -1692,67 +1692,113 @@ class VideoCapturePipeline:
             except Exception:
                 pass
 
-        # ── Helper: draw one mini panel border + title ────────────────
-        def _draw_mini(pid, title, content_lines):
-            rx, ry, rw, rh = _PM[pid]['mini_rect']
-            # Dim background
-            cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), (12, 8, 2), -1)
-            cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), DCYAN, 1)
-            _corner_bracket(canvas, rx,      ry,      1, 1, 6, CYAN2, DCYAN)
-            _corner_bracket(canvas, rx + rw, ry,     -1, 1, 6, CYAN2, DCYAN)
-            _corner_bracket(canvas, rx,      ry + rh, 1,-1, 6, CYAN2, DCYAN)
-            _corner_bracket(canvas, rx + rw, ry + rh,-1,-1, 6, CYAN2, DCYAN)
-            cv2.putText(canvas, title, (rx + 5, ry + 11), FONT, 0.28, CYAN2, 1, cv2.LINE_AA)
-            cv2.line(canvas, (rx + 4, ry + 14), (rx + rw - 4, ry + 14), DCYAN, 1)
-            for li, ln in enumerate(content_lines[:4]):
-                cy2 = ry + 26 + li * 14
-                if cy2 > ry + rh - 4:
-                    break
-                cv2.putText(canvas, ln, (rx + 5, cy2), FONT, 0.27, WHITE, 1, cv2.LINE_AA)
+        # ── Draw mini panels — fully organic, no rectangles ──────────
+        # All elements use arcs, ellipses, and circles only.
 
-        # ── Draw mini panels (only when not expanded) ─────────────────
-        def _bar_str(pct, width=12):
-            filled = int(width * max(0., min(1., pct)))
-            return '|' * filled + ' ' * (width - filled) + f' {pct*100:.0f}%'
-
-        # Camera mini
-        cam_rx, cam_ry, cam_rw, cam_rh = _PM['camera']['mini_rect']
+        # ── Camera mini — circular porthole ──────────────────────────
+        _cam_rx, _cam_ry, _cam_rw, _cam_rh = _PM['camera']['mini_rect']
+        _cam_cx = _cam_rx + _cam_rw // 2
+        _cam_cy = _cam_ry + _cam_rh // 2
+        _cam_r  = min(_cam_rw, _cam_rh) // 2 - 6
+        # Outer decoration rings
+        cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 9,
+                   (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
+        cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 5, DCYAN, 1, cv2.LINE_AA)
+        # Tick marks
+        for _ti in range(0, 360, 20):
+            _ta = _math.radians(_ti)
+            _is_maj = _ti % 60 == 0
+            _tir = _cam_r + 6; _tor = _cam_r + (11 if _is_maj else 8)
+            cv2.line(canvas,
+                     (int(_cam_cx + _tir*_math.cos(_ta)), int(_cam_cy + _tir*_math.sin(_ta))),
+                     (int(_cam_cx + _tor*_math.cos(_ta)), int(_cam_cy + _tor*_math.sin(_ta))),
+                     CYAN if _is_maj else DCYAN, 1, cv2.LINE_AA)
+        # Circular-masked camera frame
         if frame is not None:
-            _mf = cv2.resize(frame, (cam_rw, cam_rh))
-            canvas[cam_ry:cam_ry+cam_rh, cam_rx:cam_rx+cam_rw] = _mf
+            _mf = cv2.resize(frame, (_cam_rw, _cam_rh))
+            _cmask = _np.zeros((_cam_rh, _cam_rw), dtype=_np.uint8)
+            cv2.circle(_cmask, (_cam_rw // 2, _cam_rh // 2), max(1, _cam_r - 1), 255, -1)
+            _croi = canvas[_cam_ry:_cam_ry+_cam_rh, _cam_rx:_cam_rx+_cam_rw]
+            _np.copyto(_croi, _mf, where=(_cmask[..., _np.newaxis] > 0))
         else:
-            cv2.rectangle(canvas, (cam_rx, cam_ry), (cam_rx+cam_rw, cam_ry+cam_rh), (4,3,2), -1)
-        cv2.rectangle(canvas, (cam_rx, cam_ry), (cam_rx+cam_rw, cam_ry+cam_rh), DCYAN, 1)
-        cv2.putText(canvas, 'VISION  [click]', (cam_rx+4, cam_ry+11), FONT, 0.26, CYAN2, 1, cv2.LINE_AA)
-        _corner_bracket(canvas, cam_rx,          cam_ry,           1, 1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas, cam_rx + cam_rw, cam_ry,          -1, 1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas, cam_rx,           cam_ry + cam_rh, 1,-1,8,CYAN2,DCYAN)
-        _corner_bracket(canvas, cam_rx + cam_rw,  cam_ry + cam_rh,-1,-1,8,CYAN2,DCYAN)
+            cv2.circle(canvas, (_cam_cx, _cam_cy), max(1, _cam_r - 1), (4, 3, 2), -1)
+        cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r, CYAN, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'VISION', (_cam_cx - 17, _cam_ry + _cam_rh + 10),
+                    FONT, 0.25, DCYAN, 1, cv2.LINE_AA)
 
-        # SysStat mini
-        _draw_mini('sysstat', 'SYS STAT  [click]', [
-            f'CPU  {_bar_str(cpu_pct,  9)}',
-            f'GPU  {_bar_str(gpu_util, 9)}',
-            f'VRAM {_bar_str(gpu_mem,  9)}',
-            f'RAM  {_bar_str(ram_pct,  9)}',
-        ])
+        # ── Sysstat mini — 4 arc dials, no bounding box ──────────────
+        _ss_x0 = nn_x0 + 16; _ss_y0 = nn_y0 + 12
+        _ss_r = 22; _ss_gap = 52
+        _ss_items = [
+            (_ss_x0 + _ss_r,            _ss_y0 + _ss_r,            cpu_pct,  'CPU',
+             GREEN if cpu_pct  < 0.65 else (ORANGE if cpu_pct  < 0.85 else RED)),
+            (_ss_x0 + _ss_r + _ss_gap,  _ss_y0 + _ss_r,            gpu_util, 'GPU',
+             CYAN  if gpu_util < 0.65 else (ORANGE if gpu_util < 0.85 else RED)),
+            (_ss_x0 + _ss_r,            _ss_y0 + _ss_r + _ss_gap,  ram_pct,  'RAM',
+             GREEN if ram_pct  < 0.75 else (ORANGE if ram_pct  < 0.90 else RED)),
+            (_ss_x0 + _ss_r + _ss_gap,  _ss_y0 + _ss_r + _ss_gap,  gpu_mem,  'VRAM',
+             CYAN  if gpu_mem  < 0.75 else (ORANGE if gpu_mem  < 0.90 else RED)),
+        ]
+        # Update click rect to match visual extent
+        _PM['sysstat']['mini_rect'] = (
+            _ss_x0 - 4, _ss_y0 - 4,
+            _ss_r * 2 + _ss_gap + 8, _ss_r * 2 + _ss_gap + 8)
+        for _gx, _gy, _pct, _lbl, _col in _ss_items:
+            _dim = (_col[0]//4, _col[1]//4, _col[2]//4)
+            _arc_gauge(canvas, _gx, _gy, _ss_r, _pct, _col, _dim, VCYAN)
+            _gs = f'{int(_pct * 100)}%'
+            (_gtw, _gth), _ = cv2.getTextSize(_gs, FONT, 0.28, 1)
+            cv2.putText(canvas, _gs, (_gx - _gtw // 2, _gy + _gth // 2),
+                        FONT, 0.28, _col, 1, cv2.LINE_AA)
+            cv2.putText(canvas, _lbl, (_gx - len(_lbl) * 3, _gy + _gth // 2 + 11),
+                        FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
 
-        # Goals mini
-        _goal_lines = [f'> {goal[:28]}']
+        # ── Goals mini — arc node cluster ─────────────────────────────
+        _gl_rx, _gl_ry, _gl_rw, _gl_rh = _PM['goals']['mini_rect']
+        _gl_cx = _gl_rx + _gl_rw // 2;  _gl_cy = _gl_ry + 28
+        # Arc bracket curving above goal text
+        cv2.ellipse(canvas, (_gl_cx, _gl_cy), (_gl_rw // 2 - 6, 22),
+                    0, 195, 345, DCYAN, 1, cv2.LINE_AA)
+        # Central node dot
+        cv2.circle(canvas, (_gl_cx, _gl_cy), 5, CYAN, -1, cv2.LINE_AA)
+        cv2.circle(canvas, (_gl_cx, _gl_cy), 8, DCYAN, 1, cv2.LINE_AA)
+        _goal_disp = goal[:26].replace('_', ' ').upper()
+        (_gtw2, _gth2), _ = cv2.getTextSize(_goal_disp, FONT, 0.27, 1)
+        cv2.putText(canvas, _goal_disp, (_gl_cx - _gtw2 // 2, _gl_cy + 20),
+                    FONT, 0.27, CYAN, 1, cv2.LINE_AA)
+        # Queued goals as satellite dots
         try:
             import json as _js
             with open('data/state.json') as _sf:
-                _st = _js.load(_sf)
-            _stk = _st.get('goal_stack', [])
-            for _g in (_stk or [])[:2]:
-                _goal_lines.append(f'  {str(_g)[:28]}')
+                _stk = _js.load(_sf).get('goal_stack', []) or []
+            for _gi3, _gg3 in enumerate(_stk[:3]):
+                _dot_x = _gl_rx + 14 + _gi3 * 56
+                _dot_y = _gl_ry + _gl_rh - 10
+                cv2.line(canvas, (_gl_cx, _gl_cy + 10), (_dot_x, _dot_y),
+                         (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
+                cv2.circle(canvas, (_dot_x, _dot_y), 3, DCYAN, -1, cv2.LINE_AA)
+                _gtxt3 = str(_gg3)[:10].replace('_', ' ')
+                cv2.putText(canvas, _gtxt3, (_dot_x - 14, _dot_y + 11),
+                            FONT, 0.20, DCYAN, 1, cv2.LINE_AA)
         except Exception:
             pass
-        _draw_mini('goals', 'GOAL STACK  [click]', _goal_lines)
 
-        # Thought mini
-        _th_lines = [ln[:36] for ln in (thoughts or ['...'])[-3:]]
-        _draw_mini('thought', 'COGNITION  [click]', _th_lines)
+        # ── Thought mini — arc text strip ─────────────────────────────
+        _th_rx, _th_ry, _th_rw, _th_rh = _PM['thought']['mini_rect']
+        _th_cx = _th_rx + _th_rw // 2;  _th_cy = _th_ry + 8
+        # Arc above the text
+        cv2.ellipse(canvas, (_th_cx, _th_cy + 18), (_th_rw // 2 - 6, 16),
+                    0, 202, 338, DCYAN, 1, cv2.LINE_AA)
+        cv2.circle(canvas, (_th_cx, _th_cy + 4), 3, CYAN, -1, cv2.LINE_AA)
+        _th_last = (thoughts or ['...'])[-1][:38]
+        (_ttw, _tth), _ = cv2.getTextSize(_th_last, FONT, 0.27, 1)
+        cv2.putText(canvas, _th_last, (_th_cx - _ttw // 2, _th_cy + 38),
+                    FONT, 0.27, WHITE, 1, cv2.LINE_AA)
+        if len(thoughts or []) > 1:
+            _th_prev = (thoughts)[-2][:38]
+            (_tp2w, _), _ = cv2.getTextSize(_th_prev, FONT, 0.22, 1)
+            cv2.putText(canvas, _th_prev, (_th_cx - _tp2w // 2, _th_cy + 52),
+                        FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
 
         # ── Draw expanded panel overlay ───────────────────────────────
         for _eid, _ep in VideoCapturePipeline._PANELS.items():
@@ -1771,20 +1817,32 @@ class VideoCapturePipeline:
             _pw = int(_ew * _es); _ph = int(_eh * _es)
             _px2 = (WIN_W - _pw) // 2; _py2 = (WIN_H - _ph) // 2
             cv2.rectangle(canvas, (_px2, _py2), (_px2+_pw, _py2+_ph), (14, 9, 2), -1)
-            cv2.rectangle(canvas, (_px2, _py2), (_px2+_pw, _py2+_ph), CYAN, 1)
-            # Corner brackets
-            _bsz = 14
-            _corner_bracket(canvas, _px2,       _py2,       1, 1,_bsz, CYAN, DCYAN)
-            _corner_bracket(canvas, _px2+_pw,   _py2,      -1, 1,_bsz, CYAN, DCYAN)
-            _corner_bracket(canvas, _px2,       _py2+_ph,   1,-1,_bsz, CYAN, DCYAN)
-            _corner_bracket(canvas, _px2+_pw,   _py2+_ph,  -1,-1,_bsz, CYAN, DCYAN)
+            # Elliptical frame — no corner brackets
+            _epx = _px2 + _pw // 2;  _epy = _py2 + _ph // 2
+            cv2.ellipse(canvas, (_epx, _epy), (_pw // 2, _ph // 2),
+                        0, 0, 360, DCYAN, 1, cv2.LINE_AA)
+            cv2.ellipse(canvas, (_epx, _epy), (_pw // 2 + 3, _ph // 2 + 3),
+                        0, 0, 360, (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
+            cv2.ellipse(canvas, (_epx, _epy), (_pw // 2 - 2, _ph // 2 - 2),
+                        0, 0, 360, CYAN, 1, cv2.LINE_AA)
+            # Arc tick marks at cardinal points
+            for _adeg in range(0, 360, 30):
+                _ar = _math.radians(_adeg)
+                _is_card = _adeg % 90 == 0
+                _r1x = int(_epx + (_pw//2 + 4) * _math.cos(_ar))
+                _r1y = int(_epy + (_ph//2 + 4) * _math.sin(_ar))
+                _r2x = int(_epx + (_pw//2 + (10 if _is_card else 6)) * _math.cos(_ar))
+                _r2y = int(_epy + (_ph//2 + (10 if _is_card else 6)) * _math.sin(_ar))
+                cv2.line(canvas, (_r1x, _r1y), (_r2x, _r2y),
+                         CYAN if _is_card else DCYAN, 1, cv2.LINE_AA)
             # Title bar
             _etitle = {'camera':'VISION', 'sysstat':'SYSTEM STATUS',
                        'goals':'GOAL STACK', 'thought':'INNER MONOLOGUE'}.get(_eid, _eid.upper())
             _gtext(canvas, _etitle, (_px2+12, _py2+20), 0.55, CYAN, DCYAN, 1)
             cv2.putText(canvas, '[click anywhere to close]  [scroll to resize]',
                         (_px2+12, _py2+34), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
-            cv2.line(canvas, (_px2+4, _py2+38), (_px2+_pw-4, _py2+38), DCYAN, 1)
+            cv2.ellipse(canvas, (_px2+_pw//2, _py2+38), (_pw//2-8, 6),
+                        0, 0, 180, DCYAN, 1, cv2.LINE_AA)
             _cy_e = _py2 + 52
             _cx_e = _px2 + 16
             _cw_e = _pw - 32
@@ -1796,7 +1854,10 @@ class VideoCapturePipeline:
                     _ef = cv2.resize(frame, (_vw, _vh))
                     _vx = _px2 + (_pw - _vw) // 2
                     canvas[_cy_e:_cy_e+_vh, _vx:_vx+_vw] = _ef
-                    cv2.rectangle(canvas, (_vx, _cy_e), (_vx+_vw, _cy_e+_vh), DCYAN, 1)
+                    # Elliptical frame around video instead of rectangle
+                    _vfcx = _vx + _vw // 2;  _vfcy = _cy_e + _vh // 2
+                    cv2.ellipse(canvas, (_vfcx, _vfcy), (_vw//2, _vh//2),
+                                0, 0, 360, DCYAN, 1, cv2.LINE_AA)
 
             elif _eid == 'sysstat':
                 _gr = min(38, (_ph - 56) // 3)
