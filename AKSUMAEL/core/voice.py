@@ -64,6 +64,11 @@ import config
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ── Module-level speaking flag (read by capture.py for voice-reactive glow) ──
+# True while Jarvis TTS is actively playing audio. Thread-safe write via the
+# speaking Event's set()/clear() callbacks; capture.py reads it lock-free.
+JARVIS_SPEAKING = False
+
 MIN_COMMAND_WORDS = 3      # drop shorter transcripts as noise/false triggers
 SAMPLE_RATE       = 16000  # Whisper's native rate
 
@@ -1184,6 +1189,7 @@ class VoiceThread:
         if self.speaker is None:
             return
         self._speaking.set()
+        import core.voice as _vmod; _vmod.JARVIS_SPEAKING = True
         # Close the mic InputStream before opening the output stream.
         # Having both an ALSA input and output stream open simultaneously
         # causes a double-free crash in PortAudio's ALSA backend (pa_unix_util.c
@@ -1196,6 +1202,7 @@ class VoiceThread:
             self.speaker.say(text)
         finally:
             self._speaking.clear()
+            import core.voice as _vmod2; _vmod2.JARVIS_SPEAKING = False
             post_suppress = float(getattr(config, 'VOICE_POST_SPEAK_SUPPRESS_SEC', 1.5))
             if self._segmenter is not None:
                 # Reopen mic after speaking, then apply suppress window so room
