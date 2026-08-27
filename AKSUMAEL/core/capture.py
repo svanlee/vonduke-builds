@@ -1754,7 +1754,39 @@ class VideoCapturePipeline:
         else:
             cv2.circle(canvas, (_cam_cx, _cam_cy), max(1, _cam_r - 1), (4, 3, 2), -1)
         cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r, CYAN, 1, cv2.LINE_AA)
-        cv2.putText(canvas, 'VISION', (_cam_cx - 17, _cam_ry + _cam_rh + 10),
+        cv2.putText(canvas, 'WEBCAM', (_cam_cx - 19, _cam_ry + _cam_rh + 10),
+                    FONT, 0.25, DCYAN, 1, cv2.LINE_AA)
+
+        # ── Screen view porthole — what the AI sees ───────────────────
+        _scr_rw = 180;  _scr_rh = 100
+        _scr_rx = nn_x0 + nn_w - _scr_rw - 8
+        _scr_ry = _cam_ry + _cam_rh + 22
+        _scr_cx = _scr_rx + _scr_rw // 2
+        _scr_cy = _scr_ry + _scr_rh // 2
+        _scr_r  = min(_scr_rw, _scr_rh) // 2 - 4
+        # Rings
+        cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 5,
+                   (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
+        cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 2, DCYAN, 1, cv2.LINE_AA)
+        for _sti in range(0, 360, 30):
+            _sta = _math.radians(_sti)
+            cv2.line(canvas,
+                     (int(_scr_cx + (_scr_r+3)*_math.cos(_sta)),
+                      int(_scr_cy + (_scr_r+3)*_math.sin(_sta))),
+                     (int(_scr_cx + (_scr_r+8)*_math.cos(_sta)),
+                      int(_scr_cy + (_scr_r+8)*_math.sin(_sta))),
+                     CYAN if _sti % 90 == 0 else DCYAN, 1, cv2.LINE_AA)
+        # Screen frame inside circle
+        if frame is not None:
+            _sf = cv2.resize(frame, (_scr_rw, _scr_rh))
+            _smask = _np.zeros((_scr_rh, _scr_rw), dtype=_np.uint8)
+            cv2.circle(_smask, (_scr_rw//2, _scr_rh//2), max(1, _scr_r-1), 255, -1)
+            _sroi = canvas[_scr_ry:_scr_ry+_scr_rh, _scr_rx:_scr_rx+_scr_rw]
+            _np.copyto(_sroi, _sf, where=(_smask[..., _np.newaxis] > 0))
+        else:
+            cv2.circle(canvas, (_scr_cx, _scr_cy), max(1, _scr_r-1), (4, 3, 2), -1)
+        cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r, CYAN, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'SCREEN', (_scr_cx - 17, _scr_ry + _scr_rh + 10),
                     FONT, 0.25, DCYAN, 1, cv2.LINE_AA)
 
         # Sysstat mini removed — large gauges in sidebar replace it
