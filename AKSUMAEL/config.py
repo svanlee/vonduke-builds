@@ -113,6 +113,12 @@ CLAUDE_VISION_MODEL = "claude-haiku-4-5-20251001"             # main gameplay de
 ACTIVE_ENV = "training"
 AVAILABLE_ENVS = ["minecraft", "fallout76", "driving", "robocar"]
 
+# ── Game environment set ───────────────────────────────────────────────────
+# Jarvis is the permanent base runtime. Game behaviors (FSM, survey, crafting,
+# hunger, etc.) only load when ACTIVE_ENV is one of these. All other envs
+# (training, robocar, driving, standalone, or unset) run pure Jarvis mode.
+GAME_ENVS = {'minecraft', 'fallout76'}
+
 # ── Environment Profile (game/OS-agnostic bootstrap) ─────────────
 # Opt-in: when True, core/runtime.py calls core/env_detector.py at startup
 # to capture a frame, ask mesh-llm what environment it's looking at, and
@@ -290,7 +296,15 @@ CAMERA_INDEX = 2     # -1 = auto-detect, or set 0/1/2 explicitly
 # better vision source than none at all: YOLO/the FSM keep running, they just
 # see the room instead of the game. Set to [] to disable fallback and keep
 # CAMERA_INDEX as the only acceptable device.
-CAMERA_FALLBACK_INDICES = [0, 1]
+CAMERA_FALLBACK_INDICES = []
+# 2026-08-09: emptied for the Day 5 training session. The webcam on
+# /dev/video0 passed the open-and-one-frame probe at boot and then delivered
+# nothing further, so pipeline.vision_available stayed True while
+# latest_small_frame stayed None — the tick loop sat in the wait-for-first-
+# frame branch and never reached tick 1 (no tick lines for 30 minutes; the
+# frame server answered / but hung on /frame.jpg). Vision-less mode with the
+# X11 screenshot fallback is also the state every other Day 5 answer was
+# graded under. Restore to [0, 1] once that first-frame wait has a timeout.
 
 # A candidate device must open AND hand back a frame whose mean pixel value
 # clears this before it's accepted. Guards against a device that opens fine
@@ -464,7 +478,7 @@ YOLO_MODEL          = "data/models/aksumael_mc.pt"   # used only when YOLO_USE_W
 # model gets real tree training data. Also means the below-threshold
 # 'unknown' labeling queue in vision/yolo.py will rarely trigger, since
 # nothing under this value reaches it either.
-YOLO_CONF_THRESHOLD = 0.10
+YOLO_CONF_THRESHOLD = 0.25
 YOLO_LABEL_DB       = "data/yolo_labels.json"
 # Skip a detect() call entirely when free VRAM drops below this. The GPU is
 # shared with a standalone llama-server process (local vision route) that

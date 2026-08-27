@@ -1054,6 +1054,14 @@ class VideoCapturePipeline:
     # ── Jarvis HUD renderer ───────────────────────────────────────────────
     _JARVIS_START = None   # set lazily on first render
     _JARVIS_FRAME = 0      # incremented every render call for animations
+    _NN_NODES = None       # neural network node positions (built once)
+    _NN_EDGES = None       # neural network edge pairs
+    _NN_PULSES = []        # active pulses traversing edges
+    _NN_HEAT   = {}        # per-node heat value 0.0-1.0
+    _NN_ADJ    = None      # adjacency list built once from edges
+    _PIP_EXPANDED = False  # True = pip shows at 2× size
+    _PIP_RECT  = (0, 0, 1, 1)  # (x, y, w, h) of pip — set each frame for click-detection
+    _MOUSE_CB_SET = False  # mouse callback registered on window?
 
     def _jarvis_imshow(self, window_name: str, frame, objs):
         """Render a Jarvis-style HUD — camera feed as the main display,
@@ -1260,54 +1268,356 @@ class VideoCapturePipeline:
             cv2.rectangle(canvas, (xi, 18), (xi + 4, 20), VCYAN, -1)
 
         # ══════════════════════════════════════════════════════════════
-        # CAMERA FEED
+        # NEURAL MIND — 3D sphere + arc reactor (depth-sorted)
         # ══════════════════════════════════════════════════════════════
-        cam_x0, cam_y0 = 0, HDR_H
-        if frame is not None:
-            cam_frame = cv2.resize(frame, (CAM_W, CAM_H))
-            canvas[cam_y0:cam_y0 + CAM_H, cam_x0:cam_x0 + CAM_W] = cam_frame
+        nn_x0, nn_y0 = 0, HDR_H
+        nn_w, nn_h   = CAM_W, CAM_H
+        ncx = nn_x0 + nn_w // 2
+        ncy = nn_y0 + nn_h // 2
+
+        # Dark background
+        cv2.rectangle(canvas, (nn_x0, nn_y0), (nn_x0+nn_w, nn_y0+nn_h), (2, 6, 10), -1)
+
+        # Dot-grid background
+        for gy2 in range(nn_y0+14, nn_y0+nn_h, 28):
+            for gx2 in range(nn_x0+14, nn_x0+nn_w, 28):
+                cv2.circle(canvas, (gx2, gy2), 1, (0, 20, 30), -1)
+
+        # ── Build 3D fibonacci-sphere node graph once (180 nodes) ────────
+        _NN_TARGET = 180
+        if VideoCapturePipeline._NN_NODES is None or len(VideoCapturePipeline._NN_NODES) != _NN_TARGET:
+            VideoCapturePipeline._NN_ADJ = None  # force adjacency rebuild
+            _phi3d = _math.pi * (3. - _math.sqrt(5.))
+            nn_nodes3 = []
+            for i in range(_NN_TARGET):
+                _y3d = 1. - (i / (_NN_TARGET-1.)) * 2.
+                _r3d = _math.sqrt(max(0., 1. - _y3d*_y3d))
+                _th3d = _phi3d * i
+                nn_nodes3.append({
+                    'x3': _r3d * _math.cos(_th3d),
+                    'y3': _y3d,
+                    'z3': _r3d * _math.sin(_th3d),
+                    'phase': i * 0.23,
+                    'spd':   0.25 + (i % 9) * 0.08,
+                    'rb':    2 + (i % 3),
+                })
+            VideoCapturePipeline._NN_NODES = nn_nodes3
+            nn_edges3 = []
+            for i in range(len(nn_nodes3)):
+                for j in range(i+1, len(nn_nodes3)):
+                    _a3, _b3 = nn_nodes3[i], nn_nodes3[j]
+                    _dx3=_a3['x3']-_b3['x3']; _dy3=_a3['y3']-_b3['y3']; _dz3=_a3['z3']-_b3['z3']
+                    _d3 = _math.sqrt(_dx3*_dx3+_dy3*_dy3+_dz3*_dz3)
+                    if _d3 < 0.48:
+                        nn_edges3.append({'a':i,'b':j,'d':_d3,'tier':'short'})
+                    elif _d3 < 0.85:
+                        nn_edges3.append({'a':i,'b':j,'d':_d3,'tier':'long'})
+            VideoCapturePipeline._NN_EDGES = nn_edges3
+
+        nn_nodes = VideoCapturePipeline._NN_NODES
+        nn_edges = VideoCapturePipeline._NN_EDGES
+
+        # Gold palette — BGR: all warm amber/orange/gold regardless of goal
+        # (goal tints the heat highlight color only)
+        _GC_TINT = {
+            # Jarvis states
+            'standby':   ( 0, 185, 255),  # amber gold
+            'listen':    (20, 220, 200),  # green-gold (active listening)
+            'think':     ( 0, 155, 255),  # deep orange (processing)
+            'assist':    ( 0, 210, 255),  # bright gold (responding)
+            'alert':     ( 0,  80, 255),  # red-orange (urgent)
+            'idle':      ( 0, 185, 255),  # amber gold
+            # Legacy Minecraft labels kept for backward compatibility during transition
+            'explore':        ( 0, 210, 255),
+            'mine_diamonds':  ( 0, 155, 255),
+            'find_food':      (20, 220, 200),
+            'return_to_base': ( 0, 210, 255),
+            'craft':          ( 0, 185, 255),
+            'combat':         ( 0, 110, 255),
+        }
+        gc  = _GC_TINT.get(goal, (0, 185, 255))  # default amber gold (BGR)
+        gcd = (gc[0]//6, gc[1]//6, gc[2]//6)
+        # Secondary fire color for hottest nodes
+        gc_hot = (80, 240, 255)  # near-white gold
+
+        # ── 3D → 2D perspective projection ───────────────────────────
+        _rot_y = (fnum * 0.006) % (_math.pi*2)
+        _rot_xa = _math.sin(fnum * 0.003) * 0.25
+        _cy3, _sy3 = _math.cos(_rot_y), _math.sin(_rot_y)
+        _cx3, _sx3 = _math.cos(_rot_xa), _math.sin(_rot_xa)
+        _sscale = min(nn_w, nn_h) * 0.36
+        _fov    = 3.5
+
+        def _proj3(x3, y3, z3):
+            xr = x3*_cy3 + z3*_sy3
+            yr = y3
+            zr = -x3*_sy3 + z3*_cy3
+            yr2 = yr*_cx3 - zr*_sx3
+            zr2 = yr*_sx3 + zr*_cx3
+            s = _sscale * _fov / (_fov + zr2)
+            return int(ncx + xr*s), int(ncy + yr2*s), zr2
+
+        # Organic deformation: each node breathes outward/inward along its own
+        # normal vector. Low-frequency per-node oscillation makes the sphere
+        # feel alive rather than rigid.
+        _t_slow = fnum * 0.008
+        def _deformed(n, idx):
+            _phase_n = n['phase'] + idx * 0.07
+            _bulge = 0.07 * _math.sin(_t_slow * 1.3 + _phase_n) \
+                   + 0.04 * _math.cos(_t_slow * 0.7 + _phase_n * 1.6)
+            _r = 1.0 + _bulge
+            return _proj3(n['x3'] * _r, n['y3'] * _r, n['z3'] * _r)
+
+        pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
+
+        # ── Holosphere state (gold, armillary, dense) ─────────────────
+        import numpy as _np, random as _rand
+        heat = VideoCapturePipeline._NN_HEAT
+
+        if VideoCapturePipeline._NN_ADJ is None:
+            adj = {i: [] for i in range(len(nn_nodes))}
+            for _e in nn_edges:
+                adj[_e['a']].append(_e['b'])
+                adj[_e['b']].append(_e['a'])
+            VideoCapturePipeline._NN_ADJ = adj
+        adj = VideoCapturePipeline._NN_ADJ
+
+        # When speaking: fire nodes much more aggressively (living, reactive look)
+        try:
+            import core.voice as _vm2
+            _spk = getattr(_vm2, 'JARVIS_SPEAKING', False)
+        except Exception:
+            _spk = False
+        _fire_rate = 3 if _spk else 15
+        if fnum % _fire_rate == 0:
+            heat[_rand.randint(0, len(nn_nodes)-1)] = 1.0
+            if _spk:  # fire multiple nodes when speaking
+                heat[_rand.randint(0, len(nn_nodes)-1)] = 0.8
+                heat[_rand.randint(0, len(nn_nodes)-1)] = 0.6
+
+        _new_heat = {}
+        for i in range(len(nn_nodes)):
+            h = heat.get(i, 0.0)
+            if h > 0.72 and _rand.random() < 0.10:
+                for nb in adj.get(i, []):
+                    if heat.get(nb, 0.0) < 0.2:
+                        _new_heat[nb] = min(1.0, heat.get(nb, 0.0) + 0.65)
+            _new_heat[i] = max(0.0, min(1.0, _new_heat.get(i, h) - 0.015))
+        VideoCapturePipeline._NN_HEAT = _new_heat
+        heat = _new_heat
+
+        breath = 0.88 + 0.12 * _math.sin(fnum * 0.020)
+
+        def _hcol_gold(h):
+            if h < 0.5:
+                f = h * 2.0
+                return (int(gc[0]*(0.08+0.92*f)), int(gc[1]*(0.08+0.92*f)), int(gc[2]*(0.08+0.92*f)))
+            else:
+                f = (h-0.5)*2.0
+                return (min(255,int(gc[0]+(gc_hot[0]-gc[0])*f)),
+                        min(255,int(gc[1]+(gc_hot[1]-gc[1])*f)),
+                        min(255,int(gc[2]+(gc_hot[2]-gc[2])*f)))
+
+        _glow = _np.zeros((nn_h, nn_w, 3), dtype=_np.float32)
+        _lcx, _lcy = ncx - nn_x0, ncy - nn_y0
+
+        # Ambient halo (very subtle — just a faint sphere edge, no fill)
+        cv2.circle(_glow, (_lcx,_lcy), int(255*breath),
+                   (gc[0]/255.*0.03, gc[1]/255.*0.03, gc[2]/255.*0.03), 3)
+
+        # Separate short/long edge tiers
+        _short_edges = [e for e in nn_edges if e.get('tier','short')=='short']
+        _long_edges  = [e for e in nn_edges if e.get('tier','long')=='long']
+
+        # Long-range connections — ghost threads, barely there
+        for e2 in _long_edges:
+            ax2,ay2,az2=pnodes[e2['a']]; bx2,by2,bz2=pnodes[e2['b']]
+            if not(nn_x0<=ax2<nn_x0+nn_w and nn_y0<=ay2<nn_y0+nn_h): continue
+            if not(nn_x0<=bx2<nn_x0+nn_w and nn_y0<=by2<nn_y0+nn_h): continue
+            eh=max(heat.get(e2['a'],0.),heat.get(e2['b'],0.))
+            if eh < 0.1: continue  # skip cold long edges entirely
+            dim=int(max(8, eh*50))
+            cv2.line(canvas,(ax2,ay2),(bx2,by2),(0,dim//3,dim),1,cv2.LINE_AA)
+
+        # Short connections — thin 1px threads, only front-visible ones
+        for e2 in sorted(_short_edges, key=lambda e:(pnodes[e['a']][2]+pnodes[e['b']][2])/2):
+            ax2,ay2,az2=pnodes[e2['a']]; bx2,by2,bz2=pnodes[e2['b']]
+            if not(nn_x0<=ax2<nn_x0+nn_w and nn_y0<=ay2<nn_y0+nn_h): continue
+            if not(nn_x0<=bx2<nn_x0+nn_w and nn_y0<=by2<nn_y0+nn_h): continue
+            df=max(0.,0.5+(az2+bz2)*0.25)
+            eh=max(heat.get(e2['a'],0.),heat.get(e2['b'],0.))
+            # base: 25% brightness, boost only on heat
+            raw=_hcol_gold(max(eh,df*0.25))
+            scale = 0.28 + eh*0.45   # 28% cold, up to 73% when hot
+            ec=(int(raw[0]*scale),int(raw[1]*scale),int(raw[2]*scale))
+            cv2.line(canvas,(ax2,ay2),(bx2,by2),ec,1,cv2.LINE_AA)  # always 1px
+            lx1,ly1=ax2-nn_x0,ay2-nn_y0
+            lx2v,ly2v=bx2-nn_x0,by2-nn_y0
+            egf=df*0.08+eh*0.22
+            if egf>0.05:
+                cv2.line(_glow,(lx1,ly1),(lx2v,ly2v),
+                         (gc[0]/255.*egf,gc[1]/255.*egf,gc[2]/255.*egf),1,cv2.LINE_AA)
+
+        # Armillary rings — DOMINANT visual element, brightest thing on screen
+        _arms = [
+            (0.0,    0.010,  1.0,  2),   # equatorial  — brightest
+            (0.524, -0.007,  0.85, 2),   # 30° tilt
+            (1.047,  0.005,  0.70, 1),   # 60° tilt
+            (1.396, -0.004,  0.60, 1),   # 80° tilt
+            (0.262,  0.009,  0.65, 1),   # 15° tilt
+        ]
+        for (inc_b, spin_r, rbr, rth) in _arms:
+            inc = inc_b + fnum * spin_r
+            _ci, _si = _math.cos(inc), _math.sin(inc)
+            prev_px, prev_py, prev_pz = None, None, None
+            for _tdeg in range(0, 362, 2):  # 2° steps = smooth
+                _t = _math.radians(_tdeg)
+                _rx = _math.cos(_t)
+                _ry = _math.sin(_t)*_ci
+                _rz = _math.sin(_t)*_si
+                _px,_py,_pz = _proj3(_rx,_ry,_rz)
+                if nn_x0<=_px<nn_x0+nn_w and nn_y0<=_py<nn_y0+nn_h:
+                    if prev_px is not None and _pz > -0.2:
+                        vf = max(0., 0.4+_pz*0.6)
+                        rc_b=min(255,int(gc[0]*rbr*vf))
+                        rc_g=min(255,int(gc[1]*rbr*vf))
+                        rc_r=min(255,int(gc[2]*rbr*vf))
+                        cv2.line(canvas,(prev_px,prev_py),(_px,_py),
+                                 (rc_b,rc_g,rc_r),rth,cv2.LINE_AA)
+                        lrx1,lry1=prev_px-nn_x0,prev_py-nn_y0
+                        lrx2,lry2=_px-nn_x0,_py-nn_y0
+                        gfr=rbr*0.65*max(0.,vf)  # strong glow on rings
+                        cv2.line(_glow,(lrx1,lry1),(lrx2,lry2),
+                                 (gc[0]/255.*gfr,gc[1]/255.*gfr,gc[2]/255.*gfr),3,cv2.LINE_AA)
+                    prev_px,prev_py,prev_pz=_px,_py,_pz
+                else:
+                    prev_px=None
+
+        # Synaptic pulses
+        if fnum%2==0 and _short_edges and len(VideoCapturePipeline._NN_PULSES)<50:
+            hot_e=[e for e in _short_edges if heat.get(e['a'],0.)>0.4 or heat.get(e['b'],0.)>0.4]
+            src=hot_e if hot_e else _short_edges
+            _pe=src[_rand.randint(0,len(src)-1)]
+            VideoCapturePipeline._NN_PULSES.append(
+                {'a':_pe['a'],'b':_pe['b'],'t':0.,'spd':0.06+_rand.random()*0.08,'dir':1})
+        _alive2=[]
+        for p2 in VideoCapturePipeline._NN_PULSES:
+            p2['t']+=p2['spd']
+            if p2['t']<=1.0:
+                pax2,pay2,paz2=pnodes[p2['a']]; pbx2,pby2,pbz2=pnodes[p2['b']]
+                ppx=int(pax2+(pbx2-pax2)*p2['t']); ppy=int(pay2+(pby2-pay2)*p2['t'])
+                pdp=paz2+(pbz2-paz2)*p2['t']; pr=max(2,int(5*(0.5+pdp*0.5)))
+                if nn_x0<=ppx<nn_x0+nn_w and nn_y0<=ppy<nn_y0+nn_h:
+                    pc=_hcol_gold(0.9+pdp*0.1)
+                    cv2.circle(canvas,(ppx,ppy),pr+5,gcd,-1,cv2.LINE_AA)
+                    cv2.circle(canvas,(ppx,ppy),pr,pc,-1,cv2.LINE_AA)
+                    lx3,ly3=ppx-nn_x0,ppy-nn_y0
+                    cv2.circle(_glow,(lx3,ly3),pr+12,
+                               (gc[0]/255.*1.2,gc[1]/255.*1.2,gc[2]/255.*1.2),-1)
+                    if p2['t']>0.88:
+                        heat[p2['b']]=min(1.0,heat.get(p2['b'],0.)+0.5)
+                _alive2.append(p2)
+        VideoCapturePipeline._NN_PULSES=_alive2
+
+        # Nodes — tiny bright dots, Iron Man style (no halos on cold nodes)
+        for ni in sorted(range(len(nn_nodes)), key=lambda i: pnodes[i][2]):
+            n2=nn_nodes[ni]; nx2,ny2,nz2=pnodes[ni]
+            if not(nn_x0<=nx2<nn_x0+nn_w and nn_y0<=ny2<nn_y0+nn_h): continue
+            df2=max(0.,0.5+nz2*0.5)
+            nh=heat.get(ni,0.)
+            bp=_math.sin(fnum*0.035*n2['spd']+n2['phase'])*0.5+0.5
+            eff_h=max(nh,df2*0.25+bp*0.08)
+            nr2=max(1,int((1+nh*3)*(0.4+df2*0.6)))  # 1-4px, tiny
+            nc=_hcol_gold(eff_h)
+            # only a small halo when hot
+            if nh>0.5:
+                cv2.circle(canvas,(nx2,ny2),nr2+4,(nc[0]//5,nc[1]//5,nc[2]//5),-1,cv2.LINE_AA)
+            cv2.circle(canvas,(nx2,ny2),nr2,nc,-1,cv2.LINE_AA)
+            # glow only on hot/front nodes
+            if nh>0.3 or df2>0.6:
+                lx4,ly4=nx2-nn_x0,ny2-nn_y0
+                gf3=(df2*0.15+nh*0.55)*breath
+                cv2.circle(_glow,(lx4,ly4),nr2+8,
+                           (gc[0]/255.*gf3,gc[1]/255.*gf3,gc[2]/255.*gf3),-1)
+
+        # Sun core
+        core_r=int(28*breath)
+        cv2.circle(_glow,(_lcx,_lcy),core_r+38,
+                   (gc[0]/255.*2.0,gc[1]/255.*2.0,gc[2]/255.*2.0),-1)
+        for gr in [core_r,core_r-7,core_r-14,core_r-19,core_r-23,3]:
+            if gr<1: continue
+            ga4=min(255,int(155+(core_r-gr)*5))
+            cv2.circle(canvas,(ncx,ncy),gr,
+                       (min(255,gc_hot[0]*ga4//220),
+                        min(255,gc_hot[1]*ga4//220),
+                        min(255,gc_hot[2]*ga4//220)),-1,cv2.LINE_AA)
+
+        # Voice-reactive bloom: when Jarvis is speaking, spike the glow intensity
+        try:
+            import core.voice as _vm
+            _speaking_now = getattr(_vm, 'JARVIS_SPEAKING', False)
+        except Exception:
+            _speaking_now = False
+        _bloom_base = 150.
+        if _speaking_now:
+            # Pulse between 200-350 in sync with a fast sine for "alive" feel
+            _bloom_base = 250. + 100. * abs(_math.sin(fnum * 0.18))
+
+        # Bloom — lower multiplier keeps background visible
+        _glow_blur=cv2.GaussianBlur(_glow,(0,0),14)
+        _region=canvas[nn_y0:nn_y0+nn_h,nn_x0:nn_x0+nn_w].astype(_np.float32)
+        _region=_np.clip(_region+_glow_blur*_bloom_base,0,255)
+        canvas[nn_y0:nn_y0+nn_h,nn_x0:nn_x0+nn_w]=_region.astype(_np.uint8)
+
+        # ── Corner brackets ───────────────────────────────────────────
+        BLEN=30
+        _corner_bracket(canvas,nn_x0,       nn_y0,        1, 1,BLEN,CYAN,DCYAN)
+        _corner_bracket(canvas,nn_x0+nn_w,  nn_y0,       -1, 1,BLEN,CYAN,DCYAN)
+        _corner_bracket(canvas,nn_x0,        nn_y0+nn_h,   1,-1,BLEN,CYAN,DCYAN)
+        _corner_bracket(canvas,nn_x0+nn_w,   nn_y0+nn_h,  -1,-1,BLEN,CYAN,DCYAN)
+
+        # Labels
+        cv2.putText(canvas,'JARVIS',(nn_x0+8,nn_y0+15),FONT,0.33,CYAN2,1,cv2.LINE_AA)
+        cv2.putText(canvas,f'{goal.upper().replace("_"," ")}',
+                    (nn_x0+8,nn_y0+30),FONT,0.30,gc,1,cv2.LINE_AA)
+
+        # ── PiP camera (click to expand/collapse) ────────────────────
+        # Small: 224×126 in corner. Expanded: 448×252 (2×) centered in sphere area.
+        if VideoCapturePipeline._PIP_EXPANDED:
+            PIP_W, PIP_H = 448, 252
+            pip_x = nn_x0 + (nn_w - PIP_W) // 2
+            pip_y = nn_y0 + (nn_h - PIP_H) // 2
         else:
-            cv2.rectangle(canvas, (cam_x0, cam_y0),
-                          (cam_x0 + CAM_W, cam_y0 + CAM_H), (5, 3, 1), -1)
-            _gtext(canvas, 'NO CAMERA SIGNAL',
-                   (CAM_W // 2 - 120, cam_y0 + CAM_H // 2),
-                   0.9, DCYAN, VCYAN, 2)
+            PIP_W, PIP_H = 224, 126
+            pip_x = nn_x0 + nn_w - PIP_W - 8
+            pip_y = nn_y0 + 8
+        VideoCapturePipeline._PIP_RECT = (pip_x, pip_y, PIP_W, PIP_H)
 
-        # ── Extended corner brackets ─────────────────────────────────
-        BLEN = 30
-        _corner_bracket(canvas, cam_x0,        cam_y0,        1,  1, BLEN, CYAN, DCYAN)
-        _corner_bracket(canvas, cam_x0 + CAM_W, cam_y0,       -1,  1, BLEN, CYAN, DCYAN)
-        _corner_bracket(canvas, cam_x0,         cam_y0 + CAM_H, 1, -1, BLEN, CYAN, DCYAN)
-        _corner_bracket(canvas, cam_x0 + CAM_W, cam_y0 + CAM_H,-1, -1, BLEN, CYAN, DCYAN)
+        # Register mouse callback once
+        if not VideoCapturePipeline._MOUSE_CB_SET:
+            def _on_mouse(event, mx, my, flags, param):
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    rx, ry, rw, rh = VideoCapturePipeline._PIP_RECT
+                    if rx <= mx < rx + rw and ry <= my < ry + rh:
+                        VideoCapturePipeline._PIP_EXPANDED = not VideoCapturePipeline._PIP_EXPANDED
+            try:
+                cv2.setMouseCallback(window_name, _on_mouse)
+                VideoCapturePipeline._MOUSE_CB_SET = True
+            except Exception:
+                pass
 
-        # ── Top overlay strip on camera ──────────────────────────────
-        strip_h = 20
-        overlay = canvas.copy()
-        cv2.rectangle(overlay, (cam_x0, cam_y0), (cam_x0 + CAM_W, cam_y0 + strip_h),
-                      (5, 3, 1), -1)
-        cv2.addWeighted(overlay, 0.55, canvas, 0.45, 0, canvas)
-        cv2.putText(canvas, 'LIVE  /dev/video2', (cam_x0 + 6, cam_y0 + 14),
-                    FONT, 0.33, CYAN2, 1, cv2.LINE_AA)
-        # Right side of strip: mode
-        cv2.putText(canvas, f'MODE:{mode.upper()}', (cam_x0 + CAM_W - 100, cam_y0 + 14),
-                    FONT, 0.33, CYAN2, 1, cv2.LINE_AA)
-
-        # ── Radar sweep (bottom-left of camera) ──────────────────────
-        rad_cx = cam_x0 + 70
-        rad_cy = cam_y0 + CAM_H - 70
-        rad_r  = 55
-        rad_ang = (fnum * 3) % 360
-        _radar_sweep(canvas, rad_cx, rad_cy, rad_r, rad_ang, CYAN2, DCYAN)
-        # Blip if detections
-        n_blips = min(len(objs or []), 4)
-        for bi in range(n_blips):
-            ba = _math.radians(bi * 90 + fnum * 1.5)
-            br = rad_r * (0.4 + bi * 0.15)
-            bx2 = int(rad_cx + br * _math.cos(ba))
-            by2 = int(rad_cy + br * _math.sin(ba))
-            _gcircle(canvas, (bx2, by2), 3, GREEN, DGREEN, -1)
-        cv2.putText(canvas, 'RADAR', (rad_cx - rad_r, rad_cy - rad_r - 4),
-                    FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+        if frame is not None:
+            pip_frame = cv2.resize(frame, (PIP_W, PIP_H))
+            canvas[pip_y:pip_y+PIP_H, pip_x:pip_x+PIP_W] = pip_frame
+        else:
+            cv2.rectangle(canvas,(pip_x,pip_y),(pip_x+PIP_W,pip_y+PIP_H),(4,3,2),-1)
+        cv2.rectangle(canvas,(pip_x,pip_y),(pip_x+PIP_W,pip_y+PIP_H),DCYAN,1)
+        _expand_label = 'VISION [click to shrink]' if VideoCapturePipeline._PIP_EXPANDED else 'VISION [click to expand]'
+        cv2.putText(canvas,_expand_label,(pip_x+4,pip_y+10),FONT,0.26,CYAN2,1,cv2.LINE_AA)
+        _corner_bracket(canvas,pip_x,       pip_y,        1, 1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas,pip_x+PIP_W, pip_y,       -1, 1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas,pip_x,        pip_y+PIP_H,  1,-1,8,CYAN2,DCYAN)
+        _corner_bracket(canvas,pip_x+PIP_W,  pip_y+PIP_H,-1,-1,8,CYAN2,DCYAN)
 
         # ══════════════════════════════════════════════════════════════
         # RIGHT SIDEBAR
@@ -1339,39 +1649,56 @@ class VideoCapturePipeline:
                         (px, sy + i * LINE_H), FONT, 0.32, col, 1, cv2.LINE_AA)
         sy += max_lines * LINE_H + 6
 
-        # ── Arc gauges: HP + HUNGER side by side ──────────────────────
+        # ── Arc gauges: CPU + GPU side by side ────────────────────────
         _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)
         sy += 10
-        gauge_r = 34
+        gauge_r = 40
         g1_cx = sx + SIDE_W // 4
         g2_cx = sx + 3 * SIDE_W // 4
         g_cy  = sy + gauge_r + 10
 
-        # HP gauge
-        hp_col  = RED if hp_pct < 0.3 else (ORANGE if hp_pct < 0.6 else GREEN)
-        hp_dim  = (hp_col[0]//4, hp_col[1]//4, hp_col[2]//4)
-        _arc_gauge(canvas, g1_cx, g_cy, gauge_r, hp_pct,
-                   hp_col, hp_dim, VCYAN)
-        hp_str = f'{int(hp_pct * 100)}%'
-        (tw, th), _ = cv2.getTextSize(hp_str, FONT, 0.35, 1)
-        cv2.putText(canvas, hp_str,
-                    (g1_cx - tw // 2, g_cy + th // 2), FONT, 0.35, hp_col, 1, cv2.LINE_AA)
-        cv2.putText(canvas, 'HP',
-                    (g1_cx - 7, g_cy + th // 2 + 13), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+        # Fetch CPU and GPU usage
+        try:
+            import psutil as _ps
+            cpu_pct = _ps.cpu_percent(interval=None) / 100.0
+        except Exception:
+            cpu_pct = 0.0
+        try:
+            import subprocess as _sp
+            _smi = _sp.run(
+                ['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total',
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=1)
+            _vals = _smi.stdout.strip().split(',')
+            gpu_util = float(_vals[0].strip()) / 100.0
+            gpu_mem  = float(_vals[1].strip()) / float(_vals[2].strip())
+        except Exception:
+            gpu_util = 0.0
+            gpu_mem  = 0.0
 
-        # HUNGER gauge
-        food_col = RED if food_pct < 0.3 else ORANGE
-        food_dim = (food_col[0]//4, food_col[1]//4, food_col[2]//4)
-        _arc_gauge(canvas, g2_cx, g_cy, gauge_r, food_pct,
-                   food_col, food_dim, VCYAN)
-        fd_str = f'{int(food_pct * 100)}%'
-        (tw2, th2), _ = cv2.getTextSize(fd_str, FONT, 0.35, 1)
-        cv2.putText(canvas, fd_str,
-                    (g2_cx - tw2 // 2, g_cy + th2 // 2), FONT, 0.35, food_col, 1, cv2.LINE_AA)
-        cv2.putText(canvas, 'FOOD',
-                    (g2_cx - 12, g_cy + th2 // 2 + 13), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+        # CPU gauge
+        cpu_col = RED if cpu_pct > 0.85 else (ORANGE if cpu_pct > 0.65 else GREEN)
+        cpu_dim = (cpu_col[0]//4, cpu_col[1]//4, cpu_col[2]//4)
+        _arc_gauge(canvas, g1_cx, g_cy, gauge_r, cpu_pct, cpu_col, cpu_dim, VCYAN)
+        cpu_str = f'{int(cpu_pct*100)}%'
+        (tw, th), _ = cv2.getTextSize(cpu_str, FONT, 0.38, 1)
+        cv2.putText(canvas, cpu_str,
+                    (g1_cx - tw//2, g_cy + th//2), FONT, 0.38, cpu_col, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'CPU',
+                    (g1_cx - 9, g_cy + th//2 + 14), FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
 
-        sy = g_cy + gauge_r + 16
+        # GPU gauge (utilization)
+        gpu_col = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
+        gpu_dim = (gpu_col[0]//4, gpu_col[1]//4, gpu_col[2]//4)
+        _arc_gauge(canvas, g2_cx, g_cy, gauge_r, gpu_util, gpu_col, gpu_dim, VCYAN)
+        gpu_str = f'{int(gpu_util*100)}%'
+        (tw2, th2), _ = cv2.getTextSize(gpu_str, FONT, 0.38, 1)
+        cv2.putText(canvas, gpu_str,
+                    (g2_cx - tw2//2, g_cy + th2//2), FONT, 0.38, gpu_col, 1, cv2.LINE_AA)
+        cv2.putText(canvas, 'GPU',
+                    (g2_cx - 9, g_cy + th2//2 + 14), FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+
+        sy = g_cy + gauge_r + 20
 
         # ── Detections ────────────────────────────────────────────────
         _gline(canvas, (px, sy), (WIN_W - 6, sy), CYAN2, VCYAN, 1)

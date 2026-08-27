@@ -26,11 +26,15 @@ PRESERVED_GOALS_PATH = pathlib.Path('data/preserved_goals.json')
 # dropped instead of restored — e.g. craft_furthest_trading_item and
 # trade_items were leaking back onto the stack this way after a restart
 # even though nothing upstream still issues them (2026-07-20).
+# Jarvis-native goals are always valid; game-env goals restore only when
+# a game env is active (the FSM will ignore them otherwise anyway).
 VALID_RESTORED_GOALS = {
+    # Jarvis goals
+    'standby', 'assist', 'idle',
+    # Game env goals (Minecraft)
     'find_and_chop_tree', 'mine_stone', 'mine_iron', 'mine_diamonds',
     'craft_wood_pickaxe', 'craft_stone_pickaxe', 'craft_iron_pickaxe',
     'explore', 'rebuild_fort', 'return_to_base', 'dig_up', 'escape_underground',
-} | {
     'mine_coal_ore', 'mine_iron_ore', 'mine_copper_ore', 'mine_lapis_ore',
     'mine_gold_ore', 'mine_redstone_ore', 'mine_emerald_ore', 'mine_diamond_ore',
 }
@@ -328,47 +332,58 @@ def run():
     except Exception as e:
         print(f'[COLLECT] could not start collector: {e}')
 
-    from behaviors.survey import SurveyBehavior
-    from behaviors.auto_trainer import AutoTrainer
-    from behaviors.respawn import RespawnBehavior
-    from behaviors.hunger import HungerBehavior
-    from behaviors.night_survival import NightSurvivalBehavior
-    from behaviors.torch_placement import TorchBehavior
-    from behaviors.crafting import CraftingBehavior
-    from behaviors.inventory_reader import InventoryReader
-    from memory.hotbar_reader import HotbarReader
-    from behaviors.junk_dropper import JunkDropper
-    from behaviors.chest_manager import ChestManager
-    from behaviors.scan import EnvironmentScanner
-    from behaviors.launch_game import GameLauncher
-    from behaviors.frame_orbiter import FrameOrbiter, pick_orbit_target
-    from behaviors.learning_orbit import LearningOrbit
-    from core.fsm import GameFSM, State, ORE_TARGETS, TREE_TARGETS
-    auto_trainer = AutoTrainer(yolo)
-    surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer,
-                               capture_fn=lambda: pipeline.latest_raw_frame) if collector else None
-    orbiter = FrameOrbiter(collector, executor,
-                           capture_fn=lambda: pipeline.latest_raw_frame,
-                           auto_trainer=auto_trainer) if collector else None
-    learning_orbiter = LearningOrbit(executor,
-                                     capture_fn=lambda: pipeline.latest_raw_frame,
-                                     auto_trainer=auto_trainer) if executor else None
-    if learning_orbiter:
-        learning_orbiter.start_watcher()   # background Qwen polling thread
-    _last_orbit_tick_time = 0.0   # wall-clock time of last orbit run
-    respawner = RespawnBehavior(executor, goals)
-    hunger_behavior = HungerBehavior(executor, goals)
-    night_survival  = NightSurvivalBehavior(executor, goals)
-    torch_behavior  = TorchBehavior(executor)
-    inv_reader     = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
-    hotbar_reader  = HotbarReader()
-    crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader, inventory_tracker=inventory)
-    junk_dropper = JunkDropper(executor, inventory_reader=inv_reader)
-    chest_mgr = ChestManager()
-    goal_interp = GoalInterpreter(goals, crafting_behavior)
-    scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
-    launcher    = GameLauncher(executor, game='minecraft')
-    fsm = GameFSM()
+    _game_env = getattr(config, 'ACTIVE_ENV', '') in getattr(config, 'GAME_ENVS', set())
+    if _game_env:
+        from behaviors.survey import SurveyBehavior
+        from behaviors.auto_trainer import AutoTrainer
+        from behaviors.respawn import RespawnBehavior
+        from behaviors.hunger import HungerBehavior
+        from behaviors.night_survival import NightSurvivalBehavior
+        from behaviors.torch_placement import TorchBehavior
+        from behaviors.crafting import CraftingBehavior
+        from behaviors.inventory_reader import InventoryReader
+        from memory.hotbar_reader import HotbarReader
+        from behaviors.junk_dropper import JunkDropper
+        from behaviors.chest_manager import ChestManager
+        from behaviors.scan import EnvironmentScanner
+        from behaviors.launch_game import GameLauncher
+        from behaviors.frame_orbiter import FrameOrbiter, pick_orbit_target
+        from behaviors.learning_orbit import LearningOrbit
+        from core.fsm import GameFSM, State, ORE_TARGETS, TREE_TARGETS
+        auto_trainer = AutoTrainer(yolo)
+        surveyor = SurveyBehavior(collector, executor, auto_trainer=auto_trainer,
+                                   capture_fn=lambda: pipeline.latest_raw_frame) if collector else None
+        orbiter = FrameOrbiter(collector, executor,
+                               capture_fn=lambda: pipeline.latest_raw_frame,
+                               auto_trainer=auto_trainer) if collector else None
+        learning_orbiter = LearningOrbit(executor,
+                                         capture_fn=lambda: pipeline.latest_raw_frame,
+                                         auto_trainer=auto_trainer) if executor else None
+        if learning_orbiter:
+            learning_orbiter.start_watcher()   # background Qwen polling thread
+        _last_orbit_tick_time = 0.0
+        respawner = RespawnBehavior(executor, goals)
+        hunger_behavior = HungerBehavior(executor, goals)
+        night_survival  = NightSurvivalBehavior(executor, goals)
+        torch_behavior  = TorchBehavior(executor)
+        inv_reader     = InventoryReader(executor, capture_fn=lambda: pipeline.latest_raw_frame)
+        hotbar_reader  = HotbarReader()
+        crafting_behavior = CraftingBehavior(executor, inventory_reader=inv_reader, inventory_tracker=inventory)
+        junk_dropper = JunkDropper(executor, inventory_reader=inv_reader)
+        chest_mgr = ChestManager()
+        goal_interp = GoalInterpreter(goals, crafting_behavior)
+        scanner     = EnvironmentScanner(executor, aim_ctrl, pipeline, ask_vision)
+        launcher    = GameLauncher(executor, game='minecraft')
+        fsm = GameFSM()
+        print(f'[JARVIS] game env active ({config.ACTIVE_ENV}) — FSM/behaviors loaded')
+    else:
+        # Jarvis base mode — game env add-ons not loaded
+        auto_trainer = surveyor = orbiter = learning_orbiter = None
+        _last_orbit_tick_time = 0.0
+        respawner = hunger_behavior = night_survival = torch_behavior = None
+        inv_reader = hotbar_reader = crafting_behavior = junk_dropper = None
+        chest_mgr = goal_interp = scanner = launcher = fsm = None
+        print(f'[JARVIS] base mode — game FSM/behaviors not loaded (ACTIVE_ENV={getattr(config, "ACTIVE_ENV", "unset")})')
 
     # Start background threads
     pipeline.start()   # CaptureThread + YOLOThread + DisplayThread
@@ -692,6 +707,18 @@ def run():
         while True:
             tick += 1
             t0 = time.time()
+
+            # ── Jarvis base mode: drive HUD; skip game logic ────────────────
+            # poll_display() MUST be called from the main thread each tick
+            # (Qt/OpenCV requirement). Voice, overseer, and planner run on
+            # their own daemon threads and need no main-thread hand-holding.
+            if not _game_env:
+                if not pipeline.poll_display():
+                    break
+                if pipeline.quit:
+                    break
+                time.sleep(0.03)   # ~30 fps cap
+                continue
 
             # ── Joystick physical buttons ──────────────────────
             h = router.human_state
