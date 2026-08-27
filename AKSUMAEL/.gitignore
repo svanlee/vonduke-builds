@@ -95,3 +95,13 @@ data/jarvis_history.json
 data/jarvis_improvements.json
 data/learning_trigger.json
 data/wrapper_cmd.txt
+aurora.db
+data/learning/
+data/axon_mode.txt
+data/voice_mode.txt
+data/wrapper_cmd.txt
+.connection_test
+unsloth_compiled_cache/
+jarvis_*.txt
+sysaudit.txt
+STATUS.md

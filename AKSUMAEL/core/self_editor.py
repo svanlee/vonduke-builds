@@ -43,7 +43,7 @@ SELF_APPLY_PATHS = {
 
 SELF_EDIT_PROMPT = """You are AKSUMAEL's self-improvement engine.
 
-AKSUMAEL is an autonomous Minecraft agent. It has observed a recurring failure
+AKSUMAEL is a local AI/robotics platform (Jarvis base + optional game/robot environments). It has observed a recurring failure
 and needs to fix its own code.
 
 ## Failure report

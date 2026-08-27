@@ -14,10 +14,9 @@ from core.planner import Planner
 
 RETIRED_GOALS_LOG = os.path.join(config.MEMORY_DIR, 'retired_goals.jsonl')
 
-_CURRICULUM_PROMPT = """You are the curriculum planner for AKSUMAEL, a Minecraft
-automation agent. Given its current state, suggest exactly ONE short goal
-string (snake_case, e.g. "mine_iron" or "build_shelter") for it to attempt
-next. Rules:
+_CURRICULUM_PROMPT = """You are the curriculum planner for AKSUMAEL, a local AI platform.
+Given its current state and active environment, suggest exactly ONE short goal
+string (snake_case, e.g. "explore", "idle", or — when in a game env — "mine_iron") to attempt next. Rules:
 - Must be achievable with the current inventory/tools.
 - Should be at the frontier of capability — not trivial, not impossible.
 - Prefer goals that unlock new tech-tree progress.

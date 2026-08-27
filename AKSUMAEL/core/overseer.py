@@ -52,8 +52,8 @@ def get_last_directive() -> dict:
 def _build_prompt(snapshot: dict) -> str:
     """Build the overseer prompt from the current agent snapshot."""
     return f"""{AKSUMAEL_IDENTITY}
-You are operating as AKSUMAEL's tactical overseer — making fast per-tick decisions for the Minecraft FSM.
-Your executive voice (Jarvis) handles strategic planning on a 3-minute cycle; you handle immediate gameplay decisions.
+You are operating as AKSUMAEL's tactical overseer — monitoring agent state and issuing fast corrective directives.
+Your executive voice (Jarvis) handles strategic planning on a 3-minute cycle; you handle immediate decisions.
 Respond only with a JSON directive, no prose.
 
 {snapshot.get('hardware', '')}
@@ -84,7 +84,8 @@ If the agent needs a new goal: {{"action": "override_goal", "goal": "<goal_strin
 If something notable should be logged: {{"action": "alert", "message": "<what you observe>"}}
 If the agent is in danger (health < 0.3 or confirmed hostile mob): {{"action": "flee", "reason": "<why>"}}
 
-Valid goal strings: find_and_chop_tree, mine_stone, mine_iron, mine_diamonds, craft_wood_pickaxe, craft_stone_pickaxe, craft_iron_pickaxe, explore, rebuild_fort, return_to_base
+Valid goal strings (base): idle, standby, assist, explore
+Valid goal strings (game env — only when ACTIVE_ENV is minecraft/fallout76): find_and_chop_tree, mine_stone, mine_iron, mine_diamonds, craft_wood_pickaxe, craft_stone_pickaxe, craft_iron_pickaxe, rebuild_fort, return_to_base
 
 Respond with ONLY the JSON directive, nothing else."""
 

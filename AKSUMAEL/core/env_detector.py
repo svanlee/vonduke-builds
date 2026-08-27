@@ -99,7 +99,7 @@ def detect(frame=None, fallback_env_id: str | None = None) -> env_profile.EnvPro
     startup — the existing Minecraft-only boot path is exactly this
     fallback with confidence effectively 1.0.
     """
-    fallback_env_id = fallback_env_id or getattr(config, 'ACTIVE_ENV', 'minecraft')
+    fallback_env_id = fallback_env_id or getattr(config, 'ACTIVE_ENV', 'training')
 
     if frame is None:
         print('[ENV_DETECTOR] capturing frame for environment detection...')

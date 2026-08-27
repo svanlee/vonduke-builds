@@ -237,7 +237,7 @@ class Supervisor:
     def _tier2(self, proposed: str, current: str, belief: BeliefProxy):
         self.stats["tier2_calls"] += 1
         prompt = (
-            "You are the safety supervisor for an embodied Minecraft agent. "
+            "You are the safety supervisor for AKSUMAEL, an embodied AI agent. "
             "Approve or refuse the proposed FSM state transition.\n\n"
             f"current_state: {current}\n"
             f"proposed_state: {proposed}\n"

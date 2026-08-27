@@ -35,15 +35,15 @@ TOOL_SCHEMAS = [
         "description": (
             "Send a new goal to AKSUMAEL. The bot will execute it at the "
             "specified priority (1=low, 10=critical, preempts everything). "
-            "Use this to direct the bot: explore, mine_diamonds, find_food, "
-            "return_to_base, craft_crafting_table, find_and_chop_tree, etc."
+            "Use this to direct the bot: explore, idle, assist — or game-env goals "
+            "like mine_diamonds, return_to_base, find_and_chop_tree when a game env is active."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "goal": {
                     "type": "string",
-                    "description": "snake_case goal name, e.g. explore, mine_diamonds",
+                    "description": "snake_case goal name, e.g. explore, idle, assist, or mine_diamonds (game env)",
                 },
                 "priority": {
                     "type": "integer",
@@ -191,7 +191,7 @@ TOOL_SCHEMAS = [
         "description": (
             "Get information about connected displays — which screens are connected, "
             "their resolution, and refresh rate. Use when asked about displays, "
-            "whether Minecraft is on a connected screen, or display setup."
+            "which screens are connected, their resolution, or general display setup."
         ),
         "input_schema": {
             "type": "object",
@@ -206,7 +206,7 @@ TOOL_SCHEMAS = [
             "Use for typing text, pressing key combinations, or sending control keys. "
             "Examples: type 'hello world', press 'ctrl+c', press 'Return', "
             "press 'F9'. This sends input to whatever window has focus — "
-            "be careful when Minecraft is the focused window."
+            "be careful about which window currently has focus."
         ),
         "input_schema": {
             "type": "object",
@@ -233,7 +233,7 @@ TOOL_SCHEMAS = [
         "description": (
             "Take a screenshot of the current display and save it to /tmp/jarvis_screen.png. "
             "Returns the path and basic image info. Use when asked what's on screen, "
-            "whether Minecraft is showing something specific, or to visually check state."
+            "to visually check what's on screen, or to capture state for analysis."
         ),
         "input_schema": {
             "type": "object",
@@ -259,15 +259,15 @@ TOOL_SCHEMAS = [
         "name": "switch_domain",
         "description": (
             "Switch the bot's active training domain. Writes to data/attention_focus.json "
-            "and data/axon_mode.txt. Available domains: training, minecraft, robocar, vehicle. "
-            "Use when you want AKSUMAEL to focus on a different environment."
+            "and data/axon_mode.txt. Available domains: jarvis (base), training, minecraft, fallout76, robocar, vehicle. "
+            "Use when you want AKSUMAEL to focus on a different environment or activate a game env."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "domain": {
                     "type": "string",
-                    "enum": ["training", "minecraft", "robocar", "vehicle"],
+                    "enum": ["jarvis", "training", "minecraft", "fallout76", "robocar", "vehicle"],
                     "description": "The domain to switch to.",
                 },
             },
@@ -473,8 +473,8 @@ TOOL_SCHEMAS = [
                 },
                 "domain": {
                     "type": "string",
-                    "description": "Domain focus: minecraft, crafting, exploration, threat, hardware, planning, analysis",
-                    "enum": ["minecraft", "crafting", "exploration", "threat", "hardware", "planning", "analysis"],
+                    "description": "Domain focus: robotics, exploration, threat, hardware, planning, analysis, or game-env domains when active",
+                    "enum": ["robotics", "exploration", "threat", "hardware", "planning", "analysis", "minecraft", "crafting"],
                 },
                 "context": {
                     "type": "string",
@@ -1123,10 +1123,11 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
     Architecture: AKSUMAEL (executive) → spawn_subagent → domain specialist → result
     """
     DOMAIN_PROMPTS = {
+        "robotics": "You are AKSUMAEL's robotics specialist. Analyze sensor data, actuator state, and robot telemetry to suggest control actions, diagnostics, or navigation strategies. Be concrete and specific.",
         "minecraft": "You are AKSUMAEL's Minecraft specialist. Analyze gameplay situations and suggest optimal strategies, goal sequences, or survival priorities. Be concrete and specific.",
-        "crafting": "You are AKSUMAEL's crafting specialist. Given inventory and goals, produce the optimal crafting sequence with exact steps. Reference vanilla Minecraft recipes.",
-        "exploration": "You are AKSUMAEL's exploration specialist. Analyze terrain, biome, and structure data to suggest high-value exploration targets and navigation strategies.",
-        "threat": "You are AKSUMAEL's threat assessment specialist. Evaluate survival risks (health, hunger, mobs, environment) and recommend immediate priority actions.",
+        "crafting": "You are AKSUMAEL's crafting specialist. Given inventory and goals, produce the optimal crafting sequence with exact steps.",
+        "exploration": "You are AKSUMAEL's exploration specialist. Analyze environment data to suggest high-value targets and navigation strategies.",
+        "threat": "You are AKSUMAEL's threat assessment specialist. Evaluate risks (health, environment, system state) and recommend immediate priority actions.",
         "hardware": "You are AKSUMAEL's hardware specialist. Analyze device state, sensor readings, and connectivity issues. Suggest diagnostics and fixes.",
         "planning": "You are AKSUMAEL's planning specialist. Given a high-level goal, break it into an ordered sequence of achievable sub-goals with dependencies and estimated completion times.",
         "analysis": "You are AKSUMAEL's data analysis specialist. Examine logs, metrics, and telemetry to surface patterns, anomalies, and actionable insights.",
