@@ -1232,6 +1232,32 @@ class VideoCapturePipeline:
 
         uptime_s   = int(time.time() - VideoCapturePipeline._JARVIS_START)
         uptime_str = f'{uptime_s // 3600:02d}:{(uptime_s % 3600) // 60:02d}:{uptime_s % 60:02d}'
+
+        # ── Sysstat cache refresh (used by both mini panels and sidebar) ──
+        _now_ss = time.time()
+        if _now_ss >= VideoCapturePipeline._SYSSTAT_NEXT:
+            VideoCapturePipeline._SYSSTAT_NEXT = _now_ss + 2.0
+            try:
+                import psutil as _ps
+                VideoCapturePipeline._SYSSTAT['cpu'] = _ps.cpu_percent(interval=None) / 100.0
+                VideoCapturePipeline._SYSSTAT['ram'] = _ps.virtual_memory().percent / 100.0
+            except Exception:
+                pass
+            try:
+                import subprocess as _sp
+                _smi = _sp.run(
+                    ['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total',
+                     '--format=csv,noheader,nounits'],
+                    capture_output=True, text=True, timeout=1)
+                _vals = _smi.stdout.strip().split(',')
+                VideoCapturePipeline._SYSSTAT['gpu']     = float(_vals[0].strip()) / 100.0
+                VideoCapturePipeline._SYSSTAT['gpu_mem'] = float(_vals[1].strip()) / float(_vals[2].strip())
+            except Exception:
+                pass
+        cpu_pct  = VideoCapturePipeline._SYSSTAT['cpu']
+        gpu_util = VideoCapturePipeline._SYSSTAT['gpu']
+        gpu_mem  = VideoCapturePipeline._SYSSTAT['gpu_mem']
+        ram_pct  = VideoCapturePipeline._SYSSTAT['ram']
         thoughts   = _monologue_render_lines()
 
         # ══════════════════════════════════════════════════════════════
@@ -1863,32 +1889,7 @@ class VideoCapturePipeline:
         g2_cx = sx + 3 * SIDE_W // 4
         g_cy  = sy + gauge_r + 10
 
-        # Fetch CPU / GPU / RAM — cached every 2 s to avoid per-frame nvidia-smi
-        _now = time.time()
-        if _now >= VideoCapturePipeline._SYSSTAT_NEXT:
-            VideoCapturePipeline._SYSSTAT_NEXT = _now + 2.0
-            try:
-                import psutil as _ps
-                VideoCapturePipeline._SYSSTAT['cpu'] = _ps.cpu_percent(interval=None) / 100.0
-                _vm = _ps.virtual_memory()
-                VideoCapturePipeline._SYSSTAT['ram'] = _vm.percent / 100.0
-            except Exception:
-                pass
-            try:
-                import subprocess as _sp
-                _smi = _sp.run(
-                    ['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total',
-                     '--format=csv,noheader,nounits'],
-                    capture_output=True, text=True, timeout=1)
-                _vals = _smi.stdout.strip().split(',')
-                VideoCapturePipeline._SYSSTAT['gpu']     = float(_vals[0].strip()) / 100.0
-                VideoCapturePipeline._SYSSTAT['gpu_mem'] = float(_vals[1].strip()) / float(_vals[2].strip())
-            except Exception:
-                pass
-        cpu_pct  = VideoCapturePipeline._SYSSTAT['cpu']
-        gpu_util = VideoCapturePipeline._SYSSTAT['gpu']
-        gpu_mem  = VideoCapturePipeline._SYSSTAT['gpu_mem']
-        ram_pct  = VideoCapturePipeline._SYSSTAT['ram']
+        # cpu_pct / gpu_util / gpu_mem / ram_pct — fetched near top of function
 
         # CPU gauge
         cpu_col = RED if cpu_pct > 0.85 else (ORANGE if cpu_pct > 0.65 else GREEN)
