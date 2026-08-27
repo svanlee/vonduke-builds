@@ -1358,14 +1358,18 @@ class VideoCapturePipeline:
             return int(ncx + xr*s), int(ncy + yr2*s), zr2
 
         # Organic deformation: each node breathes outward/inward along its own
-        # normal vector. Low-frequency per-node oscillation makes the sphere
-        # feel alive rather than rigid.
+        # normal vector. Heat pulls nodes inward — hot nodes cluster near the
+        # core (inner shell r≈0.45), cold nodes sit on the outer shell (r≈1.0).
+        # Three natural layers emerge: core (active), mid (warming), outer (idle).
         _t_slow = fnum * 0.008
         def _deformed(n, idx):
             _phase_n = n['phase'] + idx * 0.07
             _bulge = 0.07 * _math.sin(_t_slow * 1.3 + _phase_n) \
                    + 0.04 * _math.cos(_t_slow * 0.7 + _phase_n * 1.6)
-            _r = 1.0 + _bulge
+            _h = heat.get(idx, 0.0)
+            # heat 0.0 → outer shell (r=1.0), heat 1.0 → core (r=0.45)
+            _layer_r = 1.0 - _h * 0.55
+            _r = _layer_r + _bulge
             return _proj3(n['x3'] * _r, n['y3'] * _r, n['z3'] * _r)
 
         pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
@@ -1753,6 +1757,11 @@ class VideoCapturePipeline:
             cv2.rectangle(canvas, (xi, fy + 10), (xi + 5, fy + 11), VCYAN, -1)
 
         if _CV2_GUI_OK:
+            # Make window resizable on first render
+            if not getattr(VideoCapturePipeline, '_WINDOW_CREATED', False):
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(window_name, WIN_W, WIN_H)
+                VideoCapturePipeline._WINDOW_CREATED = True
             cv2.imshow(window_name, canvas)
 
     # ── Display pump (main-thread only) ──────────────────────────────────
