@@ -1078,6 +1078,9 @@ class VideoCapturePipeline:
     _TEXT_INPUT: str = ''
     _TEXT_ACTIVE: bool = False   # True while user is typing
     _CONVO_LOG: list = []        # [(speaker, text), ...]  last N exchanges
+    _WEBCAM = None               # cv2.VideoCapture for laptop webcam (porthole)
+    _WEBCAM_FRAME = None         # latest frame from webcam
+    _WEBCAM_NEXT = 0.0           # next refresh timestamp
 
     def _jarvis_imshow(self, window_name: str, frame, objs):
         """Render a Jarvis-style HUD — camera feed as the main display,
@@ -1263,6 +1266,23 @@ class VideoCapturePipeline:
         gpu_mem  = VideoCapturePipeline._SYSSTAT['gpu_mem']
         ram_pct  = VideoCapturePipeline._SYSSTAT['ram']
         thoughts   = _monologue_render_lines()
+
+        # ── Webcam porthole refresh (laptop built-in, 8 fps) ─────────
+        _wc_now = time.time()
+        if _wc_now >= VideoCapturePipeline._WEBCAM_NEXT:
+            VideoCapturePipeline._WEBCAM_NEXT = _wc_now + 0.125  # ~8 fps
+            try:
+                if VideoCapturePipeline._WEBCAM is None:
+                    _wc = cv2.VideoCapture(0)   # /dev/video0 — built-in webcam
+                    if not _wc.isOpened():
+                        _wc = cv2.VideoCapture(1)  # fallback to video1
+                    VideoCapturePipeline._WEBCAM = _wc if _wc.isOpened() else False
+                if VideoCapturePipeline._WEBCAM:
+                    _ok, _wf = VideoCapturePipeline._WEBCAM.read()
+                    if _ok:
+                        VideoCapturePipeline._WEBCAM_FRAME = _wf
+            except Exception:
+                pass
 
         # ══════════════════════════════════════════════════════════════
         # HEADER
@@ -1723,9 +1743,10 @@ class VideoCapturePipeline:
                      (int(_cam_cx + _tir*_math.cos(_ta)), int(_cam_cy + _tir*_math.sin(_ta))),
                      (int(_cam_cx + _tor*_math.cos(_ta)), int(_cam_cy + _tor*_math.sin(_ta))),
                      CYAN if _is_maj else DCYAN, 1, cv2.LINE_AA)
-        # Circular-masked camera frame
-        if frame is not None:
-            _mf = cv2.resize(frame, (_cam_rw, _cam_rh))
+        # Circular-masked webcam frame (laptop camera, not screen capture)
+        _wc_frame = VideoCapturePipeline._WEBCAM_FRAME
+        if _wc_frame is not None:
+            _mf = cv2.resize(_wc_frame, (_cam_rw, _cam_rh))
             _cmask = _np.zeros((_cam_rh, _cam_rw), dtype=_np.uint8)
             cv2.circle(_cmask, (_cam_rw // 2, _cam_rh // 2), max(1, _cam_r - 1), 255, -1)
             _croi = canvas[_cam_ry:_cam_ry+_cam_rh, _cam_rx:_cam_rx+_cam_rw]
@@ -2071,23 +2092,30 @@ class VideoCapturePipeline:
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(window_name, WIN_W, WIN_H)
                 VideoCapturePipeline._WINDOW_CREATED = True
-                # Go fullscreen — eliminates title bar and border entirely
+                # Strip title bar — try multiple methods
+                import subprocess as _sp2, time as _t2
+                _t2.sleep(0.5)  # give WM time to register
+                # Method 1: wmctrl fullscreen (works on most GNOME/X11)
                 try:
-                    cv2.setWindowProperty(window_name,
-                                          cv2.WND_PROP_FULLSCREEN,
-                                          cv2.WINDOW_FULLSCREEN)
-                except Exception:
+                    _sp2.Popen(['wmctrl', '-r', window_name,
+                                '-b', 'add,fullscreen'])
+                except FileNotFoundError:
                     pass
-                # Fallback: strip WM decorations via xprop if fullscreen fails
+                # Method 2: xprop remove decorations
                 try:
-                    import subprocess as _sp2, time as _t2
-                    _t2.sleep(0.4)
                     _wid = _sp2.check_output(
                         ['xdotool', 'search', '--name', window_name],
                         timeout=2).decode().split()[0]
                     _sp2.Popen(['xprop', '-id', _wid,
                                 '-f', '_MOTIF_WM_HINTS', '32c',
                                 '-set', '_MOTIF_WM_HINTS', '2, 0, 0, 0, 0'])
+                except Exception:
+                    pass
+                # Method 3: cv2 fullscreen flag
+                try:
+                    cv2.setWindowProperty(window_name,
+                                          cv2.WND_PROP_FULLSCREEN,
+                                          cv2.WINDOW_FULLSCREEN)
                 except Exception:
                     pass
             cv2.imshow(window_name, canvas)
@@ -2141,18 +2169,24 @@ class VideoCapturePipeline:
                     # Keep log bounded
                     if len(VideoCapturePipeline._CONVO_LOG) > 20:
                         VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
-                    # Inject into Jarvis monologue
-                    try:
-                        from core import cognitive as _cogm
-                        _cogm._INNER_MONOLOGUE.append(f'Scott says: {_msg}')
-                    except Exception:
-                        pass
-                    # Also write to a file Jarvis brain polls
-                    try:
-                        import pathlib as _pl
-                        _pl.Path('data/hud_input.txt').write_text(_msg)
-                    except Exception:
-                        pass
+                    # Route to Jarvis brain in background thread
+                    def _ask_jarvis(_m=_msg):
+                        try:
+                            from jarvis.brain import get_brain as _gb
+                            _reply = _gb().respond(_m)
+                            VideoCapturePipeline._CONVO_LOG.append(('JARVIS', _reply))
+                            if len(VideoCapturePipeline._CONVO_LOG) > 20:
+                                VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
+                            # Also speak it
+                            try:
+                                from core import voice as _vc
+                                _vc.speak(_reply)
+                            except Exception:
+                                pass
+                        except Exception as _be:
+                            VideoCapturePipeline._CONVO_LOG.append(('JARVIS', f'[error: {_be}]'))
+                    import threading as _thr
+                    _thr.Thread(target=_ask_jarvis, daemon=True).start()
             elif key == 8 or key == 127:  # Backspace
                 VideoCapturePipeline._TEXT_INPUT = VideoCapturePipeline._TEXT_INPUT[:-1]
             elif 32 <= key < 127:  # Printable
