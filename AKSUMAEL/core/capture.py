@@ -1074,6 +1074,10 @@ class VideoCapturePipeline:
     # Sysstat cached — refresh every 2 s to avoid per-frame nvidia-smi calls
     _SYSSTAT = {'cpu': 0.0, 'gpu': 0.0, 'gpu_mem': 0.0, 'ram': 0.0}
     _SYSSTAT_NEXT = 0.0
+    # Text input / conversation log
+    _TEXT_INPUT: str = ''
+    _TEXT_ACTIVE: bool = False   # True while user is typing
+    _CONVO_LOG: list = []        # [(speaker, text), ...]  last N exchanges
 
     def _jarvis_imshow(self, window_name: str, frame, objs):
         """Render a Jarvis-style HUD — camera feed as the main display,
@@ -1898,121 +1902,136 @@ class VideoCapturePipeline:
         # RIGHT SIDEBAR
         # ══════════════════════════════════════════════════════════════
         # ══════════════════════════════════════════════════════════════
-        # RIGHT SIDE — floating elements on black, no panel fill
+        # RIGHT SIDE — Rainmeter-style ring widgets, floating on black
         # ══════════════════════════════════════════════════════════════
         sx = CAM_W
         px = sx + 14
 
-        # ── Cognitive state — text floats on black ────────────────────
-        sy = HDR_H + 16
-        _gtext(canvas, 'COGNITIVE STATE', (px, sy), 0.30, CYAN2, DCYAN)
-        sy += 12
-        # Thin arc underline instead of a line
-        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
-                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
-        sy += 8
+        # ── Ring widget helper ────────────────────────────────────────
+        def _ring_widget(cx, cy, r, lines, label='', col=CYAN, dim=DCYAN, tick_step=20):
+            """Circular ring widget: concentric rings + tick marks + centered text."""
+            # Three concentric rings
+            cv2.circle(canvas, (cx, cy), r + 6, (dim[0]//3, dim[1]//3, dim[2]//3), 1, cv2.LINE_AA)
+            cv2.circle(canvas, (cx, cy), r + 2, dim, 1, cv2.LINE_AA)
+            cv2.circle(canvas, (cx, cy), r - 4, (col[0]//3, col[1]//3, col[2]//3), 1, cv2.LINE_AA)
+            cv2.circle(canvas, (cx, cy), r,     col, 1, cv2.LINE_AA)
+            # Tick marks around outer ring
+            for _td in range(0, 360, tick_step):
+                _ta = _math.radians(_td)
+                _is_maj = _td % 90 == 0
+                _tr1 = r + 8;  _tr2 = r + (15 if _is_maj else 10)
+                cv2.line(canvas,
+                         (int(cx + _tr1*_math.cos(_ta)), int(cy + _tr1*_math.sin(_ta))),
+                         (int(cx + _tr2*_math.cos(_ta)), int(cy + _tr2*_math.sin(_ta))),
+                         col if _is_maj else dim, 1, cv2.LINE_AA)
+            # Centered text inside
+            _total_h = len(lines) * 20
+            _start_y = cy - _total_h // 2 + 10
+            for _li, (_txt, _sz, _tc) in enumerate(lines):
+                (_tw, _th), _ = cv2.getTextSize(_txt, FONT, _sz, 2 if _sz >= 0.55 else 1)
+                cv2.putText(canvas, _txt,
+                            (cx - _tw // 2, _start_y + _li * 22),
+                            FONT, _sz, _tc, 2 if _sz >= 0.55 else 1, cv2.LINE_AA)
+            # Label below ring
+            if label:
+                (_lw, _), _ = cv2.getTextSize(label, FONT, 0.26, 1)
+                cv2.putText(canvas, label, (cx - _lw // 2, cy + r + 18),
+                            FONT, 0.26, dim, 1, cv2.LINE_AA)
 
-        LINE_H = 15
+        # ── Clock ring ────────────────────────────────────────────────
+        import datetime as _dt
+        _now_dt = _dt.datetime.now()
+        _clk_cx = sx + SIDE_W // 2
+        _clk_cy = HDR_H + 72
+        _ring_widget(_clk_cx, _clk_cy, 58, [
+            (_now_dt.strftime('%H:%M'), 0.70, CYAN),
+            (_now_dt.strftime('%S'), 0.38, DCYAN),
+        ], _now_dt.strftime('%a  %d %b').upper(), CYAN, DCYAN, 15)
+
+        # ── Cognitive state — compact text below clock ────────────────
+        _cog_y = _clk_cy + 58 + 28
         chars  = (SIDE_W - 20) * 2 // 7
-        avail_h = (WIN_H - FOOT_H) - sy - 220  # reserve for large gauges + detections
-        max_lines = max(1, avail_h // LINE_H)
+        avail_h = WIN_H - FOOT_H - _cog_y - 260  # leave space for gauge rings
+        max_lines = max(1, avail_h // 14)
         recent = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
-        for i, line in enumerate(recent):
-            is_last = (i == len(recent) - 1)
-            col = CYAN if is_last else (WHITE if i >= len(recent) - 3 else DCYAN)
-            prefix = '> ' if is_last else '  '
-            disp = (line[:chars] + '..') if len(line) > chars else line
-            cv2.putText(canvas, f'{prefix}{disp}',
-                        (px, sy + i * LINE_H), FONT, 0.30, col, 1, cv2.LINE_AA)
-        sy += max_lines * LINE_H + 10
+        for _i, _line in enumerate(recent):
+            _is_last = (_i == len(recent) - 1)
+            _col = CYAN if _is_last else (WHITE if _i >= len(recent) - 3 else DCYAN)
+            _pref = '> ' if _is_last else '  '
+            _disp = (_line[:chars] + '..') if len(_line) > chars else _line
+            cv2.putText(canvas, f'{_pref}{_disp}',
+                        (px, _cog_y + _i * 14), FONT, 0.28, _col, 1, cv2.LINE_AA)
 
-        # ── Large arc gauges — 4 dials floating in the sidebar ────────
-        # Arc separator
-        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
-                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
-        sy += 10
-        gauge_r = 62          # much bigger than before (was 40)
-        g1_cx = sx + SIDE_W // 4
-        g2_cx = sx + 3 * SIDE_W // 4
-        g_cy  = sy + gauge_r + 8
+        # ── CPU / GPU ring widgets ────────────────────────────────────
+        cpu_col  = RED if cpu_pct  > 0.85 else (ORANGE if cpu_pct  > 0.65 else GREEN)
+        gpu_col  = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
+        ram_col  = RED if ram_pct  > 0.90 else (ORANGE if ram_pct  > 0.75 else GREEN)
+        vram_col = RED if gpu_mem  > 0.90 else (ORANGE if gpu_mem  > 0.75 else CYAN)
+        _g_r1 = 48;  _g_r2 = 34
+        _g1cx = sx + SIDE_W // 4;   _g2cx = sx + 3 * SIDE_W // 4
+        _g_row1 = WIN_H - FOOT_H - 185
+        _g_row2 = WIN_H - FOOT_H - 90
+        _ring_widget(_g1cx, _g_row1, _g_r1, [
+            ('CPU', 0.26, DCYAN), (f'{int(cpu_pct*100)}%', 0.58, cpu_col)],
+            '', cpu_col, (cpu_col[0]//4, cpu_col[1]//4, cpu_col[2]//4), 30)
+        _ring_widget(_g2cx, _g_row1, _g_r1, [
+            ('GPU', 0.26, DCYAN), (f'{int(gpu_util*100)}%', 0.58, gpu_col)],
+            '', gpu_col, (gpu_col[0]//4, gpu_col[1]//4, gpu_col[2]//4), 30)
+        _ring_widget(_g1cx, _g_row2, _g_r2, [
+            ('RAM', 0.24, DCYAN), (f'{int(ram_pct*100)}%', 0.42, ram_col)],
+            '', ram_col, (ram_col[0]//4, ram_col[1]//4, ram_col[2]//4), 45)
+        _ring_widget(_g2cx, _g_row2, _g_r2, [
+            ('VRAM', 0.22, DCYAN), (f'{int(gpu_mem*100)}%', 0.42, vram_col)],
+            '', vram_col, (vram_col[0]//4, vram_col[1]//4, vram_col[2]//4), 45)
 
-        # CPU gauge
-        cpu_col = RED if cpu_pct > 0.85 else (ORANGE if cpu_pct > 0.65 else GREEN)
-        cpu_dim = (cpu_col[0]//4, cpu_col[1]//4, cpu_col[2]//4)
-        _arc_gauge(canvas, g1_cx, g_cy, gauge_r, cpu_pct, cpu_col, cpu_dim, VCYAN)
-        cpu_str = f'{int(cpu_pct*100)}%'
-        (tw, th), _ = cv2.getTextSize(cpu_str, FONT, 0.50, 1)
-        cv2.putText(canvas, cpu_str,
-                    (g1_cx - tw//2, g_cy + th//2), FONT, 0.50, cpu_col, 1, cv2.LINE_AA)
-        cv2.putText(canvas, 'CPU',
-                    (g1_cx - 11, g_cy + th//2 + 18), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
+        # ── Detection dots (compact, no bars) ────────────────────────
+        if objs:
+            _det_y = _cog_y + max_lines * 14 + 8
+            for _di, _obj in enumerate((objs or [])[:4]):
+                _lbl = str(_obj.get('label', _obj.get('class_name', '?')))[:12]
+                _conf = float(_obj.get('confidence', _obj.get('conf', 0.0)))
+                _det_col = GREEN if _conf > 0.7 else (ORANGE if _conf > 0.4 else DCYAN)
+                cv2.circle(canvas, (px + 4, _det_y + _di * 14), 3, _det_col, -1, cv2.LINE_AA)
+                cv2.putText(canvas, f'{_lbl}  {_conf:.0%}',
+                            (px + 12, _det_y + _di * 14 + 4),
+                            FONT, 0.26, _det_col, 1, cv2.LINE_AA)
 
-        # GPU gauge
-        gpu_col = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
-        gpu_dim = (gpu_col[0]//4, gpu_col[1]//4, gpu_col[2]//4)
-        _arc_gauge(canvas, g2_cx, g_cy, gauge_r, gpu_util, gpu_col, gpu_dim, VCYAN)
-        gpu_str = f'{int(gpu_util*100)}%'
-        (tw2, th2), _ = cv2.getTextSize(gpu_str, FONT, 0.50, 1)
-        cv2.putText(canvas, gpu_str,
-                    (g2_cx - tw2//2, g_cy + th2//2), FONT, 0.50, gpu_col, 1, cv2.LINE_AA)
-        cv2.putText(canvas, 'GPU',
-                    (g2_cx - 11, g_cy + th2//2 + 18), FONT, 0.32, DCYAN, 1, cv2.LINE_AA)
+        # ══════════════════════════════════════════════════════════════
+        # TEXT INPUT / CONVERSATION — bottom strip of camera area
+        # ══════════════════════════════════════════════════════════════
+        _tc_y0 = WIN_H - FOOT_H - 110
+        _tc_x0 = 14
+        _tc_w  = CAM_W - 28
+        _tc_active = VideoCapturePipeline._TEXT_ACTIVE
+        _tc_input  = VideoCapturePipeline._TEXT_INPUT
 
-        sy = g_cy + gauge_r + 14
+        # Section arc header
+        cv2.ellipse(canvas, (_tc_x0 + _tc_w // 2, _tc_y0 - 4),
+                    (_tc_w // 2, 6), 0, 180, 360, DCYAN, 1, cv2.LINE_AA)
+        _gtext(canvas, 'COMM LINK', (_tc_x0, _tc_y0 + 2), 0.28, CYAN2, DCYAN)
 
-        # RAM + VRAM row — slightly smaller
-        gauge_r2 = 44
-        gm1_cx = sx + SIDE_W // 4
-        gm2_cx = sx + 3 * SIDE_W // 4
-        gm_cy  = sy + gauge_r2 + 6
-        ram_col  = GREEN if ram_pct < 0.75 else (ORANGE if ram_pct  < 0.90 else RED)
-        vram_col = CYAN  if gpu_mem < 0.75 else (ORANGE if gpu_mem  < 0.90 else RED)
-        _arc_gauge(canvas, gm1_cx, gm_cy, gauge_r2, ram_pct,  ram_col,
-                   (ram_col[0]//4,  ram_col[1]//4,  ram_col[2]//4),  VCYAN)
-        _arc_gauge(canvas, gm2_cx, gm_cy, gauge_r2, gpu_mem,  vram_col,
-                   (vram_col[0]//4, vram_col[1]//4, vram_col[2]//4), VCYAN)
-        for _gcx2, _gpct2, _glbl2, _gcol2 in [
-            (gm1_cx, ram_pct, 'RAM',  ram_col),
-            (gm2_cx, gpu_mem, 'VRAM', vram_col),
-        ]:
-            _gs2 = f'{int(_gpct2*100)}%'
-            (_gtw2, _gth2), _ = cv2.getTextSize(_gs2, FONT, 0.38, 1)
-            cv2.putText(canvas, _gs2, (_gcx2-_gtw2//2, gm_cy+_gth2//2),
-                        FONT, 0.38, _gcol2, 1, cv2.LINE_AA)
-            cv2.putText(canvas, _glbl2, (_gcx2-len(_glbl2)*4, gm_cy+_gth2//2+14),
-                        FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+        # Conversation log — last 4 lines
+        _log = VideoCapturePipeline._CONVO_LOG[-4:]
+        for _li2, (_spk, _txt) in enumerate(_log):
+            _lc = CYAN if _spk == 'JARVIS' else WHITE
+            _disp2 = (_txt[:(_tc_w * 2 // 7)] + '..') if len(_txt) > _tc_w * 2 // 7 else _txt
+            cv2.putText(canvas, f'[{_spk}] {_disp2}',
+                        (_tc_x0, _tc_y0 + 18 + _li2 * 16),
+                        FONT, 0.28, _lc, 1, cv2.LINE_AA)
 
-        sy = gm_cy + gauge_r2 + 14
-
-        # ── Detections — arc confidence rings, no bars ────────────────
-        cv2.ellipse(canvas, (px + (SIDE_W - 20)//2, sy),
-                    ((SIDE_W - 20)//2, 4), 0, 0, 180, DCYAN, 1, cv2.LINE_AA)
-        sy += 8
-        _gtext(canvas, 'DETECTIONS', (px, sy), 0.30, CYAN2, DCYAN)
-        sy += 14
-        _det_r = 10
-        _det_cols = max(1, (SIDE_W - 20) // 70)
-        for _di, obj in enumerate((objs or [])[:6]):
-            if sy + _det_r * 2 + 4 >= WIN_H - FOOT_H:
-                break
-            label = str(obj.get('label', obj.get('class_name', '?')))[:10]
-            conf  = float(obj.get('confidence', obj.get('conf', 0.0)))
-            _dix = px + (_di % _det_cols) * 70 + _det_r + 4
-            _diy = sy + _det_r
-            if _di % _det_cols == 0 and _di > 0:
-                sy += _det_r * 2 + 14
-                _diy = sy + _det_r
-            _arc_gauge(canvas, _dix, _diy, _det_r, conf,
-                       GREEN, (GREEN[0]//4, GREEN[1]//4, GREEN[2]//4), VCYAN)
-            _cs = f'{int(conf*100)}%'
-            (_cw, _ch), _ = cv2.getTextSize(_cs, FONT, 0.22, 1)
-            cv2.putText(canvas, _cs, (_dix-_cw//2, _diy+_ch//2),
-                        FONT, 0.22, GREEN, 1, cv2.LINE_AA)
-            cv2.putText(canvas, label, (_dix - len(label)*3, _diy + _det_r + 10),
-                        FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
-        if not objs:
-            cv2.putText(canvas, 'no detections', (px, sy),
-                        FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+        # Input line
+        _cursor_blink = '|' if int(fnum / 12) % 2 == 0 and _tc_active else ''
+        _ic = CYAN if _tc_active else DCYAN
+        cv2.putText(canvas, f'> {_tc_input}{_cursor_blink}',
+                    (_tc_x0, _tc_y0 + 90),
+                    FONT, 0.36, _ic, 1, cv2.LINE_AA)
+        # Arc underline for input
+        cv2.ellipse(canvas, (_tc_x0 + _tc_w // 2, _tc_y0 + 96),
+                    (_tc_w // 2, 4), 0, 0, 180, _ic, 1, cv2.LINE_AA)
+        if not _tc_active:
+            cv2.putText(canvas, '[press T to type]',
+                        (_tc_x0 + _tc_w - 110, _tc_y0 + 90),
+                        FONT, 0.24, DCYAN, 1, cv2.LINE_AA)
 
         # ══════════════════════════════════════════════════════════════
         # FOOTER
@@ -2107,9 +2126,47 @@ class VideoCapturePipeline:
         else:
             key = self._safe_wait_key()
 
+        # ── Text input mode ──────────────────────────────────────────
+        _active = VideoCapturePipeline._TEXT_ACTIVE
+        if _active:
+            if key == 27:  # Escape — cancel input
+                VideoCapturePipeline._TEXT_ACTIVE = False
+                VideoCapturePipeline._TEXT_INPUT  = ''
+            elif key in (13, 10):  # Enter — submit
+                _msg = VideoCapturePipeline._TEXT_INPUT.strip()
+                VideoCapturePipeline._TEXT_ACTIVE = False
+                VideoCapturePipeline._TEXT_INPUT  = ''
+                if _msg:
+                    VideoCapturePipeline._CONVO_LOG.append(('SCOTT', _msg))
+                    # Keep log bounded
+                    if len(VideoCapturePipeline._CONVO_LOG) > 20:
+                        VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
+                    # Inject into Jarvis monologue
+                    try:
+                        from core import cognitive as _cogm
+                        _cogm._INNER_MONOLOGUE.append(f'Scott says: {_msg}')
+                    except Exception:
+                        pass
+                    # Also write to a file Jarvis brain polls
+                    try:
+                        import pathlib as _pl
+                        _pl.Path('data/hud_input.txt').write_text(_msg)
+                    except Exception:
+                        pass
+            elif key == 8 or key == 127:  # Backspace
+                VideoCapturePipeline._TEXT_INPUT = VideoCapturePipeline._TEXT_INPUT[:-1]
+            elif 32 <= key < 127:  # Printable
+                if len(VideoCapturePipeline._TEXT_INPUT) < 120:
+                    VideoCapturePipeline._TEXT_INPUT += chr(key)
+            return True  # consume all keys while typing
+
+        # ── Normal key handling ───────────────────────────────────────
         if key == ord('q'):
             self.display.quit = True
             return False
+        if key == ord('t'):  # T — activate text input
+            VideoCapturePipeline._TEXT_ACTIVE = True
+            VideoCapturePipeline._TEXT_INPUT  = ''
         if key == ord('f') and _CV2_GUI_OK:
             VideoCapturePipeline._FULLSCREEN = not VideoCapturePipeline._FULLSCREEN
             prop = cv2.WINDOW_FULLSCREEN if VideoCapturePipeline._FULLSCREEN else cv2.WINDOW_NORMAL
