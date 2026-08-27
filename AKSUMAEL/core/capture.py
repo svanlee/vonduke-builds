@@ -1288,18 +1288,28 @@ class VideoCapturePipeline:
         if VideoCapturePipeline._NN_NODES is None or len(VideoCapturePipeline._NN_NODES) != _NN_TARGET:
             VideoCapturePipeline._NN_ADJ = None  # force adjacency rebuild
             _phi3d = _math.pi * (3. - _math.sqrt(5.))
+            import random as _rng_init
+            _rng = _rng_init.Random(0xACE)   # fixed seed → stable layout, asymmetric
             nn_nodes3 = []
             for i in range(_NN_TARGET):
                 _y3d = 1. - (i / (_NN_TARGET-1.)) * 2.
                 _r3d = _math.sqrt(max(0., 1. - _y3d*_y3d))
                 _th3d = _phi3d * i
+                # Small position jitter breaks the perfect Fibonacci lattice
+                _jx = _rng.uniform(-0.045, 0.045)
+                _jy = _rng.uniform(-0.035, 0.035)
+                _jz = _rng.uniform(-0.045, 0.045)
                 nn_nodes3.append({
-                    'x3': _r3d * _math.cos(_th3d),
-                    'y3': _y3d,
-                    'z3': _r3d * _math.sin(_th3d),
-                    'phase': i * 0.23,
-                    'spd':   0.25 + (i % 9) * 0.08,
+                    'x3': _r3d * _math.cos(_th3d) + _jx,
+                    'y3': _y3d + _jy,
+                    'z3': _r3d * _math.sin(_th3d) + _jz,
+                    # Random phase — not linear, so no two nodes breathe in sync
+                    'phase': _rng.uniform(0., _math.pi * 2.),
+                    'spd':   _rng.uniform(0.15, 0.95),
                     'rb':    2 + (i % 3),
+                    # Per-node unique oscillation frequencies and amplitudes
+                    'df': (_rng.uniform(0.7, 2.1), _rng.uniform(0.3, 1.4)),
+                    'da': (_rng.uniform(0.03, 0.10), _rng.uniform(0.02, 0.07)),
                 })
             VideoCapturePipeline._NN_NODES = nn_nodes3
             nn_edges3 = []
@@ -1367,9 +1377,11 @@ class VideoCapturePipeline:
         # Three natural layers emerge: core (active), mid (warming), outer (idle).
         _t_slow = fnum * 0.008
         def _deformed(n, idx):
-            _phase_n = n['phase'] + idx * 0.07
-            _bulge = 0.07 * _math.sin(_t_slow * 1.3 + _phase_n) \
-                   + 0.04 * _math.cos(_t_slow * 0.7 + _phase_n * 1.6)
+            _phase_n = n['phase']           # fully random per node, not idx-linear
+            _fa, _fb = n['df']              # unique frequencies per node
+            _aa, _ab = n['da']              # unique amplitudes per node
+            _bulge = _aa * _math.sin(_t_slow * _fa + _phase_n) \
+                   + _ab * _math.cos(_t_slow * _fb + _phase_n * 1.3)
             _h = heat.get(idx, 0.0)
             # heat 0.0 → outer shell (r=1.0), heat 1.0 → core (r=0.45)
             _layer_r = 1.0 - _h * 0.55
