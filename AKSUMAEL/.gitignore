@@ -86,3 +86,12 @@ data/memory/skill_evolution.jsonl
 token
 telegram_token*
 .env
+data/state.json
+data/mode.json
+data/last_intent.json
+data/planner.log
+data/overseer.log
+data/jarvis_history.json
+data/jarvis_improvements.json
+data/learning_trigger.json
+data/wrapper_cmd.txt
