@@ -466,7 +466,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _cy3, _sy3 = _math.cos(_rot_y), _math.sin(_rot_y)
     _cx3, _sx3 = _math.cos(_rot_xa), _math.sin(_rot_xa)
     _sscale = min(nn_w, nn_h) * 0.36
-    _fov    = 3.5
+    _fov    = 2.2
 
     def _proj3(x3, y3, z3):
         xr = x3*_cy3 + z3*_sy3
@@ -498,8 +498,8 @@ def render_hud(pipeline, window_name: str, frame, objs):
         # Brain-ellipse: wider than tall, slowly drifting asymmetry
         _drift_x = _math.sin(fnum * 0.0009) * 9
         _drift_y = _math.cos(fnum * 0.0007) * 6
-        px2 = int(ncx + (px - ncx) * 1.28 + _drift_x)
-        py2 = int(ncy + (py - ncy) * 0.82 + _drift_y)
+        px2 = int(ncx + (px - ncx) * 1.38 + _drift_x)
+        py2 = int(ncy + (py - ncy) * 0.72 + _drift_y)
         return px2, py2, pz
 
     pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
@@ -628,7 +628,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _zb = nn_nodes[e2['b']].get('zone','jarvis_core')
         _ez = _za if _za in ('gaming','robotics') else (_zb if _zb in ('gaming','robotics') else 'jarvis_core')
         _ecol = _ZONE_COL.get(_ez, gc)
-        scale = 0.07 + eh*0.18   # very dim — constellation lines
+        scale = 0.14 + df*0.12 + eh*0.20   # depth-scaled — closer edges brighter
         ec=(int(_ecol[0]*scale),int(_ecol[1]*scale),int(_ecol[2]*scale))
         cv2.line(canvas,(ax2,ay2),(bx2,by2),ec,1,cv2.LINE_AA)
         lx1,ly1=ax2-nn_x0,ay2-nn_y0
@@ -704,13 +704,13 @@ def render_hud(pipeline, window_name: str, frame, objs):
         # inner_core nodes always maintain ambient presence; domain nodes dim when off
         _min_eff = 0.35 if _nzone=='inner_core' else (0.32 if _ZONE_DIM.get(_nzone,1.0)<0.9 else 0.0)
         eff_h=max(_min_eff, max(nh, df2*0.25+bp*0.08))
-        # Star size: inner_core nodes are slightly larger to feel more solid
+        # Star size: strongly depth-dependent for 3D appearance
         _is_inner = (_nzone == 'inner_core')
         _is_bright_star = _is_inner or ((ni % 7 == 0) and df2 > 0.6)
         if _is_bright_star:
-            nr2 = max(2, int((2 + nh*4) * (0.7 + df2*0.3)))
+            nr2 = max(1, int((2 + nh*4) * (0.4 + df2*0.9)))
         else:
-            nr2 = max(1, int((1 + nh*2.5) * (0.35 + df2*0.55)))
+            nr2 = max(1, int((1 + nh*2.5) * (0.15 + df2*1.1)))
         nc=_hcol(eff_h, _nzone)
         # Diffuse outer glow
         if _is_bright_star:
@@ -1215,7 +1215,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _log_all = pipeline.__class__._CONVO_LOG[:]
     _log_lines = []  # list of (text, color)
     for (_spk_sb, _txt_sb) in reversed(_log_all):
-        _lc_sb = CYAN if _spk_sb == 'JARVIS' else WHITE
+        _lc_sb = CYAN if _spk_sb == 'JARVIS' else GREEN
         _prefix_sb = f'[{_spk_sb}] '
         _iw_sb = max(8, _sb_cl_chars - len(_prefix_sb))
         _wrapped_sb = _wrap_sb(_txt_sb, _iw_sb)
