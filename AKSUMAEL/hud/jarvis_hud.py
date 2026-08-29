@@ -385,26 +385,26 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # ── Per-zone base colors (BGR) ────────────────────────────────────
     # inner_core  — bright amber gold, always full brightness
     # jarvis_core — goal-tinted gold, always active
-    # gaming      — blue-cyan when domain active, near-invisible when not
-    # robotics    — green-cyan when domain active, near-invisible when not
+    # gaming      — gold when active, dim amber silhouette when not
+    # robotics    — green when active, dim green silhouette when not
     _ZONE_COL = {
-        'inner_core':  (0, 205, 255),          # bright amber always-on
+        'inner_core':  (0, 205, 255),
         'jarvis_core': _GC_TINT.get(goal, (0, 185, 255)),
-        'gaming':      (255, 210, 80) if _dom_gaming  else (18, 14, 6),
-        'robotics':    (180, 255, 80) if _dom_robotics else (8, 18, 6),
+        'gaming':      (255, 210, 80)  if _dom_gaming   else (90,  65, 20),
+        'robotics':    (80,  255, 120) if _dom_robotics else (15,  90, 20),
     }
     _ZONE_HOT = {
-        'inner_core':  (200, 245, 255),         # near-white amber
+        'inner_core':  (200, 245, 255),
         'jarvis_core': (80, 240, 255),
-        'gaming':      (255, 245, 180) if _dom_gaming  else (25, 20, 8),
-        'robotics':    (200, 255, 180) if _dom_robotics else (10, 25, 8),
+        'gaming':      (255, 245, 180) if _dom_gaming   else (100, 75, 25),
+        'robotics':    (160, 255, 160) if _dom_robotics else (20, 100, 25),
     }
-    # Background per-zone dim multiplier when domain is off
+    # Per-zone dim multiplier — inactive zones show as visible silhouette (0.38)
     _ZONE_DIM = {
         'inner_core':  1.0,
         'jarvis_core': 1.0,
-        'gaming':      0.12 if not _dom_gaming   else 1.0,
-        'robotics':    0.12 if not _dom_robotics else 1.0,
+        'gaming':      0.38 if not _dom_gaming   else 1.0,
+        'robotics':    0.38 if not _dom_robotics else 1.0,
     }
 
     gc     = _ZONE_COL['jarvis_core']   # kept for edge/ambient drawing
@@ -650,7 +650,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         nh=heat.get(ni,0.)
         bp=_math.sin(fnum*0.035*n2['spd']+n2['phase'])*0.5+0.5
         # inner_core nodes always maintain ambient presence; domain nodes dim when off
-        _min_eff = 0.35 if _nzone=='inner_core' else (0.06 if _ZONE_DIM.get(_nzone,1.0)<0.5 else 0.0)
+        _min_eff = 0.35 if _nzone=='inner_core' else (0.18 if _ZONE_DIM.get(_nzone,1.0)<0.9 else 0.0)
         eff_h=max(_min_eff, max(nh, df2*0.25+bp*0.08))
         # Star size: inner_core nodes are slightly larger to feel more solid
         _is_inner = (_nzone == 'inner_core')
