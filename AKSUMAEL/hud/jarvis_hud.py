@@ -129,10 +129,10 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _ai = int(start_deg + sweep * 0.25)
         _ae = int(start_deg + sweep * 0.75)
         cv2.ellipse(img, (cx, cy), (r-9, r-9), 0, _ai, _ae, _mid, 2, cv2.LINE_AA)
-        # Value text centered — larger for readability
+        # Value text centered
         _vs = f'{int(pct*100)}'
-        (_vw, _vh), _ = cv2.getTextSize(_vs, FONT, 0.75, 1)
-        cv2.putText(img, _vs, (cx - _vw//2, cy + _vh//2 - 2), FONT, 0.75, col, 1, cv2.LINE_AA)
+        (_vw, _vh), _ = cv2.getTextSize(_vs, FONT, 0.55, 1)
+        cv2.putText(img, _vs, (cx - _vw//2, cy + _vh//2 - 2), FONT, 0.55, col, 1, cv2.LINE_AA)
         # Label below gauge
         if label:
             (_lw, _), _ = cv2.getTextSize(label, FONT, 0.28, 1)
@@ -1022,22 +1022,29 @@ def render_hud(pipeline, window_name: str, frame, objs):
     except Exception:
         pass
 
-    # ── Thought mini — arc text strip ─────────────────────────────
-    _th_rx, _th_ry, _th_rw, _th_rh = _PM['thought']['mini_rect']
-    _th_cx = _th_rx + _th_rw // 2;  _th_cy = _th_ry + 8
-    # Arc above the text
-    cv2.ellipse(canvas, (_th_cx, _th_cy + 18), (_th_rw // 2 - 6, 16),
-                0, 202, 338, DCYAN, 1, cv2.LINE_AA)
-    cv2.circle(canvas, (_th_cx, _th_cy + 4), 3, CYAN, -1, cv2.LINE_AA)
-    _th_last = (thoughts or ['...'])[-1][:38]
-    (_ttw, _tth), _ = cv2.getTextSize(_th_last, FONT, 0.27, 1)
-    cv2.putText(canvas, _th_last, (_th_cx - _ttw // 2, _th_cy + 38),
-                FONT, 0.27, WHITE, 1, cv2.LINE_AA)
-    if len(thoughts or []) > 1:
-        _th_prev = (thoughts)[-2][:38]
-        (_tp2w, _), _ = cv2.getTextSize(_th_prev, FONT, 0.22, 1)
-        cv2.putText(canvas, _th_prev, (_th_cx - _tp2w // 2, _th_cy + 52),
-                    FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
+    # ── Thought mini — suppress; content shown in bottom chat strip ───
+    # (goals mini also suppressed; both rendered in brain-area chat below)
+
+    # ── Bottom chat strip — inner monologue + goal, above gauges ──────
+    # Strip occupies y = [_chat_y0 .. _chat_y1], full brain width
+    _chat_y1 = _mgy - _mr - 20   # just above gauge titles
+    _chat_y0 = _chat_y1 - 54     # ~3 lines of text
+    _chat_lh  = 16
+    # Dim horizontal rule at top of strip
+    cv2.line(canvas, (0, _chat_y0 - 2), (CAM_W, _chat_y0 - 2),
+             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
+    # GOAL line
+    _goal_short = goal[:60].replace('_', ' ').upper()
+    cv2.putText(canvas, f'▶ {_goal_short}',
+                (8, _chat_y0 + _chat_lh), FONT, 0.28, CYAN, 1, cv2.LINE_AA)
+    # Inner monologue — last 2 lines
+    _mono_lines = _monologue_render_lines()
+    for _mli, _mlt in enumerate((_mono_lines or ['...'])[-2:]):
+        _mlt_s = _mlt[:90]
+        _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
+        cv2.putText(canvas, _mlt_s, (8, _mly), FONT, 0.26,
+                    WHITE if _mli == len((_mono_lines or ['...'])[-2:]) - 1 else DCYAN,
+                    1, cv2.LINE_AA)
 
     # ── Draw expanded panel overlay ───────────────────────────────
     for _eid, _ep in pipeline.__class__._PANELS.items():
@@ -1284,16 +1291,16 @@ def render_hud(pipeline, window_name: str, frame, objs):
         ('RAM',  ram_pct,  ram_col),
         ('VRAM', gpu_mem,  vram_col),
     ]
-    _mr   = 58      # ring radius — larger, more prominent gauges
+    _mr   = 38      # ring radius
     _mgap = CAM_W // 4   # even spacing across camera area
-    _mgy  = WIN_H - FOOT_H - _mr - 18  # just above footer
+    _mgy  = WIN_H - FOOT_H - _mr - 22  # just above footer, with room for label
     for _mi, (_ml, _mp, _mc) in enumerate(_mg_items):
         _mgcx = _mgap // 2 + _mi * _mgap
         # Section title above gauge
-        (_tlw, _tlh), _ = cv2.getTextSize(_ml, FONT, 0.38, 1)
+        (_tlw, _tlh), _ = cv2.getTextSize(_ml, FONT, 0.30, 1)
         cv2.putText(canvas, _ml,
-                    (_mgcx - _tlw//2, _mgy - _mr - 10),
-                    FONT, 0.38, _mc, 1, cv2.LINE_AA)
+                    (_mgcx - _tlw//2, _mgy - _mr - 12),
+                    FONT, 0.30, _mc, 1, cv2.LINE_AA)
         _double_ring_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, '')
     # Update mini rect so clicking these rings opens the sysstat panel
     pipeline.__class__._PANELS['sysstat']['mini_rect'] = (
@@ -1352,13 +1359,24 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.circle(canvas, (xi, fy + 10), _fr, VCYAN, -1, cv2.LINE_AA)
 
     if _CV2_GUI_OK:
-        if not getattr(pipeline.__class__, '_WINDOW_CREATED', False):
+        _win_first = not getattr(pipeline.__class__, '_WINDOW_CREATED', False)
+        if _win_first:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             pipeline.__class__._WINDOW_CREATED = True
-        # Scale the 1280×720 canvas up to 1920×1080 before display so the window
-        # opens at full size — more reliable than cv2.resizeWindow on most WMs.
+        # Scale canvas up before display for readability
         _disp = cv2.resize(canvas, (1920, 1080), interpolation=cv2.INTER_CUBIC)
         cv2.imshow(window_name, _disp)
+        # Resize AFTER imshow (window must exist + be rendered first).
+        # Also try xdotool for WMs that ignore cv2.resizeWindow.
+        if _win_first or not getattr(pipeline.__class__, '_WINDOW_SIZED', False):
+            cv2.resizeWindow(window_name, 1920, 1080)
+            try:
+                import subprocess as _sp
+                _sp.Popen(['xdotool', 'search', '--sync', '--name', window_name,
+                           'windowsize', '1920', '1080'], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            except Exception:
+                pass
+            pipeline.__class__._WINDOW_SIZED = True
 
 # ── Display pump (main-thread only) ──────────────────────────────────
 
