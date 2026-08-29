@@ -212,6 +212,15 @@ def run():
     # Jarvis core always runs regardless of domain.
     _game_env = getattr(config, 'ACTIVE_ENV', '') in getattr(config, 'GAME_ENVS', set())
 
+    # ── Robotics domain detection ──────────────────────────────────────────
+    from domains.robotics import load_domain as _load_robotics_domain
+    _robotics_ctx = _load_robotics_domain()
+    _robotics_env = _robotics_ctx is not None
+    if _robotics_env:
+        print(f'[DOMAIN] robotics domain active')
+    else:
+        print(f'[DOMAIN] robotics domain not loaded (hardware absent)')
+
     # ── Jarvis core subsystems ─────────────────────────────────────────────
     from hardware.hardware_manager import HardwareManager
     hw = HardwareManager()
