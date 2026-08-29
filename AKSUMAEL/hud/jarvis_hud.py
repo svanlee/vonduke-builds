@@ -303,14 +303,15 @@ def render_hud(pipeline, window_name: str, frame, objs):
     cv2.rectangle(canvas, (nn_x0, nn_y0), (nn_x0+nn_w, nn_y0+nn_h), (2, 6, 10), -1)
 
     # ── Circuit grid background (Stark Industries style) ─────────────
-    _cg_v = (int(gc[0]*0.055), int(gc[1]*0.055), int(gc[2]*0.055))  # very dim cyan
-    _cg_h = (int(gc[0]*0.040), int(gc[1]*0.040), int(gc[2]*0.040))
+    # Use fixed cyan tones here — gc not yet defined (computed after zone setup below)
+    _cg_v = (12, 10, 0)   # very dim cyan-gold grid lines (BGR)
+    _cg_h = (8,  7,  0)
     for _gx2 in range(nn_x0, nn_x0+nn_w+1, 48):
         cv2.line(canvas, (_gx2, nn_y0), (_gx2, nn_y0+nn_h), _cg_v, 1, cv2.LINE_AA)
     for _gy2 in range(nn_y0, nn_y0+nn_h+1, 36):
         cv2.line(canvas, (nn_x0, _gy2), (nn_x0+nn_w, _gy2), _cg_h, 1, cv2.LINE_AA)
     # Circuit intersection nodes — small dots at grid crossings near center
-    _cn_col = (int(gc[0]*0.12), int(gc[1]*0.12), int(gc[2]*0.12))
+    _cn_col = (26, 22, 0)   # dim cyan (fixed — gc not yet available)
     for _gx2 in range(nn_x0, nn_x0+nn_w+1, 48):
         for _gy2 in range(nn_y0, nn_y0+nn_h+1, 36):
             _dx2, _dy2 = _gx2 - ncx, _gy2 - ncy
@@ -339,22 +340,20 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # Data labels on left vertical trace
     for _lab, _ly in [('SYS', nn_y0+55), ('NET', nn_y0+115), ('VOX', nn_y0+175), ('ENV', nn_y0+235)]:
         cv2.putText(canvas, _lab, (_vl-28, _ly+4), FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
-    # Concentric arcs decorating center (arc reactor rings)
-    for _cr, _calpha in [(140, 0.20), (180, 0.14), (225, 0.09), (265, 0.06)]:
-        _cc = (int(gc[0]*_calpha), int(gc[1]*_calpha), int(gc[2]*_calpha))
-        cv2.circle(canvas, (ncx, ncy), _cr, _cc, 1, cv2.LINE_AA)
+    # Concentric arcs decorating center (arc reactor rings) — fixed dim cyan
+    for _cr, _cv in [(140, (44, 37, 2)), (180, (30, 26, 1)), (225, (20, 17, 0)), (265, (14, 11, 0))]:
+        cv2.circle(canvas, (ncx, ncy), _cr, _cv, 1, cv2.LINE_AA)
     # Bright inner rings (arc reactor core)
     cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,  1, cv2.LINE_AA)
-    cv2.circle(canvas, (ncx, ncy), 108, (int(gc[0]*0.25), int(gc[1]*0.25), int(gc[2]*0.25)), 2, cv2.LINE_AA)
+    cv2.circle(canvas, (ncx, ncy), 108, (55, 46, 2), 2, cv2.LINE_AA)
     # Tick marks on outer ring
     for _ta in range(0, 360, 15):
         _tr_rad = _math.radians(_ta)
         _tx1 = int(ncx + 108 * _math.cos(_tr_rad)); _ty1 = int(ncy + 108 * _math.sin(_tr_rad))
         _tlen = 8 if _ta % 90 == 0 else (5 if _ta % 45 == 0 else 3)
         _tx2 = int(ncx + (108+_tlen) * _math.cos(_tr_rad)); _ty2 = int(ncy + (108+_tlen) * _math.sin(_tr_rad))
-        _tbr = 0.30 if _ta % 90 == 0 else 0.15
-        cv2.line(canvas, (_tx1,_ty1), (_tx2,_ty2),
-                 (int(gc[0]*_tbr),int(gc[1]*_tbr),int(gc[2]*_tbr)), 1, cv2.LINE_AA)
+        _tbr_v = (66, 55, 3) if _ta % 90 == 0 else (33, 27, 1)
+        cv2.line(canvas, (_tx1,_ty1), (_tx2,_ty2), _tbr_v, 1, cv2.LINE_AA)
 
     # ── Build 3-zone layered brain once ──────────────────────────────
     # Zone layout (180 nodes total):
