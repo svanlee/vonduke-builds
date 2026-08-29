@@ -1023,28 +1023,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         pass
 
     # ── Thought mini — suppress; content shown in bottom chat strip ───
-    # (goals mini also suppressed; both rendered in brain-area chat below)
-
-    # ── Bottom chat strip — inner monologue + goal, above gauges ──────
-    # Strip occupies y = [_chat_y0 .. _chat_y1], full brain width
-    _chat_y1 = _mgy - _mr - 20   # just above gauge titles
-    _chat_y0 = _chat_y1 - 54     # ~3 lines of text
-    _chat_lh  = 16
-    # Dim horizontal rule at top of strip
-    cv2.line(canvas, (0, _chat_y0 - 2), (CAM_W, _chat_y0 - 2),
-             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
-    # GOAL line
-    _goal_short = goal[:60].replace('_', ' ').upper()
-    cv2.putText(canvas, f'▶ {_goal_short}',
-                (8, _chat_y0 + _chat_lh), FONT, 0.28, CYAN, 1, cv2.LINE_AA)
-    # Inner monologue — last 2 lines
-    _mono_lines = _monologue_render_lines()
-    for _mli, _mlt in enumerate((_mono_lines or ['...'])[-2:]):
-        _mlt_s = _mlt[:90]
-        _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
-        cv2.putText(canvas, _mlt_s, (8, _mly), FONT, 0.26,
-                    WHITE if _mli == len((_mono_lines or ['...'])[-2:]) - 1 else DCYAN,
-                    1, cv2.LINE_AA)
+    # (rendered after gauge section where _mgy/_mr are defined)
 
     # ── Draw expanded panel overlay ───────────────────────────────
     for _eid, _ep in pipeline.__class__._PANELS.items():
@@ -1307,6 +1286,22 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _mgap // 2 - _mr, _mgy - _mr,
         _mgap * 4, _mr * 2 + 20
     )
+
+    # ── Bottom chat strip — inner monologue + goal, above gauges ─────
+    _chat_y1 = _mgy - _mr - 20   # just above gauge titles
+    _chat_y0 = _chat_y1 - 54
+    _chat_lh  = 16
+    cv2.line(canvas, (0, _chat_y0 - 2), (CAM_W, _chat_y0 - 2),
+             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
+    _goal_short = goal[:60].replace('_', ' ').upper()
+    cv2.putText(canvas, f'> {_goal_short}',
+                (8, _chat_y0 + _chat_lh), FONT, 0.28, CYAN, 1, cv2.LINE_AA)
+    _mono_lines = _monologue_render_lines()
+    for _mli, _mlt in enumerate((_mono_lines or ['...'])[-2:]):
+        _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
+        cv2.putText(canvas, _mlt[:90], (8, _mly), FONT, 0.26,
+                    WHITE if _mli == len((_mono_lines or ['...'])[-2:]) - 1 else DCYAN,
+                    1, cv2.LINE_AA)
 
     # ── Detection dots — brain area bottom-left ───────────────────
     if objs:
