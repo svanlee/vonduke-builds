@@ -2917,7 +2917,7 @@ def run():
         print(f'\n[AKSUMAEL] stopped  ticks:{tick}  '
               f'avg_reward:{reward.average():.3f}  '
               f'skills:{len(skills.skills)}  '
-              f'session:{world.session_num}')
+              f'session:{world.session_num if world is not None else "N/A"}')
         if _f3_open:
             # Shutting down mid F3-toggle (open sent, close not yet sent) —
             # force the close now so the overlay doesn't stay stuck open
@@ -2943,11 +2943,15 @@ def run():
         if recorder is not None:
             recorder.close()
         rl.save()
-        world.save()
-        world_mem.save()
-        inventory.save()
+        if world is not None:
+            world.save()
+        if world_mem is not None:
+            world_mem.save()
+        if inventory is not None:
+            inventory.save()
         goals.save()
-        progression.save()
+        if progression is not None:
+            progression.save()
         if mastermind_client is not None:
             mastermind_client.shutdown()
         time.sleep(1.5)
@@ -2957,7 +2961,7 @@ def run():
         human_assist.stop()
         if voice_thread is not None:
             voice_thread.stop()   # releases the PTT key hook and the mic
-        if ear.enabled:
+        if ear and ear.enabled:
             ear.stop()
         tts.stop()
         pipeline.stop()   # signals CaptureThread, YOLOThread, DisplayThread

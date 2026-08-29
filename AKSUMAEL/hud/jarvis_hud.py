@@ -10,6 +10,7 @@ accessed and mutated here.
 """
 import math as _math
 import time
+import random as _rand
 import subprocess as _sp2
 import cv2
 import numpy as _np
@@ -39,12 +40,14 @@ def render_hud(pipeline, window_name: str, frame, objs):
       │  VOICE ◉  transcript text here       │  OBJECTIVE       │
       └──────────────────────────────────────┴──────────────────┘
     """
+    # Import module-level helpers from capture — safe because this function is
+    # only called after core.capture is fully loaded (lazy import in _jarvis_imshow).
+    from core.capture import _CV2_GUI_OK, _monologue_render_lines
+
     if pipeline.__class__._JARVIS_START is None:
         pipeline.__class__._JARVIS_START = time.time()
     pipeline.__class__._JARVIS_FRAME += 1
     fnum = pipeline.__class__._JARVIS_FRAME
-
-    import math as _math
 
     # ── Colours (BGR) ──────────────────────────────────────────────
     BG     = (10,   6,   2)       # near-black navy
@@ -363,7 +366,6 @@ def render_hud(pipeline, window_name: str, frame, objs):
         return int(ncx + xr*s), int(ncy + yr2*s), zr2
 
     # ── Holosphere state (gold, armillary, dense) ─────────────────
-    import numpy as _np, random as _rand
     heat = pipeline.__class__._NN_HEAT
 
     # Organic deformation: each node breathes outward/inward along its own
@@ -1180,8 +1182,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
             pipeline.__class__._WINDOW_CREATED = True
             # Strip WM title bar/border only — NOT fullscreen
             # Press F in the window to toggle fullscreen manually
-            import subprocess as _sp2, time as _t2
-            _t2.sleep(0.5)
+            time.sleep(0.5)
             try:
                 _wid = _sp2.check_output(
                     ['xdotool', 'search', '--name', window_name],
