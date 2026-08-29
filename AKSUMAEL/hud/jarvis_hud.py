@@ -992,35 +992,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # Sysstat mini removed — large gauges in sidebar replace it
     _PM['sysstat']['mini_rect'] = (nn_x0 + 16, nn_y0 + 12, 4, 4)  # zero-area, click disabled
 
-    # ── Goals mini — arc node cluster ─────────────────────────────
-    _gl_rx, _gl_ry, _gl_rw, _gl_rh = _PM['goals']['mini_rect']
-    _gl_cx = _gl_rx + _gl_rw // 2;  _gl_cy = _gl_ry + 28
-    # Arc bracket curving above goal text
-    cv2.ellipse(canvas, (_gl_cx, _gl_cy), (_gl_rw // 2 - 6, 22),
-                0, 195, 345, DCYAN, 1, cv2.LINE_AA)
-    # Central node dot
-    cv2.circle(canvas, (_gl_cx, _gl_cy), 5, CYAN, -1, cv2.LINE_AA)
-    cv2.circle(canvas, (_gl_cx, _gl_cy), 8, DCYAN, 1, cv2.LINE_AA)
-    _goal_disp = goal[:26].replace('_', ' ').upper()
-    (_gtw2, _gth2), _ = cv2.getTextSize(_goal_disp, FONT, 0.27, 1)
-    cv2.putText(canvas, _goal_disp, (_gl_cx - _gtw2 // 2, _gl_cy + 20),
-                FONT, 0.27, CYAN, 1, cv2.LINE_AA)
-    # Queued goals as satellite dots
-    try:
-        import json as _js
-        with open('data/state.json') as _sf:
-            _stk = _js.load(_sf).get('goal_stack', []) or []
-        for _gi3, _gg3 in enumerate(_stk[:3]):
-            _dot_x = _gl_rx + 14 + _gi3 * 56
-            _dot_y = _gl_ry + _gl_rh - 10
-            cv2.line(canvas, (_gl_cx, _gl_cy + 10), (_dot_x, _dot_y),
-                     (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
-            cv2.circle(canvas, (_dot_x, _dot_y), 3, DCYAN, -1, cv2.LINE_AA)
-            _gtxt3 = str(_gg3)[:10].replace('_', ' ')
-            cv2.putText(canvas, _gtxt3, (_dot_x - 14, _dot_y + 11),
-                        FONT, 0.20, DCYAN, 1, cv2.LINE_AA)
-    except Exception:
-        pass
+    # ── Goals mini — suppressed; goal shown in bottom chat strip ──────
 
     # ── Thought mini — suppress; content shown in bottom chat strip ───
     # (rendered after gauge section where _mgy/_mr are defined)
@@ -1297,11 +1269,14 @@ def render_hud(pipeline, window_name: str, frame, objs):
     cv2.putText(canvas, f'> {_goal_short}',
                 (8, _chat_y0 + _chat_lh), FONT, 0.28, CYAN, 1, cv2.LINE_AA)
     _mono_lines = _monologue_render_lines()
-    for _mli, _mlt in enumerate((_mono_lines or ['...'])[-2:]):
-        _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
-        cv2.putText(canvas, _mlt[:90], (8, _mly), FONT, 0.26,
-                    WHITE if _mli == len((_mono_lines or ['...'])[-2:]) - 1 else DCYAN,
-                    1, cv2.LINE_AA)
+    if _mono_lines:
+        for _mli, _mlt in enumerate(_mono_lines[-2:]):
+            if not _mlt.strip():
+                continue
+            _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
+            cv2.putText(canvas, _mlt[:90], (8, _mly), FONT, 0.26,
+                        WHITE if _mli == len(_mono_lines[-2:]) - 1 else DCYAN,
+                        1, cv2.LINE_AA)
 
     # ── Detection dots — brain area bottom-left ───────────────────
     if objs:
