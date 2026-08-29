@@ -857,8 +857,8 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # ── Set mini_rect positions (top-left, bottom-left, bottom-mid, top-right)
     _PM = pipeline.__class__._PANELS
     _PM['sysstat']['mini_rect'] = (nn_x0 + 8, nn_y0 + 8,               170, 100)
-    _PM['goals'  ]['mini_rect'] = (nn_x0 + 8, nn_y0 + nn_h - 85 - 8,  200, 80 )
-    _PM['thought']['mini_rect'] = (nn_x0 + nn_w//2 - 120, nn_y0 + nn_h - 75 - 8, 240, 70)
+    _PM['goals'  ]['mini_rect'] = (nn_x0 + 8, nn_y0 + nn_h - 165 - 8, 200, 80 )
+    _PM['thought']['mini_rect'] = (nn_x0 + nn_w//2 - 120, nn_y0 + nn_h - 155 - 8, 240, 70)
     _PM['camera' ]['mini_rect'] = (nn_x0 + nn_w - 224 - 8, nn_y0 + 8, 224, 126)
 
     # ── Register mouse/scroll callback once ──────────────────────
