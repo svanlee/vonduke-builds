@@ -129,10 +129,10 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _ai = int(start_deg + sweep * 0.25)
         _ae = int(start_deg + sweep * 0.75)
         cv2.ellipse(img, (cx, cy), (r-9, r-9), 0, _ai, _ae, _mid, 2, cv2.LINE_AA)
-        # Value text centered
+        # Value text centered — larger for readability
         _vs = f'{int(pct*100)}'
-        (_vw, _vh), _ = cv2.getTextSize(_vs, FONT, 0.55, 1)
-        cv2.putText(img, _vs, (cx - _vw//2, cy + _vh//2 - 2), FONT, 0.55, col, 1, cv2.LINE_AA)
+        (_vw, _vh), _ = cv2.getTextSize(_vs, FONT, 0.75, 1)
+        cv2.putText(img, _vs, (cx - _vw//2, cy + _vh//2 - 2), FONT, 0.75, col, 1, cv2.LINE_AA)
         # Label below gauge
         if label:
             (_lw, _), _ = cv2.getTextSize(label, FONT, 0.28, 1)
@@ -857,8 +857,8 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # ── Set mini_rect positions (top-left, bottom-left, bottom-mid, top-right)
     _PM = pipeline.__class__._PANELS
     _PM['sysstat']['mini_rect'] = (nn_x0 + 8, nn_y0 + 8,               170, 100)
-    _PM['goals'  ]['mini_rect'] = (nn_x0 + 8, nn_y0 + nn_h - 165 - 8, 200, 80 )
-    _PM['thought']['mini_rect'] = (nn_x0 + nn_w//2 - 120, nn_y0 + nn_h - 155 - 8, 240, 70)
+    _PM['goals'  ]['mini_rect'] = (nn_x0 + 8,              nn_y0 + 80,  160, 70 )
+    _PM['thought']['mini_rect'] = (nn_x0 + nn_w//2 - 100, nn_y0 + 110, 200, 60 )
     _PM['camera' ]['mini_rect'] = (nn_x0 + nn_w - 224 - 8, nn_y0 + 8, 224, 126)
 
     # ── Register mouse/scroll callback once ──────────────────────
@@ -1284,16 +1284,16 @@ def render_hud(pipeline, window_name: str, frame, objs):
         ('RAM',  ram_pct,  ram_col),
         ('VRAM', gpu_mem,  vram_col),
     ]
-    _mr   = 38      # ring radius — sized to fit without footer clip
+    _mr   = 58      # ring radius — larger, more prominent gauges
     _mgap = CAM_W // 4   # even spacing across camera area
-    _mgy  = WIN_H - FOOT_H - _mr - 22  # just above footer, with room for label
+    _mgy  = WIN_H - FOOT_H - _mr - 18  # just above footer
     for _mi, (_ml, _mp, _mc) in enumerate(_mg_items):
         _mgcx = _mgap // 2 + _mi * _mgap
         # Section title above gauge
-        (_tlw, _tlh), _ = cv2.getTextSize(_ml, FONT, 0.30, 1)
+        (_tlw, _tlh), _ = cv2.getTextSize(_ml, FONT, 0.38, 1)
         cv2.putText(canvas, _ml,
-                    (_mgcx - _tlw//2, _mgy - _mr - 12),
-                    FONT, 0.30, _mc, 1, cv2.LINE_AA)
+                    (_mgcx - _tlw//2, _mgy - _mr - 10),
+                    FONT, 0.38, _mc, 1, cv2.LINE_AA)
         _double_ring_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, '')
     # Update mini rect so clicking these rings opens the sysstat panel
     pipeline.__class__._PANELS['sysstat']['mini_rect'] = (
@@ -1303,7 +1303,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
 
     # ── Detection dots — brain area bottom-left ───────────────────
     if objs:
-        _det_y0 = WIN_H - FOOT_H - 60
+        _det_y0 = WIN_H - FOOT_H - _mr * 2 - 20
         for _di, _obj in enumerate((objs or [])[:4]):
             _lbl = str(_obj.get('label', _obj.get('class_name', '?')))[:12]
             _conf = float(_obj.get('confidence', _obj.get('conf', 0.0)))
@@ -1352,12 +1352,13 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.circle(canvas, (xi, fy + 10), _fr, VCYAN, -1, cv2.LINE_AA)
 
     if _CV2_GUI_OK:
-        # Make window resizable on first render; strip OS decoration
         if not getattr(pipeline.__class__, '_WINDOW_CREATED', False):
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(window_name, 1920, 1080)  # scale up canvas for readability
             pipeline.__class__._WINDOW_CREATED = True
-        cv2.imshow(window_name, canvas)
+        # Scale the 1280×720 canvas up to 1920×1080 before display so the window
+        # opens at full size — more reliable than cv2.resizeWindow on most WMs.
+        _disp = cv2.resize(canvas, (1920, 1080), interpolation=cv2.INTER_CUBIC)
+        cv2.imshow(window_name, _disp)
 
 # ── Display pump (main-thread only) ──────────────────────────────────
 
