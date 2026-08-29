@@ -498,8 +498,8 @@ def render_hud(pipeline, window_name: str, frame, objs):
         # Brain-ellipse: wider than tall, slowly drifting asymmetry
         _drift_x = _math.sin(fnum * 0.0009) * 9
         _drift_y = _math.cos(fnum * 0.0007) * 6
-        px2 = int(ncx + (px - ncx) * 1.42 + _drift_x)
-        py2 = int(ncy + (py - ncy) * 0.68 + _drift_y)
+        px2 = int(ncx + (px - ncx) * 1.28 + _drift_x)
+        py2 = int(ncy + (py - ncy) * 0.82 + _drift_y)
         return px2, py2, pz
 
     pnodes = [_deformed(n, i) for i, n in enumerate(nn_nodes)]
@@ -833,10 +833,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _corner_bracket(canvas, CAM_W, WIN_H-FOOT_H,  1, -1, 10, DCYAN, VCYAN)
     _corner_bracket(canvas, CAM_W, WIN_H-FOOT_H, -1, -1, 10, DCYAN, VCYAN)
 
-    # Labels
-    cv2.putText(canvas,'JARVIS',(nn_x0+8,nn_y0+15),FONT,0.33,CYAN2,1,cv2.LINE_AA)
-    cv2.putText(canvas,f'{goal.upper().replace("_"," ")}',
-                (nn_x0+8,nn_y0+30),FONT,0.30,gc,1,cv2.LINE_AA)
+    # Labels — intentionally suppressed (goal shown in COMM LINK sidebar)
 
     # ══════════════════════════════════════════════════════════════
     # EXPANDABLE MINI PANELS
