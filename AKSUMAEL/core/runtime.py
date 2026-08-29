@@ -221,6 +221,11 @@ def run():
     else:
         print(f'[DOMAIN] robotics domain not loaded (hardware absent)')
 
+    # Publish domain state to HUD so the brain sphere can zone-color correctly
+    from core.capture import VideoCapturePipeline as _VCP
+    _VCP._DOMAIN_GAMING   = _game_env
+    _VCP._DOMAIN_ROBOTICS = _robotics_env
+
     # ── Jarvis core subsystems ─────────────────────────────────────────────
     from hardware.hardware_manager import HardwareManager
     hw = HardwareManager()

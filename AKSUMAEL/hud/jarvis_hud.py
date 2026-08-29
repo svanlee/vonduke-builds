@@ -83,34 +83,32 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.putText(img, txt, pos, FONT, scale, col, thick,     cv2.LINE_AA)
 
     def _corner_bracket(img, x, y, dx, dy, size, col, dim):
-        """Draw L-shaped corner bracket with glow. dx/dy = ±1 direction."""
+        """Clean L-shaped corner bracket — no tick marks, just the two lines."""
         ex, ey = x + dx * size, y + dy * size
         _gline(img, (x, y), (ex, y), col, dim, 2)
         _gline(img, (x, y), (x, ey), col, dim, 2)
-        # small tick at tip
-        cv2.line(img, (ex - dx * 4, y - 1), (ex - dx * 4, y + 1), col, 1)
 
     def _arc_gauge(img, cx, cy, r, pct, col_full, col_dim, col_bg,
-                   start_deg=135, sweep=270):
-        """270° arc gauge: start_deg → start_deg+sweep filled by pct."""
-        # Background arc
-        cv2.ellipse(img, (cx, cy), (r, r), 0, start_deg,
-                    start_deg + sweep, col_bg, 4, cv2.LINE_AA)
-        # Filled portion
+                   start_deg=135, sweep=270, n_segs=5, gap_deg=4, thickness=5):
+        """Segmented ring gauge — n_segs arc segments with gap_deg gaps between.
+        Filled segments use col_full; unfilled use col_bg. No tick marks."""
+        seg_deg = (sweep - gap_deg * (n_segs - 1)) / n_segs
         fill_end = start_deg + sweep * max(0.0, min(1.0, pct))
-        if fill_end > start_deg + 1:
-            _garc(img, (cx, cy), r, start_deg, fill_end, col_full, col_dim, 3)
-        # Tick marks around ring
-        for i in range(11):
-            a_deg = start_deg + sweep * i / 10
-            a_rad = _math.radians(a_deg)
-            r1 = r + 5; r2 = r + (9 if i % 5 == 0 else 7)
-            px1 = int(cx + r1 * _math.cos(a_rad))
-            py1 = int(cy + r1 * _math.sin(a_rad))
-            px2 = int(cx + r2 * _math.cos(a_rad))
-            py2 = int(cy + r2 * _math.sin(a_rad))
-            tcol = col_full if i % 5 == 0 else col_dim
-            cv2.line(img, (px1, py1), (px2, py2), tcol, 1, cv2.LINE_AA)
+        for s in range(n_segs):
+            s_start = start_deg + s * (seg_deg + gap_deg)
+            s_end   = s_start + seg_deg
+            # Determine if this segment is filled, partial, or empty
+            if s_end <= fill_end:
+                col = col_full
+            elif s_start >= fill_end:
+                col = col_bg
+            else:
+                # Partial — split: draw filled portion then empty
+                col = col_full
+                _garc(img, (cx, cy), r, s_start, fill_end, col_full, col_dim, thickness)
+                _garc(img, (cx, cy), r, fill_end, s_end,   col_bg,   col_bg,  thickness)
+                continue
+            _garc(img, (cx, cy), r, s_start, s_end, col, col_dim if col == col_full else col, thickness)
 
     def _radar_sweep(img, cx, cy, r, angle_deg, col, dim):
         """Radar sweep wedge + leading line."""
@@ -281,49 +279,90 @@ def render_hud(pipeline, window_name: str, frame, objs):
         for gx2 in range(nn_x0+14, nn_x0+nn_w, 28):
             cv2.circle(canvas, (gx2, gy2), 1, (0, 20, 30), -1)
 
-    # ── Build 3D fibonacci-sphere node graph once (180 nodes) ────────
+    # ── Build 3-zone layered brain once ──────────────────────────────
+    # Zone layout (180 nodes total):
+    #   inner_core  (20): tight inner sphere r≈0.38 — Jarvis base, always lit
+    #   jarvis_core (50): outer sphere equatorial band |y|<0.42 — always active
+    #   gaming      (55): outer sphere upper hemisphere y>0.42 — dims when inactive
+    #   robotics    (55): outer sphere lower hemisphere y<-0.42 — dims when inactive
     _NN_TARGET = 180
-    if pipeline.__class__._NN_NODES is None or len(pipeline.__class__._NN_NODES) != _NN_TARGET:
-        pipeline.__class__._NN_ADJ = None  # force adjacency rebuild
+    _needs_rebuild = (
+        pipeline.__class__._NN_NODES is None
+        or len(pipeline.__class__._NN_NODES) != _NN_TARGET
+        or 'zone' not in pipeline.__class__._NN_NODES[0]
+    )
+    if _needs_rebuild:
+        pipeline.__class__._NN_ADJ = None
         _phi3d = _math.pi * (3. - _math.sqrt(5.))
-        import random as _rng_init
-        _rng = _rng_init.Random(0xACE)   # fixed seed → stable layout, asymmetric
+        _rng = _rand.Random(0xACE)  # fixed seed → stable layout
         nn_nodes3 = []
-        for i in range(_NN_TARGET):
-            _y3d = 1. - (i / (_NN_TARGET-1.)) * 2.
-            _r3d = _math.sqrt(max(0., 1. - _y3d*_y3d))
+
+        # ── Inner core (20 nodes, dense tight sphere at r≈0.38) ──────
+        _INNER_N = 20
+        for i in range(_INNER_N):
+            _y3d = 1. - (i / max(1, _INNER_N - 1)) * 2.
+            _r3d = _math.sqrt(max(0., 1. - _y3d * _y3d)) * 0.38
             _th3d = _phi3d * i
-            # Small position jitter breaks the perfect Fibonacci lattice
+            nn_nodes3.append({
+                'x3': _r3d * _math.cos(_th3d) + _rng.uniform(-0.02, 0.02),
+                'y3': _y3d * 0.38 + _rng.uniform(-0.015, 0.015),
+                'z3': _r3d * _math.sin(_th3d) + _rng.uniform(-0.02, 0.02),
+                'zone': 'inner_core',
+                'phase': _rng.uniform(0., _math.pi * 2.),
+                'spd': _rng.uniform(0.15, 0.95),
+                'rb': 2,
+                'df': (_rng.uniform(0.7, 2.1), _rng.uniform(0.3, 1.4)),
+                'da': (_rng.uniform(0.03, 0.10), _rng.uniform(0.02, 0.07)),
+            })
+
+        # ── Outer sphere (160 nodes, split into 3 zones by latitude) ─
+        _OUTER_N = 160
+        for i in range(_OUTER_N):
+            _y3d = 1. - (i / max(1, _OUTER_N - 1)) * 2.
+            _r3d = _math.sqrt(max(0., 1. - _y3d * _y3d))
+            _th3d = _phi3d * i
             _jx = _rng.uniform(-0.045, 0.045)
             _jy = _rng.uniform(-0.035, 0.035)
             _jz = _rng.uniform(-0.045, 0.045)
+            if _y3d > 0.40:
+                zone = 'gaming'       # upper hemisphere
+            elif _y3d < -0.40:
+                zone = 'robotics'     # lower hemisphere
+            else:
+                zone = 'jarvis_core'  # equatorial band
             nn_nodes3.append({
                 'x3': _r3d * _math.cos(_th3d) + _jx,
                 'y3': _y3d + _jy,
                 'z3': _r3d * _math.sin(_th3d) + _jz,
-                # Random phase — not linear, so no two nodes breathe in sync
+                'zone': zone,
                 'phase': _rng.uniform(0., _math.pi * 2.),
-                'spd':   _rng.uniform(0.15, 0.95),
-                'rb':    2 + (i % 3),
-                # Per-node unique oscillation frequencies and amplitudes
+                'spd': _rng.uniform(0.15, 0.95),
+                'rb': 2 + (i % 3),
                 'df': (_rng.uniform(0.7, 2.1), _rng.uniform(0.3, 1.4)),
                 'da': (_rng.uniform(0.03, 0.10), _rng.uniform(0.02, 0.07)),
             })
+
         pipeline.__class__._NN_NODES = nn_nodes3
         nn_edges3 = []
         for i in range(len(nn_nodes3)):
-            for j in range(i+1, len(nn_nodes3)):
+            for j in range(i + 1, len(nn_nodes3)):
                 _a3, _b3 = nn_nodes3[i], nn_nodes3[j]
-                _dx3=_a3['x3']-_b3['x3']; _dy3=_a3['y3']-_b3['y3']; _dz3=_a3['z3']-_b3['z3']
-                _d3 = _math.sqrt(_dx3*_dx3+_dy3*_dy3+_dz3*_dz3)
+                _dx3 = _a3['x3']-_b3['x3']
+                _dy3 = _a3['y3']-_b3['y3']
+                _dz3 = _a3['z3']-_b3['z3']
+                _d3 = _math.sqrt(_dx3*_dx3 + _dy3*_dy3 + _dz3*_dz3)
                 if _d3 < 0.48:
-                    nn_edges3.append({'a':i,'b':j,'d':_d3,'tier':'short'})
+                    nn_edges3.append({'a': i, 'b': j, 'd': _d3, 'tier': 'short'})
                 elif _d3 < 0.85:
-                    nn_edges3.append({'a':i,'b':j,'d':_d3,'tier':'long'})
+                    nn_edges3.append({'a': i, 'b': j, 'd': _d3, 'tier': 'long'})
         pipeline.__class__._NN_EDGES = nn_edges3
 
     nn_nodes = pipeline.__class__._NN_NODES
     nn_edges = pipeline.__class__._NN_EDGES
+
+    # Read domain state — set by runtime.py before pipeline starts
+    _dom_gaming   = getattr(pipeline.__class__, '_DOMAIN_GAMING',   False)
+    _dom_robotics = getattr(pipeline.__class__, '_DOMAIN_ROBOTICS', False)
 
     # Gold palette — BGR: all warm amber/orange/gold regardless of goal
     # (goal tints the heat highlight color only)
@@ -343,10 +382,34 @@ def render_hud(pipeline, window_name: str, frame, objs):
         'craft':          ( 0, 185, 255),
         'combat':         ( 0, 110, 255),
     }
-    gc  = _GC_TINT.get(goal, (0, 185, 255))  # default amber gold (BGR)
-    gcd = (gc[0]//6, gc[1]//6, gc[2]//6)
-    # Secondary fire color for hottest nodes
-    gc_hot = (80, 240, 255)  # near-white gold
+    # ── Per-zone base colors (BGR) ────────────────────────────────────
+    # inner_core  — bright amber gold, always full brightness
+    # jarvis_core — goal-tinted gold, always active
+    # gaming      — blue-cyan when domain active, near-invisible when not
+    # robotics    — green-cyan when domain active, near-invisible when not
+    _ZONE_COL = {
+        'inner_core':  (0, 205, 255),          # bright amber always-on
+        'jarvis_core': _GC_TINT.get(goal, (0, 185, 255)),
+        'gaming':      (255, 210, 80) if _dom_gaming  else (18, 14, 6),
+        'robotics':    (180, 255, 80) if _dom_robotics else (8, 18, 6),
+    }
+    _ZONE_HOT = {
+        'inner_core':  (200, 245, 255),         # near-white amber
+        'jarvis_core': (80, 240, 255),
+        'gaming':      (255, 245, 180) if _dom_gaming  else (25, 20, 8),
+        'robotics':    (200, 255, 180) if _dom_robotics else (10, 25, 8),
+    }
+    # Background per-zone dim multiplier when domain is off
+    _ZONE_DIM = {
+        'inner_core':  1.0,
+        'jarvis_core': 1.0,
+        'gaming':      0.12 if not _dom_gaming   else 1.0,
+        'robotics':    0.12 if not _dom_robotics else 1.0,
+    }
+
+    gc     = _ZONE_COL['jarvis_core']   # kept for edge/ambient drawing
+    gcd    = (gc[0]//6, gc[1]//6, gc[2]//6)
+    gc_hot = _ZONE_HOT['jarvis_core']
 
     # ── 3D → 2D perspective projection ───────────────────────────
     _rot_y = (fnum * 0.006) % (_math.pi*2)
@@ -412,17 +475,23 @@ def render_hud(pipeline, window_name: str, frame, objs):
     except Exception:
         _thinking = False
     _brain_active = _spk or _thinking
-    # Shift node color to cyan when Jarvis is thinking or speaking
-    if _brain_active:
-        gc     = CYAN        # (255, 212, 0) BGR
-        gc_hot = (255, 255, 120)  # bright cyan-white
-        gcd    = (gc[0]//6, gc[1]//6, gc[2]//6)
+    # Fire nodes — biased by zone. Inner core + jarvis_core always fire.
+    # Gaming/robotics zones only fire when their domain is active.
+    _spk_col = CYAN if _brain_active else None   # overlay for hot nodes only
     _fire_rate = 3 if _brain_active else 15
     if fnum % _fire_rate == 0:
-        heat[_rand.randint(0, len(nn_nodes)-1)] = 1.0
-        if _brain_active:  # fire multiple nodes when thinking/speaking
-            heat[_rand.randint(0, len(nn_nodes)-1)] = 0.8
-            heat[_rand.randint(0, len(nn_nodes)-1)] = 0.6
+        # Build eligible index lists per zone
+        _core_idxs    = [i for i, n in enumerate(nn_nodes) if n.get('zone') in ('inner_core', 'jarvis_core')]
+        _gaming_idxs  = [i for i, n in enumerate(nn_nodes) if n.get('zone') == 'gaming']  if _dom_gaming   else []
+        _robot_idxs   = [i for i, n in enumerate(nn_nodes) if n.get('zone') == 'robotics'] if _dom_robotics else []
+        _all_active   = _core_idxs + _gaming_idxs + _robot_idxs
+        # Always fire in core zone; extra firings from active domain zones
+        if _core_idxs:
+            heat[_rand.choice(_core_idxs)] = 1.0
+        if _brain_active:
+            if _all_active:
+                heat[_rand.choice(_all_active)] = 0.8
+                heat[_rand.choice(_all_active)] = 0.6
 
     _new_heat = {}
     for i in range(len(nn_nodes)):
@@ -437,15 +506,35 @@ def render_hud(pipeline, window_name: str, frame, objs):
 
     breath = 0.88 + 0.12 * _math.sin(fnum * 0.020)
 
-    def _hcol_gold(h):
-        if h < 0.5:
-            f = h * 2.0
-            return (int(gc[0]*(0.08+0.92*f)), int(gc[1]*(0.08+0.92*f)), int(gc[2]*(0.08+0.92*f)))
+    def _hcol(h, zone):
+        """Node color: zone-tinted, heat-scaled, speaking-overlay for hot nodes."""
+        _zc     = _ZONE_COL.get(zone, gc)
+        _zc_hot = _ZONE_HOT.get(zone, gc_hot)
+        _dim    = _ZONE_DIM.get(zone, 1.0)
+        # inner_core always runs at a minimum ambient brightness
+        _min_h  = 0.35 if zone == 'inner_core' else 0.0
+        h_eff   = max(_min_h, h) * _dim
+        if h_eff < 0.5:
+            f    = h_eff * 2.0
+            base = (int(_zc[0]*(0.08+0.92*f)),
+                    int(_zc[1]*(0.08+0.92*f)),
+                    int(_zc[2]*(0.08+0.92*f)))
         else:
-            f = (h-0.5)*2.0
-            return (min(255,int(gc[0]+(gc_hot[0]-gc[0])*f)),
-                    min(255,int(gc[1]+(gc_hot[1]-gc[1])*f)),
-                    min(255,int(gc[2]+(gc_hot[2]-gc[2])*f)))
+            f    = (h_eff - 0.5) * 2.0
+            base = (min(255, int(_zc[0] + (_zc_hot[0] - _zc[0]) * f)),
+                    min(255, int(_zc[1] + (_zc_hot[1] - _zc[1]) * f)),
+                    min(255, int(_zc[2] + (_zc_hot[2] - _zc[2]) * f)))
+        # When speaking/thinking: blend HOT nodes toward cyan — idle nodes untouched
+        if _spk_col and h > 0.30:
+            blend = min(1.0, (h - 0.30) / 0.70)
+            base = (int(base[0]*(1-blend) + _spk_col[0]*blend),
+                    int(base[1]*(1-blend) + _spk_col[1]*blend),
+                    int(base[2]*(1-blend) + _spk_col[2]*blend))
+        return base
+
+    # Backwards-compat alias used by edge drawing below
+    def _hcol_gold(h):
+        return _hcol(h, 'jarvis_core')
 
     _glow = _np.zeros((nn_h, nn_w, 3), dtype=_np.float32)
     _lcx, _lcy = ncx - nn_x0, ncy - nn_y0
@@ -552,34 +641,39 @@ def render_hud(pipeline, window_name: str, frame, objs):
             _alive2.append(p2)
     pipeline.__class__._NN_PULSES=_alive2
 
-    # Nodes — stars: varied sizes, brighter hot/front nodes
+    # Nodes — zone-colored stars: inner_core always bright, domain zones dim when off
     for ni in sorted(range(len(nn_nodes)), key=lambda i: pnodes[i][2]):
         n2=nn_nodes[ni]; nx2,ny2,nz2=pnodes[ni]
         if not(nn_x0<=nx2<nn_x0+nn_w and nn_y0<=ny2<nn_y0+nn_h): continue
+        _nzone=n2.get('zone','jarvis_core')
         df2=max(0.,0.5+nz2*0.5)
         nh=heat.get(ni,0.)
         bp=_math.sin(fnum*0.035*n2['spd']+n2['phase'])*0.5+0.5
-        eff_h=max(nh,df2*0.25+bp*0.08)
-        # Star size: most 1px, front nodes 2-3px, hot nodes up to 5px
-        _is_bright_star = (ni % 7 == 0) and df2 > 0.6   # ~1 in 7 front nodes = big star
+        # inner_core nodes always maintain ambient presence; domain nodes dim when off
+        _min_eff = 0.35 if _nzone=='inner_core' else (0.06 if _ZONE_DIM.get(_nzone,1.0)<0.5 else 0.0)
+        eff_h=max(_min_eff, max(nh, df2*0.25+bp*0.08))
+        # Star size: inner_core nodes are slightly larger to feel more solid
+        _is_inner = (_nzone == 'inner_core')
+        _is_bright_star = _is_inner or ((ni % 7 == 0) and df2 > 0.6)
         if _is_bright_star:
-            nr2 = max(2, int((2 + nh*4) * (0.7 + df2*0.3)))  # 2-5px
+            nr2 = max(2, int((2 + nh*4) * (0.7 + df2*0.3)))
         else:
-            nr2 = max(1, int((1 + nh*2.5) * (0.35 + df2*0.55)))  # 1-3px
-        nc=_hcol_gold(eff_h)
-        # Diffuse outer glow for bright stars
+            nr2 = max(1, int((1 + nh*2.5) * (0.35 + df2*0.55)))
+        nc=_hcol(eff_h, _nzone)
+        # Diffuse outer glow
         if _is_bright_star:
             cv2.circle(canvas,(nx2,ny2),nr2+5,(nc[0]//6,nc[1]//6,nc[2]//6),-1,cv2.LINE_AA)
             cv2.circle(canvas,(nx2,ny2),nr2+2,(nc[0]//3,nc[1]//3,nc[2]//3),-1,cv2.LINE_AA)
         elif nh>0.5:
             cv2.circle(canvas,(nx2,ny2),nr2+3,(nc[0]//6,nc[1]//6,nc[2]//6),-1,cv2.LINE_AA)
         cv2.circle(canvas,(nx2,ny2),nr2,nc,-1,cv2.LINE_AA)
-        # Glow for hot/bright/front nodes
+        # Glow for hot/bright/front nodes (use zone color for the glow)
         if nh>0.2 or df2>0.55 or _is_bright_star:
+            _gc_z = _ZONE_COL.get(_nzone, gc)
             lx4,ly4=nx2-nn_x0,ny2-nn_y0
             gf3=(df2*0.18+nh*0.60)*breath * (1.8 if _is_bright_star else 1.0)
             cv2.circle(_glow,(lx4,ly4),nr2+10,
-                       (gc[0]/255.*gf3,gc[1]/255.*gf3,gc[2]/255.*gf3),-1)
+                       (_gc_z[0]/255.*gf3,_gc_z[1]/255.*gf3,_gc_z[2]/255.*gf3),-1)
 
     # Sun core — translucent outer ring (fixed), solid inner orb pulses to voice
     if _brain_active:
@@ -657,29 +751,31 @@ def render_hud(pipeline, window_name: str, frame, objs):
 
     # Chamfer lines removed per user request
 
-    # ── HUD structural frame: tick rulers + dividers ───────────────
-    # Tick ruler along bottom of header
-    for _ti in range(0, WIN_W, 10):
-        _th = 5 if _ti % 100 == 0 else (3 if _ti % 50 == 0 else 2)
-        _tc = DCYAN if _ti % 50 == 0 else VCYAN
-        cv2.line(canvas, (_ti, HDR_H - _th), (_ti, HDR_H), _tc, 1)
-    # Tick ruler along top of footer
-    for _ti in range(0, WIN_W, 10):
-        _th = 5 if _ti % 100 == 0 else (3 if _ti % 50 == 0 else 2)
-        _tc = DCYAN if _ti % 50 == 0 else VCYAN
-        cv2.line(canvas, (_ti, WIN_H - FOOT_H), (_ti, WIN_H - FOOT_H + _th), _tc, 1)
+    # ── HUD structural frame: clean bracket borders, no tick marks ────
+    # Header bottom edge — single clean line
+    cv2.line(canvas, (0, HDR_H), (WIN_W, HDR_H), DCYAN, 1, cv2.LINE_AA)
+    # Footer top edge
+    cv2.line(canvas, (0, WIN_H - FOOT_H), (WIN_W, WIN_H - FOOT_H), DCYAN, 1, cv2.LINE_AA)
     # Left border
     cv2.line(canvas, (0, HDR_H), (0, WIN_H - FOOT_H),
              (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1)
-    # Main area bottom edge line
-    cv2.line(canvas, (0, WIN_H - FOOT_H), (CAM_W, WIN_H - FOOT_H),
-             (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1)
+    # Right border
+    cv2.line(canvas, (WIN_W - 1, HDR_H), (WIN_W - 1, WIN_H - FOOT_H),
+             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1)
     # Vertical divider: main area | sidebar
     cv2.line(canvas, (CAM_W, HDR_H), (CAM_W, WIN_H - FOOT_H), DCYAN, 1, cv2.LINE_AA)
-    # Small tick marks crossing the divider
-    for _ty in range(HDR_H + 24, WIN_H - FOOT_H, 32):
-        _dk = DCYAN if (_ty // 32) % 3 == 0 else VCYAN
-        cv2.line(canvas, (CAM_W - 5, _ty), (CAM_W + 5, _ty), _dk, 1)
+
+    # Four outer window corner brackets
+    _BL = 28  # bracket leg length
+    _corner_bracket(canvas, 0,       0,       1,  1, _BL, CYAN, DCYAN)
+    _corner_bracket(canvas, WIN_W-1, 0,      -1,  1, _BL, CYAN, DCYAN)
+    _corner_bracket(canvas, 0,       WIN_H-1, 1, -1, _BL, CYAN, DCYAN)
+    _corner_bracket(canvas, WIN_W-1, WIN_H-1,-1, -1, _BL, CYAN, DCYAN)
+    # Divider intersection brackets (top and bottom of divider)
+    _corner_bracket(canvas, CAM_W, HDR_H,         1,  1, 10, DCYAN, VCYAN)
+    _corner_bracket(canvas, CAM_W, HDR_H,        -1,  1, 10, DCYAN, VCYAN)
+    _corner_bracket(canvas, CAM_W, WIN_H-FOOT_H,  1, -1, 10, DCYAN, VCYAN)
+    _corner_bracket(canvas, CAM_W, WIN_H-FOOT_H, -1, -1, 10, DCYAN, VCYAN)
 
     # Labels
     cv2.putText(canvas,'JARVIS',(nn_x0+8,nn_y0+15),FONT,0.33,CYAN2,1,cv2.LINE_AA)
@@ -1096,33 +1192,47 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.putText(canvas, '[T to type]',
                     (px, _input_y_sb + _log_lh_sb), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
 
-    # ── CPU / GPU gauges — moved into brain area, compact bar strip ──
+    # ── Sysstat mini ring gauges — 4 segmented rings in a row ────────
+    # Replaces the old flat bar strip. Clicking expands the sysstat panel.
     cpu_col  = RED if cpu_pct  > 0.85 else (ORANGE if cpu_pct  > 0.65 else GREEN)
     gpu_col  = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
     ram_col  = RED if ram_pct  > 0.90 else (ORANGE if ram_pct  > 0.75 else GREEN)
     vram_col = RED if gpu_mem  > 0.90 else (ORANGE if gpu_mem  > 0.75 else CYAN)
-    _br_gauge_items = [
+    _mg_items = [
         ('CPU',  cpu_pct,  cpu_col),
         ('GPU',  gpu_util, gpu_col),
         ('RAM',  ram_pct,  ram_col),
         ('VRAM', gpu_mem,  vram_col),
     ]
-    _br_bar_w = 110  # bar width per gauge
-    _br_bar_h = 7
-    _br_gx0 = 12
-    _br_gy  = WIN_H - FOOT_H - 28  # just above footer
-    for _gi, (_glbl, _gpct, _gcol) in enumerate(_br_gauge_items):
-        _bgx = _br_gx0 + _gi * (_br_bar_w + 16)
-        # label
-        cv2.putText(canvas, f'{_glbl} {int(_gpct*100)}%',
-                    (_bgx, _br_gy - 3), FONT, 0.30, _gcol, 1, cv2.LINE_AA)
-        # bar track
-        cv2.rectangle(canvas, (_bgx, _br_gy + 2), (_bgx + _br_bar_w, _br_gy + 2 + _br_bar_h),
-                      (DCYAN[0]//4, DCYAN[1]//4, DCYAN[2]//4), -1)
-        # bar fill
-        _bfill = max(1, int(_br_bar_w * _gpct))
-        cv2.rectangle(canvas, (_bgx, _br_gy + 2), (_bgx + _bfill, _br_gy + 2 + _br_bar_h),
-                      _gcol, -1)
+    _mr   = 30      # ring radius
+    _mgap = CAM_W // 4   # even spacing across camera area
+    _mgy  = WIN_H - FOOT_H - _mr - 14  # just above footer
+    for _mi, (_ml, _mp, _mc) in enumerate(_mg_items):
+        _mgcx = _mgap // 2 + _mi * _mgap
+        _mg_dim = (_mc[0]//5, _mc[1]//5, _mc[2]//5)
+        _mg_bg  = (VCYAN[0]//3, VCYAN[1]//3, VCYAN[2]//3)
+        # Segmented ring — 270° sweep, 5 segments
+        _arc_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, _mg_dim, _mg_bg,
+                   start_deg=135, sweep=270, n_segs=5, gap_deg=5, thickness=5)
+        # Double inner ring (decorative, like the reference image)
+        _garc(canvas, (_mgcx, _mgy), _mr - 8, 135, 135 + 270,
+              (_mc[0]//8, _mc[1]//8, _mc[2]//8),
+              (_mc[0]//14, _mc[1]//14, _mc[2]//14), 1)
+        # Value centered
+        _vs = f'{int(_mp*100)}'
+        (_vtw, _vth), _ = cv2.getTextSize(_vs, FONT, 0.42, 1)
+        cv2.putText(canvas, _vs, (_mgcx - _vtw//2, _mgy + _vth//2),
+                    FONT, 0.42, _mc, 1, cv2.LINE_AA)
+        # Label below ring
+        _lw, _ = cv2.getTextSize(_ml, FONT, 0.28, 1)[0], None
+        cv2.putText(canvas, _ml,
+                    (_mgcx - _lw//2, _mgy + _mr + 12),
+                    FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+    # Update mini rect so clicking these rings opens the sysstat panel
+    pipeline.__class__._PANELS['sysstat']['mini_rect'] = (
+        _mgap // 2 - _mr, _mgy - _mr,
+        _mgap * 4, _mr * 2 + 16
+    )
 
     # ── Detection dots — brain area bottom-left ───────────────────
     if objs:

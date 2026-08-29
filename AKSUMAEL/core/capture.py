@@ -1089,6 +1089,9 @@ class VideoCapturePipeline:
     _NN_PULSES = []        # active pulses traversing edges
     _NN_HEAT   = {}        # per-node heat value 0.0-1.0
     _NN_ADJ    = None      # adjacency list built once from edges
+    # Domain state — set by runtime.py after domain detection
+    _DOMAIN_GAMING   = False   # True when gaming domain is active
+    _DOMAIN_ROBOTICS = False   # True when robotics domain is active
     # ── Expandable panel system ──────────────────────────────────────────
     # Each panel: scale=current lerp (0=mini,1=full), target=animation target,
     # exp_scale=how much of screen when expanded (0.3-0.96, scroll to adjust),
