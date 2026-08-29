@@ -1191,14 +1191,19 @@ def render_hud(pipeline, window_name: str, frame, objs):
             cv2.putText(canvas, label, (cx - _lw // 2, cy + r + 18),
                         FONT, 0.26, dim, 1, cv2.LINE_AA)
 
-    # ── Clock ring — in brain area, below camera feeds ────────────
+    # ── Clock ring — moved to sidebar bottom, below COMM LINK ─────
     import datetime as _dt
+    import time as _time_mod
     _now_dt = _dt.datetime.now()
-    _clk_cx = CAM_W - 118   # right side of brain area, aligned with cameras
-    _clk_cy = WIN_H - FOOT_H - 130
-    _ring_widget(_clk_cx, _clk_cy, 52, [
-        (_now_dt.strftime('%H:%M'), 0.62, CYAN),
-        (_now_dt.strftime('%S'), 0.34, DCYAN),
+    try:
+        _tz_name = _dt.datetime.now(_dt.timezone.utc).astimezone().tzname() or 'LOCAL'
+    except Exception:
+        _tz_name = 'LOCAL'
+    _clk_cx = CAM_W + SIDE_W // 2   # centered in sidebar
+    _clk_cy = WIN_H - FOOT_H - 68   # near sidebar bottom
+    _ring_widget(_clk_cx, _clk_cy, 46, [
+        (_now_dt.strftime('%H:%M'), 0.58, CYAN),
+        (_now_dt.strftime('%S') + '  ' + _tz_name, 0.28, DCYAN),
     ], _now_dt.strftime('%a  %d %b').upper(), CYAN, DCYAN, 15)
 
     # ── COMM LINK — conversation log fills full sidebar ───────────
@@ -1228,7 +1233,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
             out_sb.append(cur_sb)
         return out_sb or [text[:max_c]]
 
-    _log_max_y_sb = WIN_H - FOOT_H - 30  # gauges moved to brain area, use full sidebar height
+    _log_max_y_sb = WIN_H - FOOT_H - 155  # leave room for clock ring at sidebar bottom
     # Show only the most recent entries that fit, reading from newest
     _log_all = pipeline.__class__._CONVO_LOG[:]
     _log_lines = []  # list of (text, color)
@@ -1279,12 +1284,17 @@ def render_hud(pipeline, window_name: str, frame, objs):
         ('RAM',  ram_pct,  ram_col),
         ('VRAM', gpu_mem,  vram_col),
     ]
-    _mr   = 44      # ring radius — larger, Rainmeter/Iron-Man style
+    _mr   = 38      # ring radius — sized to fit without footer clip
     _mgap = CAM_W // 4   # even spacing across camera area
-    _mgy  = WIN_H - FOOT_H - _mr - 18  # just above footer
+    _mgy  = WIN_H - FOOT_H - _mr - 22  # just above footer, with room for label
     for _mi, (_ml, _mp, _mc) in enumerate(_mg_items):
         _mgcx = _mgap // 2 + _mi * _mgap
-        _double_ring_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, _ml)
+        # Section title above gauge
+        (_tlw, _tlh), _ = cv2.getTextSize(_ml, FONT, 0.30, 1)
+        cv2.putText(canvas, _ml,
+                    (_mgcx - _tlw//2, _mgy - _mr - 12),
+                    FONT, 0.30, _mc, 1, cv2.LINE_AA)
+        _double_ring_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, '')
     # Update mini rect so clicking these rings opens the sysstat panel
     pipeline.__class__._PANELS['sysstat']['mini_rect'] = (
         _mgap // 2 - _mr, _mgy - _mr,
