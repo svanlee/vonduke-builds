@@ -989,8 +989,9 @@ def render_hud(pipeline, window_name: str, frame, objs):
     cv2.putText(canvas, 'SCREEN', (_scr_cx - 17, _scr_ry + _scr_rh + 10),
                 FONT, 0.25, DCYAN, 1, cv2.LINE_AA)
 
-    # Sysstat mini removed — large gauges in sidebar replace it
-    _PM['sysstat']['mini_rect'] = (nn_x0 + 16, nn_y0 + 12, 4, 4)  # zero-area, click disabled
+    # Sysstat + goals mini disabled — zero-area, click disabled
+    _PM['sysstat']['mini_rect'] = (nn_x0 + 16, nn_y0 + 12, 4, 4)
+    _PM['goals'  ]['mini_rect'] = (0, 0, 1, 1)   # prevent accidental expand
 
     # ── Goals mini — suppressed; goal shown in bottom chat strip ──────
 
@@ -1164,16 +1165,35 @@ def render_hud(pipeline, window_name: str, frame, objs):
         (_now_dt.strftime('%S') + '  ' + _tz_name, 0.28, DCYAN),
     ], _now_dt.strftime('%a  %d %b').upper(), CYAN, DCYAN, 15)
 
-    # ── COMM LINK — conversation log fills full sidebar ───────────
+    # ── COMM LINK — goal + monologue header, then conversation ───────
     _cog_y = HDR_H + 20
     _tc_active = pipeline.__class__._TEXT_ACTIVE
     _tc_input  = pipeline.__class__._TEXT_INPUT
     _sb_cl_w   = SIDE_W - 20
-    _log_font  = 0.38                          # readable font size
+    _log_font  = 0.36                          # readable font size
     _log_lh_sb = 19                            # line height px
-    _sb_cl_chars = max(16, _sb_cl_w // 9)     # chars per row at 0.38
+    _sb_cl_chars = max(16, _sb_cl_w // 9)     # chars per row at 0.36
 
     _gtext(canvas, 'COMM LINK', (px, _cog_y - 2), 0.28, CYAN2, DCYAN)
+
+    # ── Goal line (1 line, compact) ────────────────────────────────
+    _g_disp = goal[:28].replace('_', ' ').upper()
+    cv2.putText(canvas, f'GOAL: {_g_disp}', (px, _cog_y + _log_lh_sb),
+                FONT, 0.30, CYAN, 1, cv2.LINE_AA)
+
+    # ── Inner monologue line (1 line) ──────────────────────────────
+    _sb_mono = _monologue_render_lines()
+    _sb_mono_txt = (_sb_mono[-1][:32] if _sb_mono else '...').strip() or '...'
+    cv2.putText(canvas, f'THINK: {_sb_mono_txt}', (px, _cog_y + _log_lh_sb * 2),
+                FONT, 0.28, WHITE, 1, cv2.LINE_AA)
+
+    # Separator
+    _sep_y = _cog_y + _log_lh_sb * 2 + 10
+    cv2.line(canvas, (px, _sep_y), (WIN_W - 8, _sep_y),
+             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
+
+    # Conversation log starts after separator, takes 75% of remaining sidebar
+    _conv_start_y = _sep_y + 8
 
     def _wrap_sb(text, max_c):
         if len(text) <= max_c:
@@ -1191,7 +1211,9 @@ def render_hud(pipeline, window_name: str, frame, objs):
             out_sb.append(cur_sb)
         return out_sb or [text[:max_c]]
 
-    _log_max_y_sb = WIN_H - FOOT_H - 155  # leave room for clock ring at sidebar bottom
+    # 75% of remaining sidebar height goes to the conversation log
+    _sb_total   = WIN_H - FOOT_H - 155 - _conv_start_y   # total available
+    _log_max_y_sb = _conv_start_y + int(_sb_total * 0.75)
     # Show only the most recent entries that fit, reading from newest
     _log_all = pipeline.__class__._CONVO_LOG[:]
     _log_lines = []  # list of (text, color)
@@ -1205,14 +1227,13 @@ def render_hud(pipeline, window_name: str, frame, objs):
             _ls_sb = (_prefix_sb if _wi_sb == 0 else ' ' * len(_prefix_sb)) + _wl_sb
             _entry_lines.append((_ls_sb, _lc_sb))
         _log_lines = _entry_lines + _log_lines
-        # Check if adding this entry would overflow — if so, trim from top
-        _avail = _log_max_y_sb - (_cog_y + _log_lh_sb)
+        _avail = _log_max_y_sb - _conv_start_y
         if len(_log_lines) * _log_lh_sb > _avail:
             _max_lines = max(1, _avail // _log_lh_sb)
             _log_lines = _log_lines[-_max_lines:]
             break
 
-    _log_y_sb = _cog_y + _log_lh_sb
+    _log_y_sb = _conv_start_y
     for (_ls_sb, _lc_sb) in _log_lines:
         if _log_y_sb > _log_max_y_sb:
             break
@@ -1259,24 +1280,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _mgap * 4, _mr * 2 + 20
     )
 
-    # ── Bottom chat strip — inner monologue + goal, above gauges ─────
-    _chat_y1 = _mgy - _mr - 20   # just above gauge titles
-    _chat_y0 = _chat_y1 - 54
-    _chat_lh  = 16
-    cv2.line(canvas, (0, _chat_y0 - 2), (CAM_W, _chat_y0 - 2),
-             (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
-    _goal_short = goal[:60].replace('_', ' ').upper()
-    cv2.putText(canvas, f'> {_goal_short}',
-                (8, _chat_y0 + _chat_lh), FONT, 0.28, CYAN, 1, cv2.LINE_AA)
-    _mono_lines = _monologue_render_lines()
-    if _mono_lines:
-        for _mli, _mlt in enumerate(_mono_lines[-2:]):
-            if not _mlt.strip():
-                continue
-            _mly = _chat_y0 + _chat_lh * 2 + _mli * _chat_lh + 4
-            cv2.putText(canvas, _mlt[:90], (8, _mly), FONT, 0.26,
-                        WHITE if _mli == len(_mono_lines[-2:]) - 1 else DCYAN,
-                        1, cv2.LINE_AA)
+    # Brain-area chat strip removed — goal+monologue now in COMM LINK sidebar
 
     # ── Detection dots — brain area bottom-left ───────────────────
     if objs:
