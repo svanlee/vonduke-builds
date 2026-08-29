@@ -110,6 +110,34 @@ def render_hud(pipeline, window_name: str, frame, objs):
                 continue
             _garc(img, (cx, cy), r, s_start, s_end, col, col_dim if col == col_full else col, thickness)
 
+    def _double_ring_gauge(img, cx, cy, r, pct, col, label, start_deg=135, sweep=270, thick=5):
+        """Rainmeter/Iron-Man style double-ring gauge.
+        Two concentric structural rings + thick continuous fill arc + inner accent arc."""
+        _dim  = (col[0]//5,  col[1]//5,  col[2]//5)
+        _mid  = (col[0]//2,  col[1]//2,  col[2]//2)
+        # Outer structural ring — full circle, thin
+        cv2.ellipse(img, (cx, cy), (r+9, r+9), 0, 0, 360, _dim, 2, cv2.LINE_AA)
+        cv2.ellipse(img, (cx, cy), (r+4, r+4), 0, 0, 360, _mid, 1, cv2.LINE_AA)
+        # Background arc (full sweep, dim)
+        cv2.ellipse(img, (cx, cy), (r, r), 0, int(start_deg), int(start_deg+sweep), _dim, thick+4, cv2.LINE_AA)
+        # Fill arc (value portion, bright)
+        fill_deg = sweep * max(0.0, min(1.0, pct))
+        if fill_deg > 1:
+            cv2.ellipse(img, (cx, cy), (r, r), 0, int(start_deg), int(start_deg+fill_deg), _mid, thick+4, cv2.LINE_AA)
+            cv2.ellipse(img, (cx, cy), (r, r), 0, int(start_deg), int(start_deg+fill_deg), col,  thick,    cv2.LINE_AA)
+        # Inner accent ring — bottom half only (Rainmeter style)
+        _ai = int(start_deg + sweep * 0.25)
+        _ae = int(start_deg + sweep * 0.75)
+        cv2.ellipse(img, (cx, cy), (r-9, r-9), 0, _ai, _ae, _mid, 2, cv2.LINE_AA)
+        # Value text centered
+        _vs = f'{int(pct*100)}'
+        (_vw, _vh), _ = cv2.getTextSize(_vs, FONT, 0.55, 1)
+        cv2.putText(img, _vs, (cx - _vw//2, cy + _vh//2 - 2), FONT, 0.55, col, 1, cv2.LINE_AA)
+        # Label below gauge
+        if label:
+            (_lw, _), _ = cv2.getTextSize(label, FONT, 0.28, 1)
+            cv2.putText(img, label, (cx - _lw//2, cy + r + 16), FONT, 0.28, _mid, 1, cv2.LINE_AA)
+
     def _radar_sweep(img, cx, cy, r, angle_deg, col, dim):
         """Radar sweep wedge + leading line."""
         a1 = _math.radians(angle_deg)
@@ -893,19 +921,22 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _cam_cx = _cam_rx + _cam_rw // 2
     _cam_cy = _cam_ry + _cam_rh // 2
     _cam_r  = min(_cam_rw, _cam_rh) // 2 - 6
-    # Outer decoration rings
-    cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 9,
-               (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
-    cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 5, DCYAN, 1, cv2.LINE_AA)
-    # Tick marks
-    for _ti in range(0, 360, 20):
+    # Double-ring porthole frame (Rainmeter/Iron-Man style)
+    cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 16,
+               (DCYAN[0]//4, DCYAN[1]//4, DCYAN[2]//4), 2, cv2.LINE_AA)
+    cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 10, DCYAN, 2, cv2.LINE_AA)
+    cv2.circle(canvas, (_cam_cx, _cam_cy), _cam_r + 4,
+               (CYAN[0]//2, CYAN[1]//2, CYAN[2]//2), 1, cv2.LINE_AA)
+    # Inner accent arc — bottom half only (Rainmeter signature)
+    cv2.ellipse(canvas, (_cam_cx, _cam_cy), (_cam_r - 6, _cam_r - 6),
+                0, 160, 380, (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 2, cv2.LINE_AA)
+    # Cardinal tick marks on outer ring
+    for _ti in range(0, 360, 90):
         _ta = _math.radians(_ti)
-        _is_maj = _ti % 60 == 0
-        _tir = _cam_r + 6; _tor = _cam_r + (11 if _is_maj else 8)
         cv2.line(canvas,
-                 (int(_cam_cx + _tir*_math.cos(_ta)), int(_cam_cy + _tir*_math.sin(_ta))),
-                 (int(_cam_cx + _tor*_math.cos(_ta)), int(_cam_cy + _tor*_math.sin(_ta))),
-                 CYAN if _is_maj else DCYAN, 1, cv2.LINE_AA)
+                 (int(_cam_cx + (_cam_r+11)*_math.cos(_ta)), int(_cam_cy + (_cam_r+11)*_math.sin(_ta))),
+                 (int(_cam_cx + (_cam_r+20)*_math.cos(_ta)), int(_cam_cy + (_cam_r+20)*_math.sin(_ta))),
+                 CYAN, 1, cv2.LINE_AA)
     # Circular-masked webcam frame (laptop camera, not screen capture)
     _wc_frame = pipeline.__class__._WEBCAM_FRAME
     if _wc_frame is not None and _wc_frame.size > 0 and _cam_rw > 0 and _cam_rh > 0:
@@ -927,18 +958,24 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _scr_cx = _scr_rx + _scr_rw // 2
     _scr_cy = _scr_ry + _scr_rh // 2
     _scr_r  = min(_scr_rw, _scr_rh) // 2 - 4
-    # Rings
-    cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 5,
-               (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1, cv2.LINE_AA)
-    cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 2, DCYAN, 1, cv2.LINE_AA)
-    for _sti in range(0, 360, 30):
+    # Double-ring porthole frame (Rainmeter/Iron-Man style)
+    cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 14,
+               (DCYAN[0]//4, DCYAN[1]//4, DCYAN[2]//4), 2, cv2.LINE_AA)
+    cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 8, DCYAN, 2, cv2.LINE_AA)
+    cv2.circle(canvas, (_scr_cx, _scr_cy), _scr_r + 3,
+               (CYAN[0]//2, CYAN[1]//2, CYAN[2]//2), 1, cv2.LINE_AA)
+    # Inner accent arc — bottom half (Rainmeter signature)
+    cv2.ellipse(canvas, (_scr_cx, _scr_cy), (_scr_r - 5, _scr_r - 5),
+                0, 160, 380, (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 2, cv2.LINE_AA)
+    # Cardinal ticks
+    for _sti in range(0, 360, 90):
         _sta = _math.radians(_sti)
         cv2.line(canvas,
-                 (int(_scr_cx + (_scr_r+3)*_math.cos(_sta)),
-                  int(_scr_cy + (_scr_r+3)*_math.sin(_sta))),
-                 (int(_scr_cx + (_scr_r+8)*_math.cos(_sta)),
-                  int(_scr_cy + (_scr_r+8)*_math.sin(_sta))),
-                 CYAN if _sti % 90 == 0 else DCYAN, 1, cv2.LINE_AA)
+                 (int(_scr_cx + (_scr_r+9)*_math.cos(_sta)),
+                  int(_scr_cy + (_scr_r+9)*_math.sin(_sta))),
+                 (int(_scr_cx + (_scr_r+17)*_math.cos(_sta)),
+                  int(_scr_cy + (_scr_r+17)*_math.sin(_sta))),
+                 CYAN, 1, cv2.LINE_AA)
     # Screen frame inside circle
     if frame is not None and frame.size > 0 and _scr_rw > 0 and _scr_rh > 0:
         _sf = cv2.resize(frame, (max(2,_scr_rw), max(2,_scr_rh)))
@@ -1242,34 +1279,16 @@ def render_hud(pipeline, window_name: str, frame, objs):
         ('RAM',  ram_pct,  ram_col),
         ('VRAM', gpu_mem,  vram_col),
     ]
-    _mr   = 30      # ring radius
+    _mr   = 44      # ring radius — larger, Rainmeter/Iron-Man style
     _mgap = CAM_W // 4   # even spacing across camera area
-    _mgy  = WIN_H - FOOT_H - _mr - 14  # just above footer
+    _mgy  = WIN_H - FOOT_H - _mr - 18  # just above footer
     for _mi, (_ml, _mp, _mc) in enumerate(_mg_items):
         _mgcx = _mgap // 2 + _mi * _mgap
-        _mg_dim = (_mc[0]//5, _mc[1]//5, _mc[2]//5)
-        _mg_bg  = (VCYAN[0]//3, VCYAN[1]//3, VCYAN[2]//3)
-        # Segmented ring — 270° sweep, 5 segments
-        _arc_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, _mg_dim, _mg_bg,
-                   start_deg=135, sweep=270, n_segs=5, gap_deg=5, thickness=5)
-        # Double inner ring (decorative, like the reference image)
-        _garc(canvas, (_mgcx, _mgy), _mr - 8, 135, 135 + 270,
-              (_mc[0]//8, _mc[1]//8, _mc[2]//8),
-              (_mc[0]//14, _mc[1]//14, _mc[2]//14), 1)
-        # Value centered
-        _vs = f'{int(_mp*100)}'
-        (_vtw, _vth), _ = cv2.getTextSize(_vs, FONT, 0.42, 1)
-        cv2.putText(canvas, _vs, (_mgcx - _vtw//2, _mgy + _vth//2),
-                    FONT, 0.42, _mc, 1, cv2.LINE_AA)
-        # Label below ring
-        (_lw, _), _ = cv2.getTextSize(_ml, FONT, 0.28, 1)
-        cv2.putText(canvas, _ml,
-                    (_mgcx - _lw//2, _mgy + _mr + 12),
-                    FONT, 0.28, DCYAN, 1, cv2.LINE_AA)
+        _double_ring_gauge(canvas, _mgcx, _mgy, _mr, _mp, _mc, _ml)
     # Update mini rect so clicking these rings opens the sysstat panel
     pipeline.__class__._PANELS['sysstat']['mini_rect'] = (
         _mgap // 2 - _mr, _mgy - _mr,
-        _mgap * 4, _mr * 2 + 16
+        _mgap * 4, _mr * 2 + 20
     )
 
     # ── Detection dots — brain area bottom-left ───────────────────
