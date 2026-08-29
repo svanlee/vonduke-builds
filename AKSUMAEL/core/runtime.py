@@ -97,15 +97,10 @@ def _restore_preserved_goals():
     print(f'[STARTUP] restored preserved goal(s) from autotrain restart: {restored}')
     PRESERVED_GOALS_PATH.unlink(missing_ok=True)
 
+# ── Jarvis core imports (always loaded) ──────────────────────────────────────
 from core.capture            import VideoCapturePipeline
-from core.aim                import bbox_to_mouse_delta, is_on_target
-from vision.color_detector   import detect_ores_by_color, merge_with_yolo
-from vision.tree_auto_labeler import maybe_save_tree_frame
 from vision.yolo             import YOLODetector
-from vision.f3_reader        import read_f3
 from core.vision_brain       import ask_vision, get_call_counts, get_last_provider
-from core.world_model        import WorldModel
-from core.lerobot_recorder   import LeRobotRecorder
 from core.cognitive          import CognitiveArchitecture
 from core.planner            import Planner
 from memory.episodic         import EpisodeMemory
@@ -119,26 +114,34 @@ from core                    import training_handler
 from core                    import code_awareness
 from core                    import learn_log
 from memory.reward           import RewardSystem
-from memory.world_memory     import WorldMemory
-from memory.inventory        import InventoryTracker
-from memory.hud_reader       import HudReader
 from memory.goals            import GoalStack, INJECTED_GOALS_PATH
-from memory.goal_interpreter import GoalInterpreter
-from memory.progression      import ProgressionTracker
-from memory.minecraft_kb     import MinecraftKB
 from memory.rl_policy        import RLPolicy
-from memory                  import chest_memory
-from behaviors               import ore_progression
 from memory                  import EpisodicMemory, SemanticMemory, ProceduralMemory, MemoryContext
 from actions.executor        import ActionExecutor
 from input.controller_router import ControllerRouter
 from core.human_assist       import HumanAssist
 from audio.tts               import TTSEngine
-from audio.game_ear          import GameEar
 from skills.skill_system     import SkillSystem, SkillReplayer
 from skills.skill_evaluator  import SkillEvaluator
-from actions.aim_controller  import AimController
-from ui.labeling             import LabelingUI
+
+# ── Gaming domain imports (lazy — loaded inside run() when _game_env is True) ─
+# from domains.gaming.vision.color_detector import detect_ores_by_color, merge_with_yolo
+# from domains.gaming.vision.tree_auto_labeler import maybe_save_tree_frame
+# from domains.gaming.vision.f3_reader import read_f3
+# from core.world_model import WorldModel
+# from memory.world_memory import WorldMemory
+# from memory.inventory import InventoryTracker
+# from memory.hud_reader import HudReader
+# from memory.goal_interpreter import GoalInterpreter
+# from memory.progression import ProgressionTracker
+# from memory.minecraft_kb import MinecraftKB
+# from memory import chest_memory
+# from behaviors import ore_progression
+# from audio.game_ear import GameEar
+# from core.aim import bbox_to_mouse_delta, is_on_target
+# from actions.aim_controller import AimController
+# from ui.labeling import LabelingUI
+# from core.lerobot_recorder import LeRobotRecorder
 
 BANNER = """
                     ___
@@ -202,22 +205,55 @@ def run():
               f'(bootstrap={env_profile_obj.bootstrap}, '
               f'yolo_model={config.YOLO_MODEL})')
 
-    # ── Initialise all subsystems ──────────────────────────────
+    # ── Domain detection ─────────────────────────────────────────────────────
+    # Determine upfront which domains are active so subsystem init is scoped.
+    # Gaming domain: active when ACTIVE_ENV is a game environment.
+    # Robotics domain: detected by hardware presence (RoboCar, ROS2, etc.).
+    # Jarvis core always runs regardless of domain.
+    _game_env = getattr(config, 'ACTIVE_ENV', '') in getattr(config, 'GAME_ENVS', set())
+
+    # ── Jarvis core subsystems ─────────────────────────────────────────────
     from hardware.hardware_manager import HardwareManager
     hw = HardwareManager()
     hw.start()
 
     yolo      = YOLODetector()
-    world     = WorldModel()
-    world_mem = WorldMemory()
-    inventory = InventoryTracker()
-    hud_reader = HudReader()
-    goals       = GoalStack()
+    goals      = GoalStack()
     _restore_preserved_goals()
-    progression = ProgressionTracker()
-    mc_kb       = MinecraftKB()
-    cognitive   = CognitiveArchitecture()
-    reward    = RewardSystem()
+    cognitive  = CognitiveArchitecture()
+    reward     = RewardSystem()
+
+    # ── Gaming domain subsystems (only if game env active) ───────────────
+    if _game_env:
+        from core.world_model        import WorldModel
+        from memory.world_memory     import WorldMemory
+        from memory.inventory        import InventoryTracker
+        from memory.hud_reader       import HudReader
+        from memory.goal_interpreter import GoalInterpreter
+        from memory.progression      import ProgressionTracker
+        from memory.minecraft_kb     import MinecraftKB
+        from memory                  import chest_memory
+        from behaviors               import ore_progression
+        from audio.game_ear          import GameEar
+        from core.aim                import bbox_to_mouse_delta, is_on_target
+        from actions.aim_controller  import AimController
+        from vision.color_detector   import detect_ores_by_color, merge_with_yolo
+        from vision.tree_auto_labeler import maybe_save_tree_frame
+        from vision.f3_reader        import read_f3
+        from core.lerobot_recorder   import LeRobotRecorder
+        world      = WorldModel()
+        world_mem  = WorldMemory()
+        inventory  = InventoryTracker()
+        hud_reader = HudReader()
+        progression = ProgressionTracker()
+        mc_kb      = MinecraftKB()
+        print(f'[DOMAIN] gaming domain active ({config.ACTIVE_ENV})')
+    else:
+        world = world_mem = inventory = hud_reader = progression = mc_kb = None
+        detect_ores_by_color = merge_with_yolo = maybe_save_tree_frame = None
+        read_f3 = bbox_to_mouse_delta = is_on_target = None
+        chest_memory = ore_progression = None
+        print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
 
     # Sweep and log the attached hardware before anything binds to it, so
     # the boot log distinguishes "device missing" from "device present but
@@ -231,7 +267,9 @@ def run():
 
     executor  = ActionExecutor()
 
-    recorder = LeRobotRecorder() if config.ENABLE_LEROBOT_RECORDING else None
+    recorder = None
+    if _game_env and config.ENABLE_LEROBOT_RECORDING:
+        recorder = LeRobotRecorder()  # LeRobotRecorder imported inside _game_env block above
 
     # Self-built memory system (episodic/semantic/procedural) — see
     # memory/context.py. episodic_mem.record() is called below on every
@@ -259,7 +297,7 @@ def run():
     human_assist = HumanAssist(executor)
     human_assist.start()
     tts       = TTSEngine()
-    ear       = GameEar()          # graceful if no audio device
+    ear       = (GameEar() if _game_env else None)  # game audio only in game env; GameEar imported lazily above
     skills    = SkillSystem()
     skill_evaluator = SkillEvaluator()
     planner     = Planner()
@@ -297,7 +335,7 @@ def run():
             print(f'[NEURAL_POLICY] init failed: {e} — falling back to rule-based only')
             neural_policy = None
             rl_trainer    = None
-    aim_ctrl  = AimController()          # uses YOLO-frame coords (640×360)
+    aim_ctrl  = (AimController() if _game_env else None)  # game aiming only; AimController imported lazily above
     # LabelingUI (skills sidebar) replaced by Jarvis HUD in poll_display().
     ui        = None
 
@@ -332,8 +370,7 @@ def run():
     except Exception as e:
         print(f'[COLLECT] could not start collector: {e}')
 
-    _game_env = getattr(config, 'ACTIVE_ENV', '') in getattr(config, 'GAME_ENVS', set())
-    if _game_env:
+    if _game_env:  # _game_env determined at domain detection above
         from behaviors.survey import SurveyBehavior
         from behaviors.auto_trainer import AutoTrainer
         from behaviors.respawn import RespawnBehavior
@@ -390,7 +427,7 @@ def run():
     from core.frame_server import FrameServer, update_state as _hud_update
     FrameServer(pipeline).start()   # MJPEG viewer → http://localhost:8765/
     router.start()
-    if ear.enabled:
+    if ear and ear.enabled:
         ear.start()
 
     # Multi-environment attention (envs/attention.py) — additive, alongside
@@ -489,7 +526,19 @@ def run():
     # Wire TTS so the overseer can speak aloud when it detects problems.
     try:
         from jarvis.overseer import start_overseer
-        _overseer = start_overseer(speak_fn=lambda t: tts.say(t) if hasattr(tts, 'say') else None)
+        def _ov_speak(t):
+            try:
+                from core.capture import push_convo_entry
+                push_convo_entry('JARVIS', t)
+            except Exception:
+                pass
+            try:
+                from core.voice import speak as _vc_speak
+                _vc_speak(t)
+            except Exception:
+                if hasattr(tts, 'say'):
+                    tts.say(t)
+        _overseer = start_overseer(speak_fn=_ov_speak)
         print('[JARVIS] overseer started — proactive monitoring active')
     except Exception as _ov_err:
         print(f'[JARVIS] overseer not started: {_ov_err}')
@@ -499,7 +548,19 @@ def run():
     # next every 3 minutes based on full system state + AURORA memory.
     try:
         from jarvis.planner import start_planner
-        _planner = start_planner(speak_fn=lambda t: tts.say(t) if hasattr(tts, 'say') else None)
+        def _pl_speak(t):
+            try:
+                from core.capture import push_convo_entry
+                push_convo_entry('JARVIS', t)
+            except Exception:
+                pass
+            try:
+                from core.voice import speak as _vc_speak2
+                _vc_speak2(t)
+            except Exception:
+                if hasattr(tts, 'say'):
+                    tts.say(t)
+        _planner = start_planner(speak_fn=_pl_speak)
         print('[JARVIS] planner started — OODA autonomous planning active')
     except Exception as _pl_err:
         print(f'[JARVIS] planner not started: {_pl_err}')
@@ -627,13 +688,15 @@ def run():
     _PITCH_CLAMP_NUDGE = config.LOOK_SENSITIVITY * 4
 
     # Init extended F3 fields on world_mem so context_summary() can use them
-    world_mem.pos_x   = getattr(world_mem, 'pos_x',   None)
-    world_mem.pos_z   = getattr(world_mem, 'pos_z',   None)
-    world_mem.facing  = getattr(world_mem, 'facing',  'unknown')
-    world_mem.fps     = getattr(world_mem, 'fps',     None)
-    world_mem.chunk_x = getattr(world_mem, 'chunk_x', None)
-    world_mem.chunk_z = getattr(world_mem, 'chunk_z', None)
-    world_mem.chest_inv = getattr(world_mem, 'chest_inv', {})
+    # (only in game env — world_mem is None in base Jarvis mode)
+    if world_mem is not None:
+        world_mem.pos_x   = getattr(world_mem, 'pos_x',   None)
+        world_mem.pos_z   = getattr(world_mem, 'pos_z',   None)
+        world_mem.facing  = getattr(world_mem, 'facing',  'unknown')
+        world_mem.fps     = getattr(world_mem, 'fps',     None)
+        world_mem.chunk_x = getattr(world_mem, 'chunk_x', None)
+        world_mem.chunk_z = getattr(world_mem, 'chunk_z', None)
+        world_mem.chest_inv = getattr(world_mem, 'chest_inv', {})
     print('[AKSUMAEL] running — Ctrl+C or q in window to stop\n')
 
     def _open_read_close_f3():
