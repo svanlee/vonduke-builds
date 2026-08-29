@@ -390,21 +390,21 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _ZONE_COL = {
         'inner_core':  (0, 205, 255),
         'jarvis_core': _GC_TINT.get(goal, (0, 185, 255)),
-        'gaming':      (255, 210, 80)  if _dom_gaming   else (90,  65, 20),
-        'robotics':    (80,  255, 120) if _dom_robotics else (15,  90, 20),
+        'gaming':      (255, 210, 80)  if _dom_gaming   else (150, 110, 35),
+        'robotics':    (80,  255, 120) if _dom_robotics else (25,  150, 40),
     }
     _ZONE_HOT = {
         'inner_core':  (200, 245, 255),
         'jarvis_core': (80, 240, 255),
-        'gaming':      (255, 245, 180) if _dom_gaming   else (100, 75, 25),
-        'robotics':    (160, 255, 160) if _dom_robotics else (20, 100, 25),
+        'gaming':      (255, 245, 180) if _dom_gaming   else (160, 120, 40),
+        'robotics':    (160, 255, 160) if _dom_robotics else (35,  165, 45),
     }
-    # Per-zone dim multiplier — inactive zones show as visible silhouette (0.38)
+    # Per-zone dim multiplier — inactive zones show as visible silhouette (0.65)
     _ZONE_DIM = {
         'inner_core':  1.0,
         'jarvis_core': 1.0,
-        'gaming':      0.38 if not _dom_gaming   else 1.0,
-        'robotics':    0.38 if not _dom_robotics else 1.0,
+        'gaming':      0.65 if not _dom_gaming   else 1.0,
+        'robotics':    0.65 if not _dom_robotics else 1.0,
     }
 
     gc     = _ZONE_COL['jarvis_core']   # kept for edge/ambient drawing
@@ -512,7 +512,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _zc_hot = _ZONE_HOT.get(zone, gc_hot)
         _dim    = _ZONE_DIM.get(zone, 1.0)
         # inner_core always runs at a minimum ambient brightness
-        _min_h  = 0.35 if zone == 'inner_core' else 0.0
+        _min_h  = 0.35 if zone == 'inner_core' else 0.25
         h_eff   = max(_min_h, h) * _dim
         if h_eff < 0.5:
             f    = h_eff * 2.0
@@ -575,16 +575,19 @@ def render_hud(pipeline, window_name: str, frame, objs):
         if not(nn_x0<=bx2<nn_x0+nn_w and nn_y0<=by2<nn_y0+nn_h): continue
         df=max(0.,0.5+(az2+bz2)*0.25)
         eh=max(heat.get(e2['a'],0.),heat.get(e2['b'],0.))
-        raw=_hcol_gold(max(eh,df*0.25))
+        _za = nn_nodes[e2['a']].get('zone','jarvis_core')
+        _zb = nn_nodes[e2['b']].get('zone','jarvis_core')
+        _ez = _za if _za in ('gaming','robotics') else (_zb if _zb in ('gaming','robotics') else 'jarvis_core')
+        _ecol = _ZONE_COL.get(_ez, gc)
         scale = 0.07 + eh*0.18   # very dim — constellation lines
-        ec=(int(raw[0]*scale),int(raw[1]*scale),int(raw[2]*scale))
+        ec=(int(_ecol[0]*scale),int(_ecol[1]*scale),int(_ecol[2]*scale))
         cv2.line(canvas,(ax2,ay2),(bx2,by2),ec,1,cv2.LINE_AA)
         lx1,ly1=ax2-nn_x0,ay2-nn_y0
         lx2v,ly2v=bx2-nn_x0,by2-nn_y0
         egf=df*0.02+eh*0.06   # minimal glow on edges
         if egf>0.04:
             cv2.line(_glow,(lx1,ly1),(lx2v,ly2v),
-                     (gc[0]/255.*egf,gc[1]/255.*egf,gc[2]/255.*egf),1,cv2.LINE_AA)
+                     (_ecol[0]/255.*egf,_ecol[1]/255.*egf,_ecol[2]/255.*egf),1,cv2.LINE_AA)
 
     # Armillary rings disabled — they looked like hard bars on the brain shape
     _arms = []
@@ -650,7 +653,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         nh=heat.get(ni,0.)
         bp=_math.sin(fnum*0.035*n2['spd']+n2['phase'])*0.5+0.5
         # inner_core nodes always maintain ambient presence; domain nodes dim when off
-        _min_eff = 0.35 if _nzone=='inner_core' else (0.18 if _ZONE_DIM.get(_nzone,1.0)<0.9 else 0.0)
+        _min_eff = 0.35 if _nzone=='inner_core' else (0.32 if _ZONE_DIM.get(_nzone,1.0)<0.9 else 0.0)
         eff_h=max(_min_eff, max(nh, df2*0.25+bp*0.08))
         # Star size: inner_core nodes are slightly larger to feel more solid
         _is_inner = (_nzone == 'inner_core')
@@ -667,6 +670,10 @@ def render_hud(pipeline, window_name: str, frame, objs):
         elif nh>0.5:
             cv2.circle(canvas,(nx2,ny2),nr2+3,(nc[0]//6,nc[1]//6,nc[2]//6),-1,cv2.LINE_AA)
         cv2.circle(canvas,(nx2,ny2),nr2,nc,-1,cv2.LINE_AA)
+        # Bright center core — makes dim hemisphere nodes visible on dark BG
+        _bcr = max(1, nr2 - 1)
+        _bc = (min(255,nc[0]+110), min(255,nc[1]+110), min(255,nc[2]+110))
+        cv2.circle(canvas,(nx2,ny2),_bcr,_bc,-1,cv2.LINE_AA)
         # Glow for hot/bright/front nodes (use zone color for the glow)
         if nh>0.2 or df2>0.55 or _is_bright_star:
             _gc_z = _ZONE_COL.get(_nzone, gc)
