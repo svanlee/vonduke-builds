@@ -432,21 +432,21 @@ def render_hud(pipeline, window_name: str, frame, objs):
         'combat':         ( 0, 110, 255),
     }
     # ── Per-zone base colors (BGR) ────────────────────────────────────
-    # inner_core  — bright amber gold, always full brightness
-    # jarvis_core — goal-tinted gold, always active
-    # gaming      — gold when active, dim amber silhouette when not
-    # robotics    — green when active, dim green silhouette when not
+    # inner_core  — gold, always full brightness
+    # jarvis_core — gold (general), always active
+    # gaming      — green when active, dim when not
+    # robotics    — cyan when active, dim when not
     _ZONE_COL = {
-        'inner_core':  (0, 205, 255),
-        'jarvis_core': _cur_tint,
-        'gaming':      (255, 210, 80)  if _dom_gaming   else (150, 110, 35),
-        'robotics':    (80,  255, 120) if _dom_robotics else (25,  150, 40),
+        'inner_core':  (0, 185, 255),           # gold
+        'jarvis_core': (0, 185, 255),           # gold (general) — fixed, no dialogue tint
+        'gaming':      (60, 230, 40)   if _dom_gaming   else (20,  80, 15),   # green
+        'robotics':    (255, 212,  0)  if _dom_robotics else (80, 70,  0),    # cyan
     }
     _ZONE_HOT = {
-        'inner_core':  (200, 245, 255),
-        'jarvis_core': (80, 240, 255),
-        'gaming':      (255, 245, 180) if _dom_gaming   else (160, 120, 40),
-        'robotics':    (160, 255, 160) if _dom_robotics else (35,  165, 45),
+        'inner_core':  (60, 230, 255),          # bright gold-white
+        'jarvis_core': (60, 230, 255),
+        'gaming':      (120, 255, 100) if _dom_gaming   else (30, 100, 20),
+        'robotics':    (255, 240, 120) if _dom_robotics else (100, 90,  0),
     }
     # Per-zone dim multiplier — inactive zones show as visible silhouette (0.65)
     _ZONE_DIM = {
