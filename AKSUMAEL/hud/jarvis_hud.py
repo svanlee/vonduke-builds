@@ -364,6 +364,27 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _dom_gaming   = getattr(pipeline.__class__, '_DOMAIN_GAMING',   False)
     _dom_robotics = getattr(pipeline.__class__, '_DOMAIN_ROBOTICS', False)
 
+    # ── Dialogue-domain tint — scan recent CONVO_LOG for topic keywords ──
+    _dlg_text = ' '.join(t.lower() for (_, t) in pipeline.__class__._CONVO_LOG[-8:])
+    _robot_kw = ('robot','robocar','motor','sensor','lidar','actuator','servo',
+                 'hardware','ros','chassis','navigation','pid','encoder','jetson',
+                 'mechanical','electronics','autonomous','arm','gripper')
+    _game_kw  = ('minecraft','mine','craft','build','forge','survival','diamond',
+                 'ore','wood','stone','creeper','zombie','nether','biome','mob',
+                 'villager','pickaxe','inventory','chest','crafting')
+    if any(k in _dlg_text for k in _robot_kw):
+        _dlg_target = (255, 120, 20)   # blue tint (BGR)
+    elif any(k in _dlg_text for k in _game_kw):
+        _dlg_target = (30,  220, 60)   # green tint (BGR)
+    else:
+        _dlg_target = (0,   185, 255)  # gold (BGR)
+    # Smooth lerp toward target — stored across frames
+    _prev_tint = getattr(pipeline.__class__, '_DIALOGUE_TINT', (0, 185, 255))
+    _lerp_t = 0.04  # slow drift
+    _cur_tint = tuple(int(_prev_tint[i] + (_dlg_target[i] - _prev_tint[i]) * _lerp_t)
+                      for i in range(3))
+    pipeline.__class__._DIALOGUE_TINT = _cur_tint
+
     # Gold palette — BGR: all warm amber/orange/gold regardless of goal
     # (goal tints the heat highlight color only)
     _GC_TINT = {
@@ -389,7 +410,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # robotics    — green when active, dim green silhouette when not
     _ZONE_COL = {
         'inner_core':  (0, 205, 255),
-        'jarvis_core': _GC_TINT.get(goal, (0, 185, 255)),
+        'jarvis_core': _cur_tint,
         'gaming':      (255, 210, 80)  if _dom_gaming   else (150, 110, 35),
         'robotics':    (80,  255, 120) if _dom_robotics else (25,  150, 40),
     }
@@ -1305,7 +1326,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         # Make window resizable on first render; strip OS decoration
         if not getattr(pipeline.__class__, '_WINDOW_CREATED', False):
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(window_name, WIN_W, WIN_H)
+            cv2.resizeWindow(window_name, 1920, 1080)  # scale up canvas for readability
             pipeline.__class__._WINDOW_CREATED = True
         cv2.imshow(window_name, canvas)
 
