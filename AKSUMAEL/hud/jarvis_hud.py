@@ -440,8 +440,11 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _dom_gaming   = getattr(pipeline.__class__, '_DOMAIN_GAMING',   False)
     _dom_robotics = getattr(pipeline.__class__, '_DOMAIN_ROBOTICS', False)
 
-    # ── Dialogue-domain tint — scan recent CONVO_LOG for topic keywords ──
-    _dlg_text = ' '.join(t.lower() for (_, t) in pipeline.__class__._CONVO_LOG[-8:])
+    # ── Dialogue-domain tint — scan recent SCOTT messages for topic keywords ──
+    # Only scan user (SCOTT) messages — Jarvis's own explanations should not
+    # trigger a domain tint (e.g. Jarvis describing Minecraft ≠ gaming domain).
+    _dlg_text = ' '.join(t.lower() for (spk, t) in pipeline.__class__._CONVO_LOG[-8:]
+                         if spk not in ('JARVIS', 'AKSUMAEL'))
     _robot_kw = ('robot','robocar','motor','sensor','lidar','actuator','servo',
                  'hardware','ros','chassis','navigation','pid','encoder','jetson',
                  'mechanical','electronics','autonomous','arm','gripper')
