@@ -353,6 +353,36 @@ _monologue_buffer = []   # raw (unwrapped) lines, oldest first, len <= MONOLOGUE
 _monologue_typed  = 0    # chars revealed so far of the newest (still-typing) line
 
 
+def _strip_markdown(text: str) -> str:
+    """Strip markdown formatting for plain HUD display."""
+    import re as _re
+    text = _re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold** → bold
+    text = _re.sub(r'\*(.+?)\*', r'\1', text)         # *italic* → italic
+    text = _re.sub(r'#{1,6}\s*', '', text)            # ## headers
+    text = _re.sub(r'^\s*\d+\.\s+', '', text, flags=_re.MULTILINE)  # numbered lists
+    text = _re.sub(r'^\s*[-*]\s+', '', text, flags=_re.MULTILINE)   # bullet lists
+    text = _re.sub(r'\n+', ' ', text)                 # newlines → spaces
+    text = _re.sub(r'\s{2,}', ' ', text)              # collapse spaces
+    return text.strip()
+
+
+def push_convo_entry(speaker: str, text: str) -> None:
+    """Append a (speaker, text) entry to the HUD conversation log.
+
+    Thread-safe — call from any thread (voice PTT path, keyboard path, etc.)::
+
+        from core.capture import push_convo_entry
+        push_convo_entry('SCOTT', transcript)
+        push_convo_entry('JARVIS', response)
+    """
+    text = _strip_markdown((text or '').strip())
+    if not text:
+        return
+    VideoCapturePipeline._CONVO_LOG.append((speaker.upper(), text))
+    if len(VideoCapturePipeline._CONVO_LOG) > 20:
+        VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
+
+
 def push_monologue_line(text: str):
     """Push a new inner-monologue line onto the display strip.
 
@@ -1070,7 +1100,7 @@ class VideoCapturePipeline:
         'thought': {'scale': 0.0, 'target': 0.0, 'exp_scale': 0.82, 'mini_rect': (0,0,1,1)},
     }
     _MOUSE_CB_SET = False  # mouse callback registered on window?
-    _FULLSCREEN   = False  # toggle with 'f' key
+    _FULLSCREEN   = False  # toggle with F11 (or 'f')
     # Sysstat cached — refresh every 2 s to avoid per-frame nvidia-smi calls
     _SYSSTAT = {'cpu': 0.0, 'gpu': 0.0, 'gpu_mem': 0.0, 'ram': 0.0}
     _SYSSTAT_NEXT = 0.0
@@ -1472,10 +1502,21 @@ class VideoCapturePipeline:
             _spk = getattr(_vm2, 'JARVIS_SPEAKING', False)
         except Exception:
             _spk = False
-        _fire_rate = 3 if _spk else 15
+        try:
+            import core.llm_router as _lr_b
+            _thinking = getattr(_lr_b, 'LLM_THINKING', False)
+        except Exception:
+            _thinking = False
+        _brain_active = _spk or _thinking
+        # Shift node color to cyan when Jarvis is thinking or speaking
+        if _brain_active:
+            gc     = CYAN        # (255, 212, 0) BGR
+            gc_hot = (255, 255, 120)  # bright cyan-white
+            gcd    = (gc[0]//6, gc[1]//6, gc[2]//6)
+        _fire_rate = 3 if _brain_active else 15
         if fnum % _fire_rate == 0:
             heat[_rand.randint(0, len(nn_nodes)-1)] = 1.0
-            if _spk:  # fire multiple nodes when speaking
+            if _brain_active:  # fire multiple nodes when thinking/speaking
                 heat[_rand.randint(0, len(nn_nodes)-1)] = 0.8
                 heat[_rand.randint(0, len(nn_nodes)-1)] = 0.6
 
@@ -1513,43 +1554,47 @@ class VideoCapturePipeline:
         _short_edges = [e for e in nn_edges if e.get('tier','short')=='short']
         _long_edges  = [e for e in nn_edges if e.get('tier','long')=='long']
 
-        # Long-range connections — ghost threads, barely there
+        # Faint starfield background — tiny dots scattered inside the sphere
+        _rng_seed = 42
+        for _si in range(80):
+            _sx = int(nn_x0 + nn_w * (0.5 + 0.45 * _math.sin(_si * 17.3 + _rng_seed)))
+            _sy = int(nn_y0 + nn_h * (0.5 + 0.45 * _math.cos(_si * 9.7 + _rng_seed)))
+            _star_r = 1 if _si % 3 != 0 else 2
+            _star_br = 25 + (_si % 5) * 8  # 25-57 brightness
+            cv2.circle(canvas, (_sx, _sy), _star_r,
+                       (int(gc[0]*_star_br//255), int(gc[1]*_star_br//255)+_star_br//3, int(gc[2]*_star_br//255)+_star_br//2),
+                       -1, cv2.LINE_AA)
+
+        # Long-range connections — ultra-faint constellation threads
         for e2 in _long_edges:
             ax2,ay2,az2=pnodes[e2['a']]; bx2,by2,bz2=pnodes[e2['b']]
             if not(nn_x0<=ax2<nn_x0+nn_w and nn_y0<=ay2<nn_y0+nn_h): continue
             if not(nn_x0<=bx2<nn_x0+nn_w and nn_y0<=by2<nn_y0+nn_h): continue
             eh=max(heat.get(e2['a'],0.),heat.get(e2['b'],0.))
-            if eh < 0.1: continue  # skip cold long edges entirely
-            dim=int(max(8, eh*50))
+            if eh < 0.25: continue  # only show when hot
+            dim=int(max(3, eh*15))
             cv2.line(canvas,(ax2,ay2),(bx2,by2),(0,dim//3,dim),1,cv2.LINE_AA)
 
-        # Short connections — thin 1px threads, only front-visible ones
+        # Short connections — dim constellation lines, universe style
         for e2 in sorted(_short_edges, key=lambda e:(pnodes[e['a']][2]+pnodes[e['b']][2])/2):
             ax2,ay2,az2=pnodes[e2['a']]; bx2,by2,bz2=pnodes[e2['b']]
             if not(nn_x0<=ax2<nn_x0+nn_w and nn_y0<=ay2<nn_y0+nn_h): continue
             if not(nn_x0<=bx2<nn_x0+nn_w and nn_y0<=by2<nn_y0+nn_h): continue
             df=max(0.,0.5+(az2+bz2)*0.25)
             eh=max(heat.get(e2['a'],0.),heat.get(e2['b'],0.))
-            # base: 25% brightness, boost only on heat
             raw=_hcol_gold(max(eh,df*0.25))
-            scale = 0.28 + eh*0.45   # 28% cold, up to 73% when hot
+            scale = 0.07 + eh*0.18   # very dim — constellation lines
             ec=(int(raw[0]*scale),int(raw[1]*scale),int(raw[2]*scale))
-            cv2.line(canvas,(ax2,ay2),(bx2,by2),ec,1,cv2.LINE_AA)  # always 1px
+            cv2.line(canvas,(ax2,ay2),(bx2,by2),ec,1,cv2.LINE_AA)
             lx1,ly1=ax2-nn_x0,ay2-nn_y0
             lx2v,ly2v=bx2-nn_x0,by2-nn_y0
-            egf=df*0.08+eh*0.22
-            if egf>0.05:
+            egf=df*0.02+eh*0.06   # minimal glow on edges
+            if egf>0.04:
                 cv2.line(_glow,(lx1,ly1),(lx2v,ly2v),
                          (gc[0]/255.*egf,gc[1]/255.*egf,gc[2]/255.*egf),1,cv2.LINE_AA)
 
-        # Armillary rings — DOMINANT visual element, brightest thing on screen
-        _arms = [
-            (0.0,    0.010,  1.0,  2),   # equatorial  — brightest
-            (0.524, -0.007,  0.85, 2),   # 30° tilt
-            (1.047,  0.005,  0.70, 1),   # 60° tilt
-            (1.396, -0.004,  0.60, 1),   # 80° tilt
-            (0.262,  0.009,  0.65, 1),   # 15° tilt
-        ]
+        # Armillary rings disabled — they looked like hard bars on the brain shape
+        _arms = []
         for (inc_b, spin_r, rbr, rth) in _arms:
             inc = inc_b + fnum * spin_r
             _ci, _si = _math.cos(inc), _math.sin(inc)
@@ -1603,7 +1648,7 @@ class VideoCapturePipeline:
                 _alive2.append(p2)
         VideoCapturePipeline._NN_PULSES=_alive2
 
-        # Nodes — tiny bright dots, Iron Man style (no halos on cold nodes)
+        # Nodes — stars: varied sizes, brighter hot/front nodes
         for ni in sorted(range(len(nn_nodes)), key=lambda i: pnodes[i][2]):
             n2=nn_nodes[ni]; nx2,ny2,nz2=pnodes[ni]
             if not(nn_x0<=nx2<nn_x0+nn_w and nn_y0<=ny2<nn_y0+nn_h): continue
@@ -1611,41 +1656,87 @@ class VideoCapturePipeline:
             nh=heat.get(ni,0.)
             bp=_math.sin(fnum*0.035*n2['spd']+n2['phase'])*0.5+0.5
             eff_h=max(nh,df2*0.25+bp*0.08)
-            nr2=max(1,int((1+nh*3)*(0.4+df2*0.6)))  # 1-4px, tiny
+            # Star size: most 1px, front nodes 2-3px, hot nodes up to 5px
+            _is_bright_star = (ni % 7 == 0) and df2 > 0.6   # ~1 in 7 front nodes = big star
+            if _is_bright_star:
+                nr2 = max(2, int((2 + nh*4) * (0.7 + df2*0.3)))  # 2-5px
+            else:
+                nr2 = max(1, int((1 + nh*2.5) * (0.35 + df2*0.55)))  # 1-3px
             nc=_hcol_gold(eff_h)
-            # only a small halo when hot
-            if nh>0.5:
-                cv2.circle(canvas,(nx2,ny2),nr2+4,(nc[0]//5,nc[1]//5,nc[2]//5),-1,cv2.LINE_AA)
+            # Diffuse outer glow for bright stars
+            if _is_bright_star:
+                cv2.circle(canvas,(nx2,ny2),nr2+5,(nc[0]//6,nc[1]//6,nc[2]//6),-1,cv2.LINE_AA)
+                cv2.circle(canvas,(nx2,ny2),nr2+2,(nc[0]//3,nc[1]//3,nc[2]//3),-1,cv2.LINE_AA)
+            elif nh>0.5:
+                cv2.circle(canvas,(nx2,ny2),nr2+3,(nc[0]//6,nc[1]//6,nc[2]//6),-1,cv2.LINE_AA)
             cv2.circle(canvas,(nx2,ny2),nr2,nc,-1,cv2.LINE_AA)
-            # glow only on hot/front nodes
-            if nh>0.3 or df2>0.6:
+            # Glow for hot/bright/front nodes
+            if nh>0.2 or df2>0.55 or _is_bright_star:
                 lx4,ly4=nx2-nn_x0,ny2-nn_y0
-                gf3=(df2*0.15+nh*0.55)*breath
-                cv2.circle(_glow,(lx4,ly4),nr2+8,
+                gf3=(df2*0.18+nh*0.60)*breath * (1.8 if _is_bright_star else 1.0)
+                cv2.circle(_glow,(lx4,ly4),nr2+10,
                            (gc[0]/255.*gf3,gc[1]/255.*gf3,gc[2]/255.*gf3),-1)
 
-        # Sun core
-        core_r=int(28*breath)
-        cv2.circle(_glow,(_lcx,_lcy),core_r+38,
-                   (gc[0]/255.*2.0,gc[1]/255.*2.0,gc[2]/255.*2.0),-1)
-        for gr in [core_r,core_r-7,core_r-14,core_r-19,core_r-23,3]:
-            if gr<1: continue
-            ga4=min(255,int(155+(core_r-gr)*5))
-            cv2.circle(canvas,(ncx,ncy),gr,
-                       (min(255,gc_hot[0]*ga4//220),
-                        min(255,gc_hot[1]*ga4//220),
-                        min(255,gc_hot[2]*ga4//220)),-1,cv2.LINE_AA)
+        # Sun core — translucent outer ring (fixed), solid inner orb pulses to voice
+        if _brain_active:
+            _glow_r = 72  # fixed translucent boundary — solid never goes outside this
+            # Translucent outer ring: brighter when speaking vs only thinking
+            _ring_alpha = 0.30 if _spk else 0.14
+            _ring_alpha2 = 0.55 if _spk else 0.28
+            cv2.circle(_glow, (_lcx, _lcy), _glow_r,
+                       (gc[0]/255.*_ring_alpha, gc[1]/255.*_ring_alpha, gc[2]/255.*_ring_alpha), -1)
+            cv2.circle(_glow, (_lcx, _lcy), _glow_r - 16,
+                       (gc[0]/255.*_ring_alpha2, gc[1]/255.*_ring_alpha2, gc[2]/255.*_ring_alpha2), -1)
+            # Inner orb: voice-amplitude-synced when speaking, slow breathe when only thinking
+            if _spk:
+                try:
+                    import time as _tm_orb
+                    _env_v = getattr(_vm2, 'JARVIS_VOICE_ENVELOPE', [])
+                    _vst_v = getattr(_vm2, 'JARVIS_VOICE_START_TIME', 0.0)
+                    _vidx = int((_tm_orb.monotonic() - _vst_v) * 30)
+                    _voice_amp = _env_v[_vidx] if _env_v and 0 <= _vidx < len(_env_v) else 0.5
+                except Exception:
+                    _voice_amp = 0.5
+                # Pulse 35%–80% of _glow_r in sync with speech amplitude
+                core_r = int(_glow_r * (0.35 + 0.45 * _voice_amp))
+            else:
+                # Thinking only: small slow breathe, no drama
+                _think_t = abs(_math.sin(fnum * 0.08))
+                core_r = int(_glow_r * (0.28 + 0.14 * _think_t))
+            _inner_r = max(4, core_r // 2)
+            for gr in [_inner_r, _inner_r - 4, _inner_r - 8, 4, 2]:
+                if gr < 1: continue
+                ga4 = min(255, int(210 + (_inner_r - gr) * 8))
+                cv2.circle(canvas, (ncx, ncy), gr,
+                           (min(255, gc_hot[0]*ga4//220),
+                            min(255, gc_hot[1]*ga4//220),
+                            min(255, gc_hot[2]*ga4//220)), -1, cv2.LINE_AA)
+        else:
+            core_r = int(nn_h * 0.045 * breath)  # scale to brain area size
+            cv2.circle(_glow, (_lcx, _lcy), core_r + 20,
+                       (gc[0]/255.*0.30, gc[1]/255.*0.30, gc[2]/255.*0.30), -1)
+            for gr in [core_r, core_r-7, core_r-14, core_r-19, core_r-23, 3]:
+                if gr < 1: continue
+                ga4 = min(255, int(155 + (core_r - gr) * 5))
+                cv2.circle(canvas, (ncx, ncy), gr,
+                           (min(255, gc_hot[0]*ga4//220),
+                            min(255, gc_hot[1]*ga4//220),
+                            min(255, gc_hot[2]*ga4//220)), -1, cv2.LINE_AA)
 
-        # Voice-reactive bloom: when Jarvis is speaking, spike the glow intensity
-        try:
-            import core.voice as _vm
-            _speaking_now = getattr(_vm, 'JARVIS_SPEAKING', False)
-        except Exception:
-            _speaking_now = False
-        _bloom_base = 150.
-        if _speaking_now:
-            # Pulse between 200-350 in sync with a fast sine for "alive" feel
-            _bloom_base = 250. + 100. * abs(_math.sin(fnum * 0.18))
+        # Voice-reactive bloom: use the real voice amplitude envelope when speaking
+        _bloom_base = 90.   # idle: gentle background glow only
+        if _spk:
+            try:
+                import time as _tm_bloom
+                _env_b = getattr(_vm2, 'JARVIS_VOICE_ENVELOPE', [])
+                _vst_b = getattr(_vm2, 'JARVIS_VOICE_START_TIME', 0.0)
+                _bidx = int((_tm_bloom.monotonic() - _vst_b) * 30)
+                _bamp = _env_b[_bidx] if _env_b and 0 <= _bidx < len(_env_b) else 0.5
+            except Exception:
+                _bamp = 0.5
+            _bloom_base = 180. + 170. * _bamp  # 180–350 tracking voice
+        elif _thinking:
+            _bloom_base = 140.  # dim steady glow during thinking
 
         # Bloom — lower multiplier keeps background visible
         _glow_blur=cv2.GaussianBlur(_glow,(0,0),14)
@@ -1659,6 +1750,32 @@ class VideoCapturePipeline:
         _corner_bracket(canvas,nn_x0+nn_w,  nn_y0,       -1, 1,BLEN,CYAN,DCYAN)
         _corner_bracket(canvas,nn_x0,        nn_y0+nn_h,   1,-1,BLEN,CYAN,DCYAN)
         _corner_bracket(canvas,nn_x0+nn_w,   nn_y0+nn_h,  -1,-1,BLEN,CYAN,DCYAN)
+
+        # Chamfer lines removed per user request
+
+        # ── HUD structural frame: tick rulers + dividers ───────────────
+        # Tick ruler along bottom of header
+        for _ti in range(0, WIN_W, 10):
+            _th = 5 if _ti % 100 == 0 else (3 if _ti % 50 == 0 else 2)
+            _tc = DCYAN if _ti % 50 == 0 else VCYAN
+            cv2.line(canvas, (_ti, HDR_H - _th), (_ti, HDR_H), _tc, 1)
+        # Tick ruler along top of footer
+        for _ti in range(0, WIN_W, 10):
+            _th = 5 if _ti % 100 == 0 else (3 if _ti % 50 == 0 else 2)
+            _tc = DCYAN if _ti % 50 == 0 else VCYAN
+            cv2.line(canvas, (_ti, WIN_H - FOOT_H), (_ti, WIN_H - FOOT_H + _th), _tc, 1)
+        # Left border
+        cv2.line(canvas, (0, HDR_H), (0, WIN_H - FOOT_H),
+                 (DCYAN[0]//3, DCYAN[1]//3, DCYAN[2]//3), 1)
+        # Main area bottom edge line
+        cv2.line(canvas, (0, WIN_H - FOOT_H), (CAM_W, WIN_H - FOOT_H),
+                 (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1)
+        # Vertical divider: main area | sidebar
+        cv2.line(canvas, (CAM_W, HDR_H), (CAM_W, WIN_H - FOOT_H), DCYAN, 1, cv2.LINE_AA)
+        # Small tick marks crossing the divider
+        for _ty in range(HDR_H + 24, WIN_H - FOOT_H, 32):
+            _dk = DCYAN if (_ty // 32) % 3 == 0 else VCYAN
+            cv2.line(canvas, (CAM_W - 5, _ty), (CAM_W + 5, _ty), _dk, 1)
 
         # Labels
         cv2.putText(canvas,'JARVIS',(nn_x0+8,nn_y0+15),FONT,0.33,CYAN2,1,cv2.LINE_AA)
@@ -1701,6 +1818,14 @@ class VideoCapturePipeline:
                             _pp['target'] = _pp['exp_scale']
                     return
                 if event != cv2.EVENT_LBUTTONDOWN:
+                    return
+                # Click anywhere in the COMM LINK strip (bottom ~130px of main area)
+                _comm_y_top = 720 - 36 - 130   # = 554
+                _comm_y_bot = 720 - 36          # = 684
+                _comm_x_bot = 1280 - 300        # = 980 (left of sidebar)
+                if 0 <= mx <= _comm_x_bot and _comm_y_top <= my <= _comm_y_bot:
+                    VideoCapturePipeline._TEXT_ACTIVE = True
+                    VideoCapturePipeline._TEXT_INPUT  = ''
                     return
                 # If any panel is expanded, a click collapses it
                 _any_open = any(_pp['target'] > 0.05 for _pp in panels.values())
@@ -1745,8 +1870,8 @@ class VideoCapturePipeline:
                      CYAN if _is_maj else DCYAN, 1, cv2.LINE_AA)
         # Circular-masked webcam frame (laptop camera, not screen capture)
         _wc_frame = VideoCapturePipeline._WEBCAM_FRAME
-        if _wc_frame is not None:
-            _mf = cv2.resize(_wc_frame, (_cam_rw, _cam_rh))
+        if _wc_frame is not None and _wc_frame.size > 0 and _cam_rw > 0 and _cam_rh > 0:
+            _mf = cv2.resize(_wc_frame, (max(2,_cam_rw), max(2,_cam_rh)))
             _cmask = _np.zeros((_cam_rh, _cam_rw), dtype=_np.uint8)
             cv2.circle(_cmask, (_cam_rw // 2, _cam_rh // 2), max(1, _cam_r - 1), 255, -1)
             _croi = canvas[_cam_ry:_cam_ry+_cam_rh, _cam_rx:_cam_rx+_cam_rw]
@@ -1777,8 +1902,8 @@ class VideoCapturePipeline:
                       int(_scr_cy + (_scr_r+8)*_math.sin(_sta))),
                      CYAN if _sti % 90 == 0 else DCYAN, 1, cv2.LINE_AA)
         # Screen frame inside circle
-        if frame is not None:
-            _sf = cv2.resize(frame, (_scr_rw, _scr_rh))
+        if frame is not None and frame.size > 0 and _scr_rw > 0 and _scr_rh > 0:
+            _sf = cv2.resize(frame, (max(2,_scr_rw), max(2,_scr_rh)))
             _smask = _np.zeros((_scr_rh, _scr_rw), dtype=_np.uint8)
             cv2.circle(_smask, (_scr_rw//2, _scr_rh//2), max(1, _scr_r-1), 255, -1)
             _sroi = canvas[_scr_ry:_scr_ry+_scr_rh, _scr_rx:_scr_rx+_scr_rw]
@@ -1887,9 +2012,9 @@ class VideoCapturePipeline:
             _cw_e = _pw - 32
 
             if _eid == 'camera':
-                if frame is not None:
-                    _vw = _cw_e; _vh = int(_cw_e * 9 / 16)
-                    if _vh > _ph - 56: _vh = _ph - 56; _vw = int(_vh * 16 / 9)
+                if frame is not None and frame.size > 0:
+                    _vw = max(2, _cw_e); _vh = max(2, int(_cw_e * 9 / 16))
+                    if _vh > _ph - 56: _vh = max(2, _ph - 56); _vw = max(2, int(_vh * 16 / 9))
                     _ef = cv2.resize(frame, (_vw, _vh))
                     _vx = _px2 + (_pw - _vw) // 2
                     canvas[_cy_e:_cy_e+_vh, _vx:_vx+_vw] = _ef
@@ -1991,100 +2116,127 @@ class VideoCapturePipeline:
                 cv2.putText(canvas, label, (cx - _lw // 2, cy + r + 18),
                             FONT, 0.26, dim, 1, cv2.LINE_AA)
 
-        # ── Clock ring ────────────────────────────────────────────────
+        # ── Clock ring — in brain area, below camera feeds ────────────
         import datetime as _dt
         _now_dt = _dt.datetime.now()
-        _clk_cx = sx + SIDE_W // 2
-        _clk_cy = HDR_H + 72
-        _ring_widget(_clk_cx, _clk_cy, 58, [
-            (_now_dt.strftime('%H:%M'), 0.70, CYAN),
-            (_now_dt.strftime('%S'), 0.38, DCYAN),
+        _clk_cx = CAM_W - 118   # right side of brain area, aligned with cameras
+        _clk_cy = WIN_H - FOOT_H - 130
+        _ring_widget(_clk_cx, _clk_cy, 52, [
+            (_now_dt.strftime('%H:%M'), 0.62, CYAN),
+            (_now_dt.strftime('%S'), 0.34, DCYAN),
         ], _now_dt.strftime('%a  %d %b').upper(), CYAN, DCYAN, 15)
 
-        # ── Cognitive state — compact text below clock ────────────────
-        _cog_y = _clk_cy + 58 + 28
-        chars  = (SIDE_W - 20) * 2 // 7
-        avail_h = WIN_H - FOOT_H - _cog_y - 260  # leave space for gauge rings
-        max_lines = max(1, avail_h // 14)
-        recent = thoughts[-max_lines:] if len(thoughts) > max_lines else thoughts
-        for _i, _line in enumerate(recent):
-            _is_last = (_i == len(recent) - 1)
-            _col = CYAN if _is_last else (WHITE if _i >= len(recent) - 3 else DCYAN)
-            _pref = '> ' if _is_last else '  '
-            _disp = (_line[:chars] + '..') if len(_line) > chars else _line
-            cv2.putText(canvas, f'{_pref}{_disp}',
-                        (px, _cog_y + _i * 14), FONT, 0.28, _col, 1, cv2.LINE_AA)
+        # ── COMM LINK — conversation log fills full sidebar ───────────
+        _cog_y = HDR_H + 20
+        _tc_active = VideoCapturePipeline._TEXT_ACTIVE
+        _tc_input  = VideoCapturePipeline._TEXT_INPUT
+        _sb_cl_w   = SIDE_W - 20
+        _log_font  = 0.38                          # readable font size
+        _log_lh_sb = 19                            # line height px
+        _sb_cl_chars = max(16, _sb_cl_w // 9)     # chars per row at 0.38
 
-        # ── CPU / GPU ring widgets ────────────────────────────────────
+        _gtext(canvas, 'COMM LINK', (px, _cog_y - 2), 0.28, CYAN2, DCYAN)
+
+        def _wrap_sb(text, max_c):
+            if len(text) <= max_c:
+                return [text]
+            words = text.split(' ')
+            out_sb, cur_sb = [], ''
+            for w_sb in words:
+                if len(cur_sb) + len(w_sb) + (1 if cur_sb else 0) <= max_c:
+                    cur_sb = cur_sb + (' ' if cur_sb else '') + w_sb
+                else:
+                    if cur_sb:
+                        out_sb.append(cur_sb)
+                    cur_sb = w_sb
+            if cur_sb:
+                out_sb.append(cur_sb)
+            return out_sb or [text[:max_c]]
+
+        _log_max_y_sb = WIN_H - FOOT_H - 30  # gauges moved to brain area, use full sidebar height
+        # Show only the most recent entries that fit, reading from newest
+        _log_all = VideoCapturePipeline._CONVO_LOG[:]
+        _log_lines = []  # list of (text, color)
+        for (_spk_sb, _txt_sb) in reversed(_log_all):
+            _lc_sb = CYAN if _spk_sb == 'JARVIS' else WHITE
+            _prefix_sb = f'[{_spk_sb}] '
+            _iw_sb = max(8, _sb_cl_chars - len(_prefix_sb))
+            _wrapped_sb = _wrap_sb(_txt_sb, _iw_sb)
+            _entry_lines = []
+            for _wi_sb, _wl_sb in enumerate(_wrapped_sb):
+                _ls_sb = (_prefix_sb if _wi_sb == 0 else ' ' * len(_prefix_sb)) + _wl_sb
+                _entry_lines.append((_ls_sb, _lc_sb))
+            _log_lines = _entry_lines + _log_lines
+            # Check if adding this entry would overflow — if so, trim from top
+            _avail = _log_max_y_sb - (_cog_y + _log_lh_sb)
+            if len(_log_lines) * _log_lh_sb > _avail:
+                _max_lines = max(1, _avail // _log_lh_sb)
+                _log_lines = _log_lines[-_max_lines:]
+                break
+
+        _log_y_sb = _cog_y + _log_lh_sb
+        for (_ls_sb, _lc_sb) in _log_lines:
+            if _log_y_sb > _log_max_y_sb:
+                break
+            cv2.putText(canvas, _ls_sb,
+                        (px, _log_y_sb), FONT, _log_font, _lc_sb, 1, cv2.LINE_AA)
+            _log_y_sb += _log_lh_sb
+
+        # Input line at bottom of sidebar comm section
+        _cursor_blink_sb = '|' if int(fnum / 12) % 2 == 0 and _tc_active else ''
+        _ic_sb = CYAN if _tc_active else DCYAN
+        _input_y_sb = min(_log_max_y_sb + _log_lh_sb, _log_y_sb + 6)
+        cv2.putText(canvas, f'> {_tc_input}{_cursor_blink_sb}',
+                    (px, _input_y_sb), FONT, 0.36, _ic_sb, 1, cv2.LINE_AA)
+        if not _tc_active:
+            cv2.putText(canvas, '[T to type]',
+                        (px, _input_y_sb + _log_lh_sb), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
+
+        # ── CPU / GPU gauges — moved into brain area, compact bar strip ──
         cpu_col  = RED if cpu_pct  > 0.85 else (ORANGE if cpu_pct  > 0.65 else GREEN)
         gpu_col  = RED if gpu_util > 0.85 else (ORANGE if gpu_util > 0.65 else CYAN)
         ram_col  = RED if ram_pct  > 0.90 else (ORANGE if ram_pct  > 0.75 else GREEN)
         vram_col = RED if gpu_mem  > 0.90 else (ORANGE if gpu_mem  > 0.75 else CYAN)
-        _g_r1 = 48;  _g_r2 = 34
-        _g1cx = sx + SIDE_W // 4;   _g2cx = sx + 3 * SIDE_W // 4
-        _g_row1 = WIN_H - FOOT_H - 185
-        _g_row2 = WIN_H - FOOT_H - 90
-        _ring_widget(_g1cx, _g_row1, _g_r1, [
-            ('CPU', 0.26, DCYAN), (f'{int(cpu_pct*100)}%', 0.58, cpu_col)],
-            '', cpu_col, (cpu_col[0]//4, cpu_col[1]//4, cpu_col[2]//4), 30)
-        _ring_widget(_g2cx, _g_row1, _g_r1, [
-            ('GPU', 0.26, DCYAN), (f'{int(gpu_util*100)}%', 0.58, gpu_col)],
-            '', gpu_col, (gpu_col[0]//4, gpu_col[1]//4, gpu_col[2]//4), 30)
-        _ring_widget(_g1cx, _g_row2, _g_r2, [
-            ('RAM', 0.24, DCYAN), (f'{int(ram_pct*100)}%', 0.42, ram_col)],
-            '', ram_col, (ram_col[0]//4, ram_col[1]//4, ram_col[2]//4), 45)
-        _ring_widget(_g2cx, _g_row2, _g_r2, [
-            ('VRAM', 0.22, DCYAN), (f'{int(gpu_mem*100)}%', 0.42, vram_col)],
-            '', vram_col, (vram_col[0]//4, vram_col[1]//4, vram_col[2]//4), 45)
+        _br_gauge_items = [
+            ('CPU',  cpu_pct,  cpu_col),
+            ('GPU',  gpu_util, gpu_col),
+            ('RAM',  ram_pct,  ram_col),
+            ('VRAM', gpu_mem,  vram_col),
+        ]
+        _br_bar_w = 110  # bar width per gauge
+        _br_bar_h = 7
+        _br_gx0 = 12
+        _br_gy  = WIN_H - FOOT_H - 28  # just above footer
+        for _gi, (_glbl, _gpct, _gcol) in enumerate(_br_gauge_items):
+            _bgx = _br_gx0 + _gi * (_br_bar_w + 16)
+            # label
+            cv2.putText(canvas, f'{_glbl} {int(_gpct*100)}%',
+                        (_bgx, _br_gy - 3), FONT, 0.30, _gcol, 1, cv2.LINE_AA)
+            # bar track
+            cv2.rectangle(canvas, (_bgx, _br_gy + 2), (_bgx + _br_bar_w, _br_gy + 2 + _br_bar_h),
+                          (DCYAN[0]//4, DCYAN[1]//4, DCYAN[2]//4), -1)
+            # bar fill
+            _bfill = max(1, int(_br_bar_w * _gpct))
+            cv2.rectangle(canvas, (_bgx, _br_gy + 2), (_bgx + _bfill, _br_gy + 2 + _br_bar_h),
+                          _gcol, -1)
 
-        # ── Detection dots (compact, no bars) ────────────────────────
+        # ── Detection dots — brain area bottom-left ───────────────────
         if objs:
-            _det_y = _cog_y + max_lines * 14 + 8
+            _det_y0 = WIN_H - FOOT_H - 60
             for _di, _obj in enumerate((objs or [])[:4]):
                 _lbl = str(_obj.get('label', _obj.get('class_name', '?')))[:12]
                 _conf = float(_obj.get('confidence', _obj.get('conf', 0.0)))
                 _det_col = GREEN if _conf > 0.7 else (ORANGE if _conf > 0.4 else DCYAN)
-                cv2.circle(canvas, (px + 4, _det_y + _di * 14), 3, _det_col, -1, cv2.LINE_AA)
+                _dy = _det_y0 - _di * 14
+                cv2.circle(canvas, (12, _dy), 3, _det_col, -1, cv2.LINE_AA)
                 cv2.putText(canvas, f'{_lbl}  {_conf:.0%}',
-                            (px + 12, _det_y + _di * 14 + 4),
-                            FONT, 0.26, _det_col, 1, cv2.LINE_AA)
+                            (20, _dy + 4), FONT, 0.26, _det_col, 1, cv2.LINE_AA)
 
-        # ══════════════════════════════════════════════════════════════
-        # TEXT INPUT / CONVERSATION — bottom strip of camera area
-        # ══════════════════════════════════════════════════════════════
-        _tc_y0 = WIN_H - FOOT_H - 110
-        _tc_x0 = 14
-        _tc_w  = CAM_W - 28
+        # COMM LINK now rendered in right sidebar — no brain-area overlay
+        # Keep _tc_active / _tc_input accessible for keyboard handler below
         _tc_active = VideoCapturePipeline._TEXT_ACTIVE
         _tc_input  = VideoCapturePipeline._TEXT_INPUT
-
-        # Section arc header
-        cv2.ellipse(canvas, (_tc_x0 + _tc_w // 2, _tc_y0 - 4),
-                    (_tc_w // 2, 6), 0, 180, 360, DCYAN, 1, cv2.LINE_AA)
-        _gtext(canvas, 'COMM LINK', (_tc_x0, _tc_y0 + 2), 0.28, CYAN2, DCYAN)
-
-        # Conversation log — last 4 lines
-        _log = VideoCapturePipeline._CONVO_LOG[-4:]
-        for _li2, (_spk, _txt) in enumerate(_log):
-            _lc = CYAN if _spk == 'JARVIS' else WHITE
-            _disp2 = (_txt[:(_tc_w * 2 // 7)] + '..') if len(_txt) > _tc_w * 2 // 7 else _txt
-            cv2.putText(canvas, f'[{_spk}] {_disp2}',
-                        (_tc_x0, _tc_y0 + 18 + _li2 * 16),
-                        FONT, 0.28, _lc, 1, cv2.LINE_AA)
-
-        # Input line
         _cursor_blink = '|' if int(fnum / 12) % 2 == 0 and _tc_active else ''
-        _ic = CYAN if _tc_active else DCYAN
-        cv2.putText(canvas, f'> {_tc_input}{_cursor_blink}',
-                    (_tc_x0, _tc_y0 + 90),
-                    FONT, 0.36, _ic, 1, cv2.LINE_AA)
-        # Arc underline for input
-        cv2.ellipse(canvas, (_tc_x0 + _tc_w // 2, _tc_y0 + 96),
-                    (_tc_w // 2, 4), 0, 0, 180, _ic, 1, cv2.LINE_AA)
-        if not _tc_active:
-            cv2.putText(canvas, '[press T to type]',
-                        (_tc_x0 + _tc_w - 110, _tc_y0 + 90),
-                        FONT, 0.24, DCYAN, 1, cv2.LINE_AA)
 
         # ══════════════════════════════════════════════════════════════
         # FOOTER
@@ -2154,7 +2306,13 @@ class VideoCapturePipeline:
         _drain_monologue_queue()
         self.set_overlay_text('\n'.join(_monologue_render_lines()))
         self._draw_detections(frame, objs)   # YOLO boxes before text overlay
-        if frame is None:
+        if frame is None and config.ENABLE_DISPLAY_UI and _CV2_GUI_OK:
+            # Vision-less mode: still render the Jarvis HUD (sphere, COMM LINK,
+            # cognitive state) — just without a camera feed. _jarvis_imshow
+            # already handles frame=None gracefully (shows dark porthole circle).
+            self._jarvis_imshow(window_name, None, [])
+            key = self._safe_wait_key()
+        elif frame is None:
             key = self._safe_wait_key()
         elif self.display._ui is not None:
             # LabelingUI handles its own rendering; call update+render here.
@@ -2176,15 +2334,15 @@ class VideoCapturePipeline:
         # ── Text input mode ──────────────────────────────────────────
         _active = VideoCapturePipeline._TEXT_ACTIVE
         if _active:
-            if key == 27:  # Escape — cancel input
+            if key == 27 or key == 65307:  # Escape
                 VideoCapturePipeline._TEXT_ACTIVE = False
                 VideoCapturePipeline._TEXT_INPUT  = ''
-            elif key in (13, 10):  # Enter — submit
+            elif key in (13, 10, 65293, 65421):  # Enter / Return
                 _msg = VideoCapturePipeline._TEXT_INPUT.strip()
                 VideoCapturePipeline._TEXT_ACTIVE = False
                 VideoCapturePipeline._TEXT_INPUT  = ''
                 if _msg:
-                    VideoCapturePipeline._CONVO_LOG.append(('SCOTT', _msg))
+                    VideoCapturePipeline._CONVO_LOG.append(('SCOTT', _strip_markdown(_msg)))
                     # Keep log bounded
                     if len(VideoCapturePipeline._CONVO_LOG) > 20:
                         VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
@@ -2193,7 +2351,7 @@ class VideoCapturePipeline:
                         try:
                             from jarvis.brain import get_brain as _gb
                             _reply = _gb().respond(_m)
-                            VideoCapturePipeline._CONVO_LOG.append(('JARVIS', _reply))
+                            VideoCapturePipeline._CONVO_LOG.append(('JARVIS', _strip_markdown(_reply or '')))
                             if len(VideoCapturePipeline._CONVO_LOG) > 20:
                                 VideoCapturePipeline._CONVO_LOG = VideoCapturePipeline._CONVO_LOG[-20:]
                             # Also speak it
@@ -2220,7 +2378,7 @@ class VideoCapturePipeline:
         if key == ord('t'):  # T — activate text input
             VideoCapturePipeline._TEXT_ACTIVE = True
             VideoCapturePipeline._TEXT_INPUT  = ''
-        if key == ord('f') and _CV2_GUI_OK:
+        if (key == ord('f') or key == 65480) and _CV2_GUI_OK:  # F or F11
             VideoCapturePipeline._FULLSCREEN = not VideoCapturePipeline._FULLSCREEN
             prop = cv2.WINDOW_FULLSCREEN if VideoCapturePipeline._FULLSCREEN else cv2.WINDOW_NORMAL
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, prop)
@@ -2236,9 +2394,9 @@ class VideoCapturePipeline:
         if not config.ENABLE_DISPLAY_UI:
             return 0xFF   # 'no key pressed'
         try:
-            return cv2.waitKey(1) & 0xFF
+            return cv2.waitKeyEx(1)  # full keycode — supports F-keys
         except cv2.error:
-            return 0xFF
+            return -1
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 

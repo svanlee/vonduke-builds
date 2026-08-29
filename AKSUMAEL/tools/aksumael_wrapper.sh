@@ -160,15 +160,21 @@ start_aksumael() {
     # Re-enable and point to the correct node name if/when game audio capture
     # from an external card is needed again.
     # export PIPEWIRE_NODE='USB3.0 Video Analog Stereo'
-    # Use the existing DISPLAY if set; otherwise try :0 (X.Org login screen).
-    # This lets cv2.imshow / LabelingUI open a real window on the Victus screen.
-    export DISPLAY="${DISPLAY:-:0}"
-    # cv2's bundled Qt only ships the xcb platform plugin (no libqoffscreen.so
-    # in this venv) — forcing offscreen here crashes main.py on startup with
-    # "no Qt platform plugin could be initialized" whenever a real DISPLAY is
-    # available. Only fall back to offscreen when DISPLAY turns out to be unusable.
-    if ! xdpyinfo -display "$DISPLAY" &>/dev/null; then
-        echo "[WRAPPER] WARNING: DISPLAY=$DISPLAY not reachable — falling back to offscreen"
+    # Auto-detect the active X display — try the current value, then :0, :1, :2.
+    # After reboot the display number can shift (e.g. X starts on :1 instead of :0).
+    _found_display=""
+    for _try in "${DISPLAY:-}" ":0" ":1" ":2"; do
+        [[ -z "$_try" ]] && continue
+        if xdpyinfo -display "$_try" &>/dev/null; then
+            _found_display="$_try"
+            break
+        fi
+    done
+    if [[ -n "$_found_display" ]]; then
+        export DISPLAY="$_found_display"
+        echo "[WRAPPER] Using DISPLAY=$DISPLAY"
+    else
+        echo "[WRAPPER] WARNING: No reachable X display found — falling back to offscreen"
         export QT_QPA_PLATFORM=offscreen
     fi
     "$VENV_PYTHON" -u main.py >> "$LOG_FILE" 2>&1 &
