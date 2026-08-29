@@ -572,7 +572,7 @@ class CaptureThread(threading.Thread):
             # the screen this process is running on — a desktop is not the
             # game, but it is real visual input, and the run() loop keeps
             # sweeping for the capture card so this never becomes permanent.
-            shot = probe_screenshot(quiet=not first_sweep)
+            shot = probe_screenshot(quiet=not first_sweep, fps=5.0)  # cap CPU; 5fps plenty for vision
             if shot is not None:
                 print(f'[CAMERA] no camera among {_candidate_indices()} — '
                       f'falling back to {shot.label}; still re-probing for the '
