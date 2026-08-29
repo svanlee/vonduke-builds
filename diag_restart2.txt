@@ -1,0 +1,15 @@
+[VOICE] whisper on CUDA (NVIDIA GeForce RTX 4050 Laptop GPU)
+[VOICE] whisper ready
+[VOICE] mode: ptt
+[VOICE] PTT key listener active (pynput (F9))
+[VOICE] aplay rc=0 took=2.89s expected=2.74s len=120876
+QFontDatabase: Cannot find font directory /home/ros/vonduke-builds/AKSUMAEL/venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/ros/vonduke-builds/AKSUMAEL/venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/ros/vonduke-builds/AKSUMAEL/venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/ros/vonduke-builds/AKSUMAEL/venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/ros/vonduke-builds/AKSUMAEL/venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.

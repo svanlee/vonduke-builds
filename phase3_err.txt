@@ -1,0 +1,12 @@
+1063:Traceback (most recent call last):
+1350:Traceback (most recent call last):
+1362:  File "/usr/lib/python3.12/functools.py", line 479, in lru_cache
+1489:Traceback (most recent call last):
+1497:object type name: AttributeError
+1498:object repr     : AttributeError("'NoneType' object has no attribute 'session_num'")
+1578:Traceback (most recent call last):
+1585:    render_hud(self, window_name, frame, objs)
+1586:  File "/home/ros/vonduke-builds/AKSUMAEL/tools/../hud/jarvis_hud.py", line 42, in render_hud
+1589:NameError: name 'VideoCapturePipeline' is not defined
+1593:Traceback (most recent call last):
+1599:AttributeError: 'NoneType' object has no attribute 'session_num'

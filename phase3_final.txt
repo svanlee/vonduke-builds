@@ -1,0 +1,107 @@
+[WRAPPER] Waiting for a camera (any of: /dev/video2) and serial port (/dev/ttyUSB0)...
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (0s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (5s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (10s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (15s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (20s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (25s / 30s)
+[WRAPPER] timed out waiting for: camera[/dev/video2] /dev/ttyUSB0 — starting anyway (AKSUMAEL degrades gracefully).
+[WRAPPER] API key loaded (108 chars)
+[WRAPPER] Gemini API key loaded (53 chars)
+[WRAPPER] Starting AKSUMAEL...
+[WRAPPER] Using DISPLAY=:1
+[WRAPPER] AKSUMAEL PID: 108896
+[BRIDGE] Claude bridge → http://localhost:7683/  (/health /state /goal /train /log)  node=victus-t7
+[Hardware] manifest writer → data/hardware_manifest.json (every 60s)
+
+                    ___
+                   /   \
+                  ▔▔▔▔▔▔▔
+              A k s ū m a e l
+              ─────┬─────
+                   │
+              v 1 . 0 . 0
+
+  vision   : local / capture card
+  actions  : kb2040 → pc   [KB2040 flashed as hardware bridge — game actions log-only]
+  blend    : human_only
+  tts      : on  game_ear : on  survey   : on (conf<0.45)
+
+ * Serving Flask app 'core.claude_bridge'
+ * Debug mode: off
+[DOMAIN] robotics domain not loaded (hardware absent)
+[Hardware] Manager started.
+[YOLO] loaded data/models/aksumael_mc.pt → NVIDIA GeForce RTX 4050 Laptop GPU
+[YOLO] ONNX CPU fallback ready: data/models/aksumael_mc.onnx (nc=76)
+[YOLO] loaded 1 user labels
+[TELEGRAM] no token (set TELEGRAM_BOT_TOKEN or write /home/ros/.config/telegram/token) — channel disabled
+[DOMAIN] Jarvis base mode — gaming domain not loaded
+[HW] ── hardware inventory ──────────────────────────
+[HW]   video: /dev/video0  HP Wide Vision HD Camera: HP Wi
+[HW]   video: /dev/video1  HP Wide Vision HD Camera: HP Wi
+[HW]   input: 18 event node(s), 0 readable (18×unknown)
+[HW]   gamepad: none — cannot read any of 18 /dev/input/event* nodes (permission denied) — add the user to the 'input' group (sudo usermod -aG input $USER, then log out and back in)
+[HW]   serial: none (/dev/ttyUSB*, /dev/ttyACM* empty) — KB2040 not attached, HID output will be print-mode
+[HW] ────────────────────────────────────────────────
+[BRIDGE] no bridge found (no USB serial ports present)
+[ACTION] KB2040 bridge not found — game actions log-only, bridge calls will retry on demand
+[ACTION] xdotool available — keystroke fallback active (DISPLAY=:1)
+[ACTION] mode:bridge  platform:pc
+[EVDEV] no gamepad found
+[ROUTER] human input source: aksumael-only (no physical controller)
+[ROUTER] blend mode: human_only
+[HumanAssist] no controller: cannot read any of 18 /dev/input/event* nodes (permission denied) — add the user to the 'input' group (sudo usermod -aG input $USER, then log out and back in) — will keep checking every 5s
+[HumanAssist] supervisor started — probing for a controller
+[SKILL] loaded 30 skills from disk
+[COLLECT] dataset dir ready. 33140 images so far.
+[COLLECT] frame collector ready (survey-driven)
+[JARVIS] base mode — game FSM/behaviors not loaded (ACTIVE_ENV=training)
+[YOLO] YOLOThread started (GPU, no throttle)
+[DISPLAY] DisplayThread started (frame buffer only — imshow on main thread)[CAMERA] screen grab of :0 unavailable
+[CAMERA] no working device among [2] and no usable screen grab — entering vision-less mode; re-probing every 300s
+
+[DISPLAY] Frame server → http://localhost:8765/
+[VehicleEnv] zmq not installed — running in stub mode
+[ATTENTION] training env loaded
+[AUDIO] Using input: "default" (idx 12), output: "default" (idx 12)
+[VOICE] speaker ready (piper: en_GB-alan-medium, volume=1.0)
+[VOICE] loading whisper model "base" ...[TTS] delegating audio output to VoiceThread.speaker (piper/pyttsx3)
+
+[VOICE] speaking: "Systems up. Let's see what we're working with."
+[2026-08-29T10:59:32] [OVERSEER] overseer started[2026-08-29T10:59:32] [OVERSEER] overseer thread launched
+
+[JARVIS] overseer started — proactive monitoring active
+[2026-08-29T10:59:32] [PLANNER] planner started[2026-08-29T10:59:32] [PLANNER] planner thread launched
+
+[JARVIS] planner started — OODA autonomous planning active
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+
+
+[AKSUMAEL] stopped  ticks:1  avg_reward:0.000  skills:30  session:N/A
+[VOICE] whisper on CUDA (NVIDIA GeForce RTX 4050 Laptop GPU)
+[VOICE] whisper ready
+[VOICE] mode: ptt
+[VOICE] PTT key listener active (pynput (F9))
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 788, in run
+    if not pipeline.poll_display():
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/capture.py", line 1138, in poll_display
+    self._jarvis_imshow(window_name, None, [])
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/capture.py", line 1118, in _jarvis_imshow
+    render_hud(self, window_name, frame, objs)
+  File "/home/ros/vonduke-builds/AKSUMAEL/tools/../hud/jarvis_hud.py", line 199, in render_hud
+    thoughts   = _monologue_render_lines()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+NameError: name '_monologue_render_lines' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 19, in <module>
+    run()
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 2964, in run
+    if ear.enabled:
+       ^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'enabled'
+[WRAPPER] AKSUMAEL exited (PID 108896). Auto-restart disabled — restart manually.

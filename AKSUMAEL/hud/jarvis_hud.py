@@ -1224,7 +1224,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.putText(canvas, _vs, (_mgcx - _vtw//2, _mgy + _vth//2),
                     FONT, 0.42, _mc, 1, cv2.LINE_AA)
         # Label below ring
-        _lw, _ = cv2.getTextSize(_ml, FONT, 0.28, 1)[0], None
+        (_lw, _), _ = cv2.getTextSize(_ml, FONT, 0.28, 1)
         cv2.putText(canvas, _ml,
                     (_mgcx - _lw//2, _mgy + _mr + 12),
                     FONT, 0.28, DCYAN, 1, cv2.LINE_AA)

@@ -68,6 +68,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # True while Jarvis TTS is actively playing audio. Thread-safe write via the
 # speaking Event's set()/clear() callbacks; capture.py reads it lock-free.
 JARVIS_SPEAKING = False
+JARVIS_VOICE_ENVELOPE: list = []   # RMS amplitude per frame at 30fps, set before aplay
+JARVIS_VOICE_START_TIME: float = 0.0  # monotonic time aplay started
 
 MIN_COMMAND_WORDS = 3      # drop shorter transcripts as noise/false triggers
 SAMPLE_RATE       = 16000  # Whisper's native rate
@@ -499,6 +501,23 @@ class Speaker:
         # thread isn't cleanly joined. aplay uses the kernel ALSA path
         # directly (PipeWire intercepts it transparently) and avoids the race.
         rate = self._piper_voice.config.sample_rate
+
+        # Compute RMS envelope at 30fps for HUD orb voice-sync animation.
+        # Done here because we have the raw numpy audio array before encoding.
+        try:
+            _fps_env = 30
+            _spf = max(1, rate // _fps_env)
+            _n_frames = max(1, len(audio) // _spf)
+            _env = []
+            for _wi in range(_n_frames):
+                _w = audio[_wi * _spf : (_wi + 1) * _spf]
+                _rms = float(np.sqrt(np.mean(_w ** 2))) if len(_w) > 0 else 0.0
+                _env.append(min(1.0, _rms * 8.0))  # scale: typical RMS ~0.12 → ~0.96
+            import core.voice as _vmod_env
+            _vmod_env.JARVIS_VOICE_ENVELOPE = _env
+        except Exception as _env_ex:
+            print(f'[VOICE] envelope error: {_env_ex}')
+
         audio_int16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
         buf = io.BytesIO()
         with wave.open(buf, 'wb') as wf:
@@ -507,7 +526,20 @@ class Speaker:
             wf.setframerate(rate)
             wf.writeframes(audio_int16.tobytes())
         wav_bytes = buf.getvalue()
-        subprocess.run(['aplay', '-q'], input=wav_bytes, check=False)
+        import time as _time
+        _t0 = _time.monotonic()
+        # Set start time right before aplay begins so HUD frame index is accurate
+        try:
+            import core.voice as _vmod_ts
+            _vmod_ts.JARVIS_VOICE_START_TIME = _t0
+        except Exception:
+            pass
+        _ap = subprocess.run(['aplay', '-q'], input=wav_bytes,
+                             capture_output=True, check=False)
+        _dt = _time.monotonic() - _t0
+        _expected = len(wav_bytes) / (rate * 2)  # mono int16
+        print(f'[VOICE] aplay rc={_ap.returncode} took={_dt:.2f}s expected={_expected:.2f}s len={len(wav_bytes)}'
+              + (f' stderr={_ap.stderr[:80].decode(errors="replace")}' if _ap.stderr else ''))
 
     def say(self, text: str):
         """Blocking speak, serialized by a lock. The voice thread is idle
@@ -1336,11 +1368,19 @@ class VoiceThread:
         print(f'[VOICE] → jarvis: "{transcript}"')
         _t_jarvis_start = time.monotonic()
         try:
+            from core.capture import push_convo_entry as _pce
+        except Exception:
+            _pce = None
+        try:
+            if _pce:
+                _pce('SCOTT', transcript)
             from jarvis.brain import get_brain
             brain = get_brain()
             response = brain.respond(transcript)
             _t_brain = time.monotonic() - _t_jarvis_start
             if response:
+                if _pce:
+                    _pce('JARVIS', response)
                 _t_tts_start = time.monotonic()
                 self._say(response)
                 _t_tts = time.monotonic() - _t_tts_start
@@ -1508,16 +1548,36 @@ class VoiceThread:
         print('[VOICE] thread stopped')
 
 
+# Module-level reference to the running VoiceThread, set by start().
+# Used by capture.py's keyboard path and any other in-process caller that
+# wants to speak text without going through the PTT/VAD pipeline.
+_voice_thread: "VoiceThread | None" = None
+
+
+def speak(text: str) -> None:
+    """Speak `text` via the running VoiceThread (sets JARVIS_SPEAKING correctly).
+    No-op if voice isn't running or text is empty. Thread-safe."""
+    global _voice_thread
+    if not text or _voice_thread is None:
+        return
+    try:
+        _voice_thread._say(text)
+    except Exception as e:
+        print(f'[VOICE] speak() error: {e}')
+
+
 def start(goals=None, monologue=None, attention_manager=None,
           memory_context=None) -> "VoiceThread | None":
     """Construct and start a VoiceThread. Returns the instance if voice came
     up, None otherwise. Never raises — voice is strictly optional, and the bot
     must boot identically on a box with no mic, no whisper, or no piper."""
+    global _voice_thread
     try:
         vt = VoiceThread(goals=goals, monologue=monologue,
                          attention_manager=attention_manager,
                          memory_context=memory_context)
         if vt.start():
+            _voice_thread = vt
             return vt
     except Exception as e:
         print(f'[VOICE] could not start voice thread: {e} — continuing without voice')

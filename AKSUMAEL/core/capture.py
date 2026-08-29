@@ -243,14 +243,26 @@ def probe_screenshot(quiet: bool = False, fps: float = None):
     information than a capture card with nothing plugged into it."""
     if not getattr(config, 'SCREENSHOT_FALLBACK_ENABLED', True):
         return None
+    import os as _os
     display = getattr(config, 'SCREENSHOT_DISPLAY', ':0')
     if fps is None:
         fps = getattr(config, 'SCREENSHOT_FPS', 20.0)
     src = ScreenshotSource(display, fps)
     if not src.open():
-        if not quiet:
-            print(f'[CAMERA] screen grab of {display} unavailable')
-        return None
+        # Config display failed — try the active $DISPLAY env var as fallback
+        env_disp = _os.environ.get('DISPLAY', display)
+        if env_disp != display:
+            src = ScreenshotSource(env_disp, fps)
+            if src.open():
+                display = env_disp  # use for logging below
+            else:
+                if not quiet:
+                    print(f'[CAMERA] screen grab unavailable on {display} and {env_disp}')
+                return None
+        else:
+            if not quiet:
+                print(f'[CAMERA] screen grab of {display} unavailable')
+            return None
     ok, frame = src.read()
     if not ok or not _frame_is_real(frame):
         src.release()

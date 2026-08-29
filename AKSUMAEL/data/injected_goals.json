@@ -1,0 +1,88 @@
+{
+  "queue": [
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:Continuing training for the high-reward goal",
+      "ts": 1787860405.334871
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787860676.7241347
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787861903.0917437
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787862139.9838676
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787862544.0963874
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787863019.2785764
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787863507.7889304
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787863995.4871128
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787864393.463837
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787864801.4444854
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787865526.335648
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787866102.720849
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787866330.1099586
+    },
+    {
+      "goal": "craft_wood_pickaxe",
+      "authority": 2,
+      "source": "jarvis:restart_restore",
+      "ts": 1787867420.8000696
+    }
+  ]
+}

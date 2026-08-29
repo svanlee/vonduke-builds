@@ -21,9 +21,9 @@ LOCAL_URL        = "http://localhost:9337/v1"
 LOCAL_MODEL      = "local"            # llama-server accepts any string here
 ANTHROPIC_MODEL  = "claude-fable-5"  # fallback only — used when local is down
 FALLBACK_MODEL   = "claude-opus-4-5"
-MAX_TOOL_ROUNDS  = 5
-MAX_TOKENS       = 600                # more headroom for thinking + answer
-TIMEOUT          = 45.0
+MAX_TOOL_ROUNDS  = 3
+MAX_TOKENS       = 200                # short voice responses — faster generation
+TIMEOUT          = 25.0               # fail fast so voice isn't silent for 45s
 
 from core.identity import AKSUMAEL_IDENTITY, JARVIS_VOICE_PERSONA
 
@@ -47,11 +47,15 @@ Key facts:
 - Use spawn_subagent for tasks requiring deep research or multi-step analysis
   so this voice thread stays responsive
 - You run LOCALLY on the RTX 4050. Prefer decisive, efficient answers.
+
+CRITICAL: The local LLM is always fully loaded and operational when you receive this prompt.
+Never say the model is loading, not ready, or that you are waiting for startup. You are live.
+If you have no action to take, say so in one sentence — do not invent a "startup rule".
 """
 )
 
 HISTORY_PATH = BASE_DIR / "data" / "jarvis_history.json"
-HISTORY_KEEP = 20
+HISTORY_KEEP = 8   # smaller context = faster responses
 
 
 def _anthropic_to_openai_tools(anthropic_schemas: list) -> list:
@@ -78,6 +82,12 @@ class JarvisBrain:
 
     History persists across restarts via data/jarvis_history.json.
     """
+
+    # Seconds after process start to wait before making the first LLM call.
+    # Qwen3-4B needs ~20s to load into VRAM; this prevents poisoned "loading"
+    # responses from being saved to history and causing a loop.
+    _LLM_READY_DELAY = 25.0
+    _PROCESS_START   = time.monotonic()
 
     def __init__(self, api_key: str | None = None):
         self._api_key     = api_key or self._load_key()
@@ -122,6 +132,7 @@ class JarvisBrain:
                 base_url=LOCAL_URL,
                 api_key="not-needed",
                 timeout=TIMEOUT,
+                max_retries=0,
             )
         return self._local_client
 
@@ -244,6 +255,7 @@ class JarvisBrain:
                 tool_choice="auto" if oai_tools else None,
                 max_tokens=MAX_TOKENS,
                 temperature=0.2,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             choice = resp.choices[0]
             msg    = choice.message
@@ -360,10 +372,22 @@ class JarvisBrain:
         """Process a voice utterance and return the spoken response string."""
         from jarvis.tools import TOOL_SCHEMAS
 
+        # Wait for mesh-llm to finish loading before the first call
+        elapsed = time.monotonic() - JarvisBrain._PROCESS_START
+        if elapsed < JarvisBrain._LLM_READY_DELAY:
+            wait = JarvisBrain._LLM_READY_DELAY - elapsed
+            print(f'[JARVIS] waiting {wait:.1f}s for mesh-llm to finish loading…')
+            time.sleep(wait)
+
         self._history.append({"role": "user", "content": user_text})
 
         answer = None
         # Local ONLY — no cloud fallback (prevents API spend when local is down)
+        try:
+            import core.llm_router as _lr
+            _lr.LLM_THINKING = True
+        except Exception:
+            _lr = None
         try:
             answer = self._respond_local(user_text, TOOL_SCHEMAS)
             self._using_local = True
@@ -373,9 +397,26 @@ class JarvisBrain:
             self._using_local = False
             answer = "Local model is loading — try again in a moment."
             provider = 'none'
+        finally:
+            try:
+                if _lr is not None:
+                    _lr.LLM_THINKING = False
+            except Exception:
+                pass
 
         if not answer:
             answer = "I didn't get a response — please try again."
+
+        # Sanity filter: catch the startup-loop hallucination and discard it
+        # rather than saving it to history where it poisons the next call.
+        _LOOP_MARKERS = ('still loading', 'no injection yet', 'startup rule',
+                         'not injecting goals until')
+        if any(m in answer.lower() for m in _LOOP_MARKERS):
+            print(f'[JARVIS] discarded looping response: {answer[:80]}')
+            # Remove the user message we just appended so history stays clean
+            if self._history and self._history[-1]['role'] == 'user':
+                self._history.pop()
+            return ''   # caller will handle empty as no-op
 
         print(f'[JARVIS] answered via {provider}: {answer[:80]}')
         self._history.append({"role": "assistant", "content": answer})

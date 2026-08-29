@@ -43,6 +43,10 @@ _last_provider = None
 # vision data again until the server is restarted with a VLM.
 _model_rejects_images: bool = False
 
+# Set True while route_llm_call() is waiting for a response — lets the HUD
+# show a "thinking" state on the chamfer/border animations.
+LLM_THINKING: bool = False
+
 # Liveness probe. llama-server's /health answers 200 off a flag set at model
 # load and never reads the generation path, so a wedged server — slots stuck,
 # KV cache exhausted, sampler hung — reports healthy while every completion
@@ -320,11 +324,16 @@ def route_llm_call(prompt: str, max_tokens: int = 800, images: list = None,
         (text, provider) — provider is 'local' or None if the call failed.
         `text` is None iff provider is None.
     """
-    global _call_counter
+    global _call_counter, LLM_THINKING
     with _lock:
         _call_counter += 1
 
-    result = _try_local(prompt, max_tokens, images, timeout, local_retries, system=system)
+    LLM_THINKING = True
+    try:
+        result = _try_local(prompt, max_tokens, images, timeout, local_retries, system=system)
+    finally:
+        LLM_THINKING = False
+
     if result is not None:
         _record('local')
         return result, 'local'

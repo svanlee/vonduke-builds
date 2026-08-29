@@ -1,0 +1,42 @@
+[AKSUMAEL] stopped  ticks:35628  avg_reward:0.000  skills:30  session:141
+Terminated
+[WRAPPER] SIGTERM received — forwarding to AKSUMAEL (PID 56870)...
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 19, in <module>
+[VOICE] speaking: "Signing off. Good run."
+    run()
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 2887, in run
+    'goal': goal if 'goal' in dir() else None,
+                              ^^^^^
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 256, in <lambda>
+    signal.signal(signal.SIGTERM, lambda signum, frame: (_ for _ in ()).throw(KeyboardInterrupt))
+                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 256, in <genexpr>
+    signal.signal(signal.SIGTERM, lambda signum, frame: (_ for _ in ()).throw(KeyboardInterrupt))
+KeyboardInterrupt
+[WRAPPER] AKSUMAEL exited cleanly.
+[WRAPPER] Waiting for a camera (any of: /dev/video2) and serial port (/dev/ttyUSB0)...
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (0s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (5s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (10s / 30s)
+Terminated
+[VOICE] speaking: "AKSUMAEL out."
+[WRAPPER] SIGTERM received — forwarding to AKSUMAEL (PID 92921)...
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 19, in <module>
+    run()
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 2885, in run
+    # Actual detected labels, not just a count — added 2026-07-15 so
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ros/vonduke-builds/AKSUMAEL/memory/episodic.py", line 51, in record
+    conn = self._connect()
+           ^^^^^^^^^^^^^^^
+  File "/home/ros/vonduke-builds/AKSUMAEL/memory/episodic.py", line 36, in _connect
+    conn = sqlite3.connect(self.db_path, timeout=5.0)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/functools.py", line 479, in lru_cache
+    def lru_cache(maxsize=128, typed=False):
+    
+  File "/home/ros/vonduke-builds/AKSUMAEL/core/runtime.py", line 256, in <lambda>
+    print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
+                                                  ^^^^^^^^^^^^^^^^

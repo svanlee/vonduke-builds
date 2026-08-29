@@ -1,0 +1,10 @@
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+Traceback (most recent call last):
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+Traceback (most recent call last):
+    print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
+    print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
+[DOMAIN] Jarvis base mode — gaming domain not loaded
+[AKSUMAEL] running — Ctrl+C or q in window to stop

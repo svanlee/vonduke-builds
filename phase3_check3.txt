@@ -1,0 +1,15 @@
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+    print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
+    print(f'[DOMAIN] Jarvis base mode — gaming domain not loaded')
+[DOMAIN] Jarvis base mode — gaming domain not loaded
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+[DOMAIN] Jarvis base mode — gaming domain not loaded
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+NameError: name 'VideoCapturePipeline' is not defined
+[DOMAIN] Jarvis base mode — gaming domain not loaded
+[AKSUMAEL] running — Ctrl+C or q in window to stop
+NameError: name 'np' is not defined. Did you mean: '_np'?

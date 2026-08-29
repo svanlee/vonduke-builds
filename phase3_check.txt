@@ -1,0 +1,20 @@
+[CAMERA] No camera available — running in vision-less mode
+[CAMERA] No camera available — running in vision-less mode
+[CAMERA] No camera available — running in vision-less mode
+[JARVIS] answered via local: I will run a self-evaluation to assess performance and confirm that "craft_wood_
+[2026-08-29T10:50:35] [PLANNER] plan #3: I will run a self-evaluation to assess performance and confirm that "craft_wood_pickaxe" remains the best-known goal with an average reward of 0.29, ensuring continued focus on the most effective task.
+Traceback (most recent call last):
+  File "/home/ros/vonduke-builds/AKSUMAEL/main.py", line 19, in <module>
+Terminated
+    run()
+[WRAPPER] SIGTERM received — forwarding to AKSUMAEL (PID 107091)...
+object address  : 0x79f9c4234040
+object refcount : 3
+object type     : 0xa33700
+object type name: AttributeError
+object repr     : AttributeError("'NoneType' object has no attribute 'session_num'")
+lost sys.stderr
+[WRAPPER] AKSUMAEL exited cleanly.
+[WRAPPER] Waiting for a camera (any of: /dev/video2) and serial port (/dev/ttyUSB0)...
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (0s / 30s)
+[WRAPPER] Still waiting for: camera[/dev/video2] /dev/ttyUSB0  (5s / 30s)
