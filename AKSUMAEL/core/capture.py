@@ -1222,6 +1222,22 @@ class VideoCapturePipeline:
             VideoCapturePipeline._FULLSCREEN = not VideoCapturePipeline._FULLSCREEN
             prop = cv2.WINDOW_FULLSCREEN if VideoCapturePipeline._FULLSCREEN else cv2.WINDOW_NORMAL
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, prop)
+        if key in (ord('='), ord('+')) and _CV2_GUI_OK:  # + / = — grow window
+            try:
+                _wr = cv2.getWindowImageRect(window_name)
+                _nw = min(int(_wr[2] * 1.15), 3840)
+                _nh = int(_nw * 9 / 16)
+                cv2.resizeWindow(window_name, _nw, _nh)
+            except Exception:
+                pass
+        if key == ord('-') and _CV2_GUI_OK:  # - — shrink window
+            try:
+                _wr = cv2.getWindowImageRect(window_name)
+                _nw = max(int(_wr[2] * 0.87), 640)
+                _nh = int(_nw * 9 / 16)
+                cv2.resizeWindow(window_name, _nw, _nh)
+            except Exception:
+                pass
         return True
 
     @staticmethod

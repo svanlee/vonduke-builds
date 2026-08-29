@@ -809,6 +809,16 @@ def render_hud(pipeline, window_name: str, frame, objs):
     if not pipeline.__class__._MOUSE_CB_SET:
         def _on_mouse(event, mx, my, flags, param):
             panels = pipeline.__class__._PANELS
+            # Qt backend delivers window-space coords; transform to canvas space
+            # so clicks land correctly at any window size.
+            try:
+                _wr = cv2.getWindowImageRect(window_name)  # (x, y, w, h)
+                _ww, _wh = _wr[2], _wr[3]
+                if _ww > 0 and _wh > 0:
+                    mx = int(mx * WIN_W / _ww)
+                    my = int(my * WIN_H / _wh)
+            except Exception:
+                pass
             # Scroll wheel — adjust exp_scale of the open panel
             if event == cv2.EVENT_MOUSEWHEEL:
                 for _pp in panels.values():
@@ -820,9 +830,9 @@ def render_hud(pipeline, window_name: str, frame, objs):
             if event != cv2.EVENT_LBUTTONDOWN:
                 return
             # Click anywhere in the COMM LINK strip (bottom ~130px of main area)
-            _comm_y_top = 720 - 36 - 130   # = 554
-            _comm_y_bot = 720 - 36          # = 684
-            _comm_x_bot = 1280 - 300        # = 980 (left of sidebar)
+            _comm_y_top = WIN_H - FOOT_H - 130
+            _comm_y_bot = WIN_H - FOOT_H
+            _comm_x_bot = CAM_W
             if 0 <= mx <= _comm_x_bot and _comm_y_top <= my <= _comm_y_bot:
                 pipeline.__class__._TEXT_ACTIVE = True
                 pipeline.__class__._TEXT_INPUT  = ''
@@ -1290,18 +1300,6 @@ def render_hud(pipeline, window_name: str, frame, objs):
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(window_name, WIN_W, WIN_H)
             pipeline.__class__._WINDOW_CREATED = True
-            # Strip WM title bar/border only — NOT fullscreen
-            # Press F in the window to toggle fullscreen manually
-            time.sleep(0.5)
-            try:
-                _wid = _sp2.check_output(
-                    ['xdotool', 'search', '--name', window_name],
-                    timeout=2).decode().split()[0]
-                _sp2.Popen(['xprop', '-id', _wid,
-                            '-f', '_MOTIF_WM_HINTS', '32c',
-                            '-set', '_MOTIF_WM_HINTS', '2, 0, 0, 0, 0'])
-            except Exception:
-                pass
         cv2.imshow(window_name, canvas)
 
 # ── Display pump (main-thread only) ──────────────────────────────────
