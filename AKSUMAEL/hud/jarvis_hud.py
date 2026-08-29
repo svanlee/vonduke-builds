@@ -302,10 +302,59 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # Dark background
     cv2.rectangle(canvas, (nn_x0, nn_y0), (nn_x0+nn_w, nn_y0+nn_h), (2, 6, 10), -1)
 
-    # Dot-grid background
-    for gy2 in range(nn_y0+14, nn_y0+nn_h, 28):
-        for gx2 in range(nn_x0+14, nn_x0+nn_w, 28):
-            cv2.circle(canvas, (gx2, gy2), 1, (0, 20, 30), -1)
+    # ── Circuit grid background (Stark Industries style) ─────────────
+    _cg_v = (int(gc[0]*0.055), int(gc[1]*0.055), int(gc[2]*0.055))  # very dim cyan
+    _cg_h = (int(gc[0]*0.040), int(gc[1]*0.040), int(gc[2]*0.040))
+    for _gx2 in range(nn_x0, nn_x0+nn_w+1, 48):
+        cv2.line(canvas, (_gx2, nn_y0), (_gx2, nn_y0+nn_h), _cg_v, 1, cv2.LINE_AA)
+    for _gy2 in range(nn_y0, nn_y0+nn_h+1, 36):
+        cv2.line(canvas, (nn_x0, _gy2), (nn_x0+nn_w, _gy2), _cg_h, 1, cv2.LINE_AA)
+    # Circuit intersection nodes — small dots at grid crossings near center
+    _cn_col = (int(gc[0]*0.12), int(gc[1]*0.12), int(gc[2]*0.12))
+    for _gx2 in range(nn_x0, nn_x0+nn_w+1, 48):
+        for _gy2 in range(nn_y0, nn_y0+nn_h+1, 36):
+            _dx2, _dy2 = _gx2 - ncx, _gy2 - ncy
+            if _dx2*_dx2 + _dy2*_dy2 < 280*280:
+                cv2.circle(canvas, (_gx2, _gy2), 1, _cn_col, -1)
+
+    # ── Circuit traces — bright connector lines between sections ─────
+    _ct = VCYAN   # trace colour
+    _cth = (int(DCYAN[0]*0.6), int(DCYAN[1]*0.6), int(DCYAN[2]*0.6))
+    # Horizontal trace at gauge row
+    _tr_y = WIN_H - FOOT_H - 75
+    cv2.line(canvas, (nn_x0+20, _tr_y), (nn_x0+nn_w-20, _tr_y), _ct, 1, cv2.LINE_AA)
+    for _tn in [nn_x0+60, nn_x0+nn_w//4, nn_x0+nn_w//2, nn_x0+3*nn_w//4, nn_x0+nn_w-60]:
+        cv2.circle(canvas, (_tn, _tr_y), 3, DCYAN, -1)
+        cv2.line(canvas, (_tn, _tr_y), (_tn, _tr_y-8), _cth, 1, cv2.LINE_AA)
+    # Vertical traces left and right of sphere
+    _vl = ncx - 260; _vr = ncx + 260
+    cv2.line(canvas, (_vl, nn_y0+20), (_vl, WIN_H-FOOT_H-20), _ct, 1, cv2.LINE_AA)
+    cv2.line(canvas, (_vr, nn_y0+20), (_vr, WIN_H-FOOT_H-20), _ct, 1, cv2.LINE_AA)
+    # Short horizontal spurs off vertical traces
+    for _sy in [nn_y0+60, nn_y0+120, nn_y0+180, nn_y0+240]:
+        cv2.line(canvas, (_vl, _sy), (_vl+20, _sy), _cth, 1, cv2.LINE_AA)
+        cv2.circle(canvas, (_vl, _sy), 2, DCYAN, -1)
+        cv2.line(canvas, (_vr, _sy), (_vr-20, _sy), _cth, 1, cv2.LINE_AA)
+        cv2.circle(canvas, (_vr, _sy), 2, DCYAN, -1)
+    # Data labels on left vertical trace
+    for _lab, _ly in [('SYS', nn_y0+55), ('NET', nn_y0+115), ('VOX', nn_y0+175), ('ENV', nn_y0+235)]:
+        cv2.putText(canvas, _lab, (_vl-28, _ly+4), FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
+    # Concentric arcs decorating center (arc reactor rings)
+    for _cr, _calpha in [(140, 0.20), (180, 0.14), (225, 0.09), (265, 0.06)]:
+        _cc = (int(gc[0]*_calpha), int(gc[1]*_calpha), int(gc[2]*_calpha))
+        cv2.circle(canvas, (ncx, ncy), _cr, _cc, 1, cv2.LINE_AA)
+    # Bright inner rings (arc reactor core)
+    cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,  1, cv2.LINE_AA)
+    cv2.circle(canvas, (ncx, ncy), 108, (int(gc[0]*0.25), int(gc[1]*0.25), int(gc[2]*0.25)), 2, cv2.LINE_AA)
+    # Tick marks on outer ring
+    for _ta in range(0, 360, 15):
+        _tr_rad = _math.radians(_ta)
+        _tx1 = int(ncx + 108 * _math.cos(_tr_rad)); _ty1 = int(ncy + 108 * _math.sin(_tr_rad))
+        _tlen = 8 if _ta % 90 == 0 else (5 if _ta % 45 == 0 else 3)
+        _tx2 = int(ncx + (108+_tlen) * _math.cos(_tr_rad)); _ty2 = int(ncy + (108+_tlen) * _math.sin(_tr_rad))
+        _tbr = 0.30 if _ta % 90 == 0 else 0.15
+        cv2.line(canvas, (_tx1,_ty1), (_tx2,_ty2),
+                 (int(gc[0]*_tbr),int(gc[1]*_tbr),int(gc[2]*_tbr)), 1, cv2.LINE_AA)
 
     # ── Build 3-zone layered brain once ──────────────────────────────
     # Zone layout (180 nodes total):
@@ -401,11 +450,11 @@ def render_hud(pipeline, window_name: str, frame, objs):
                  'ore','wood','stone','creeper','zombie','nether','biome','mob',
                  'villager','pickaxe','inventory','chest','crafting')
     if any(k in _dlg_text for k in _robot_kw):
-        _dlg_target = (255, 120, 20)   # blue tint (BGR)
+        _dlg_target = (255, 140, 10)   # cyan-blue (BGR)
     elif any(k in _dlg_text for k in _game_kw):
-        _dlg_target = (30,  220, 60)   # green tint (BGR)
+        _dlg_target = (30,  220, 60)   # green (BGR)
     else:
-        _dlg_target = (0,   185, 255)  # gold (BGR)
+        _dlg_target = (220, 185, 10)   # cyan (BGR) — default idle
     # Smooth lerp toward target — stored across frames
     _prev_tint = getattr(pipeline.__class__, '_DIALOGUE_TINT', (0, 185, 255))
     _lerp_t = 0.04  # slow drift
@@ -437,14 +486,14 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # gaming      — green when active, dim when not
     # robotics    — cyan when active, dim when not
     _ZONE_COL = {
-        'inner_core':  (0, 185, 255),           # gold
-        'jarvis_core': (0, 185, 255),           # gold (general) — fixed, no dialogue tint
+        'inner_core':  _cur_tint,               # follows dialogue domain tint
+        'jarvis_core': _cur_tint,               # follows dialogue domain tint
         'gaming':      (60, 230, 40)   if _dom_gaming   else (20,  80, 15),   # green
         'robotics':    (255, 212,  0)  if _dom_robotics else (80, 70,  0),    # cyan
     }
     _ZONE_HOT = {
-        'inner_core':  (60, 230, 255),          # bright gold-white
-        'jarvis_core': (60, 230, 255),
+        'inner_core':  (255, 240, 120),         # bright tint-white
+        'jarvis_core': (255, 240, 120),
         'gaming':      (120, 255, 100) if _dom_gaming   else (30, 100, 20),
         'robotics':    (255, 240, 120) if _dom_robotics else (100, 90,  0),
     }
@@ -638,8 +687,12 @@ def render_hud(pipeline, window_name: str, frame, objs):
             cv2.line(_glow,(lx1,ly1),(lx2v,ly2v),
                      (_ecol[0]/255.*egf,_ecol[1]/255.*egf,_ecol[2]/255.*egf),1,cv2.LINE_AA)
 
-    # Armillary rings disabled — they looked like hard bars on the brain shape
-    _arms = []
+    # Armillary rings — 3 rings at different inclinations (arc reactor look)
+    _arms = [
+        (0.0,    0.0012, 0.32, 1),   # equatorial — slow CW
+        (1.047,  0.0008, 0.22, 1),   # 60° tilt — slower CW
+        (2.094, -0.0007, 0.16, 1),   # -60° tilt — slow CCW
+    ]
     for (inc_b, spin_r, rbr, rth) in _arms:
         inc = inc_b + fnum * spin_r
         _ci, _si = _math.cos(inc), _math.sin(inc)
