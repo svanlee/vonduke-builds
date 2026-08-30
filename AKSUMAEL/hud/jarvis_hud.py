@@ -1065,15 +1065,18 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.addWeighted(_overlay, 0.55 * _es, canvas, 1.0, 0, canvas)
         # Panel background
         _pw = int(_ew * _es); _ph = int(_eh * _es)
+        # Skip drawing until panel is large enough — negative ellipse axes crash OpenCV
+        if _pw < 24 or _ph < 24:
+            continue
         _px2 = (WIN_W - _pw) // 2; _py2 = (WIN_H - _ph) // 2
         cv2.rectangle(canvas, (_px2, _py2), (_px2+_pw, _py2+_ph), (14, 9, 2), -1)
-        # Elliptical frame — no corner brackets
+        # Elliptical frame — axes clamped to >= 1 to prevent cv2 assertion failure
         _epx = _px2 + _pw // 2;  _epy = _py2 + _ph // 2
-        cv2.ellipse(canvas, (_epx, _epy), (_pw // 2, _ph // 2),
+        cv2.ellipse(canvas, (_epx, _epy), (max(1, _pw // 2), max(1, _ph // 2)),
                     0, 0, 360, DCYAN, 1, cv2.LINE_AA)
-        cv2.ellipse(canvas, (_epx, _epy), (_pw // 2 + 3, _ph // 2 + 3),
+        cv2.ellipse(canvas, (_epx, _epy), (max(1, _pw // 2 + 3), max(1, _ph // 2 + 3)),
                     0, 0, 360, (DCYAN[0]//2, DCYAN[1]//2, DCYAN[2]//2), 1, cv2.LINE_AA)
-        cv2.ellipse(canvas, (_epx, _epy), (_pw // 2 - 2, _ph // 2 - 2),
+        cv2.ellipse(canvas, (_epx, _epy), (max(1, _pw // 2 - 2), max(1, _ph // 2 - 2)),
                     0, 0, 360, CYAN, 1, cv2.LINE_AA)
         # Arc tick marks at cardinal points
         for _adeg in range(0, 360, 30):
@@ -1091,7 +1094,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _gtext(canvas, _etitle, (_px2+12, _py2+20), 0.55, CYAN, DCYAN, 1)
         cv2.putText(canvas, '[click anywhere to close]  [scroll to resize]',
                     (_px2+12, _py2+34), FONT, 0.26, DCYAN, 1, cv2.LINE_AA)
-        cv2.ellipse(canvas, (_px2+_pw//2, _py2+38), (_pw//2-8, 6),
+        cv2.ellipse(canvas, (_px2+_pw//2, _py2+38), (max(1, _pw//2-8), 6),
                     0, 0, 180, DCYAN, 1, cv2.LINE_AA)
         _cy_e = _py2 + 52
         _cx_e = _px2 + 16
