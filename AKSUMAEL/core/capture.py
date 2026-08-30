@@ -1259,9 +1259,15 @@ class VideoCapturePipeline:
         if not config.ENABLE_DISPLAY_UI:
             return 0xFF   # 'no key pressed'
         try:
-            return cv2.waitKeyEx(1)  # full keycode — supports F-keys
-        except cv2.error:
-            return -1
+            # pollKey() is non-blocking and does NOT steal keyboard focus
+            # (waitKey/waitKeyEx grab focus for their poll duration every tick)
+            k = cv2.pollKey()
+            return k if k != -1 else 0xFF
+        except (cv2.error, AttributeError):
+            try:
+                return cv2.waitKeyEx(1)
+            except cv2.error:
+                return -1
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
