@@ -1474,19 +1474,16 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.imshow(window_name, _disp)
         # Maximize on first frame AND re-apply every 5 frames until confirmed full-size
         # (WM may ignore the first request before the window is fully mapped)
-        # Fullscreen: re-attempt every 60 frames until the WM confirms the window
-        # is at the right size.  A one-shot or 10-tick approach fails when the WM
-        # is still mapping the window on the first attempt.
-        _fs_tick = getattr(pipeline.__class__, '_FS_TICK', 0) + 1
-        pipeline.__class__._FS_TICK = _fs_tick
-        _do_fs = _win_first or (_fs_tick % 60 == 0)
-        if _do_fs:
+        # Fullscreen: fire once on first frame only — repeated wmctrl calls
+        # steal keyboard focus every time they run, locking the user out.
+        if _win_first:
             cv2.resizeWindow(window_name, 1920, 1080)
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             try:
                 import subprocess as _sp
+                # Delay 1s so WM has time to map the window before xdotool searches
                 _sp.Popen(['bash', '-c',
-                           f'WID=$(xdotool search --name "{window_name}" 2>/dev/null | head -1);'
+                           f'sleep 1; WID=$(xdotool search --name "{window_name}" 2>/dev/null | head -1);'
                            f' [ -n "$WID" ] && xdotool windowmove $WID 0 0'
                            f' windowsize $WID 1920 1080'
                            f' && wmctrl -i -r $WID -b add,fullscreen'],
