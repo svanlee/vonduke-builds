@@ -1171,6 +1171,15 @@ class VideoCapturePipeline:
         else:
             key = self._safe_wait_key()
 
+        # ── Window-closed guard ───────────────────────────────────────
+        # jarvis_hud.render_hud() sets _WINDOW_CLOSED when it detects the
+        # user closed the window (getWindowProperty returns -1). Catch it here
+        # so we exit cleanly instead of crashing on the next imshow call.
+        if getattr(self.__class__, '_WINDOW_CLOSED', False):
+            self.__class__._WINDOW_CLOSED = False
+            self.display.quit = True
+            return False
+
         # ── Text input mode ──────────────────────────────────────────
         _active = VideoCapturePipeline._TEXT_ACTIVE
         if _active:

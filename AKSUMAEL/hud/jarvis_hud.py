@@ -1389,6 +1389,18 @@ def render_hud(pipeline, window_name: str, frame, objs):
         if _win_first:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             pipeline.__class__._WINDOW_CREATED = True
+        else:
+            # Guard: if the user closed the window (X button), getWindowProperty
+            # returns -1. Skip imshow to avoid the C++ terminate() abort.
+            try:
+                _vis = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+                if _vis < 0:
+                    pipeline.__class__._WINDOW_CREATED = False
+                    pipeline.__class__._WINDOW_CLOSED = True
+                    return
+            except Exception:
+                pipeline.__class__._WINDOW_CLOSED = True
+                return
         # Scale canvas up before display for readability
         _disp = cv2.resize(canvas, (1920, 1080), interpolation=cv2.INTER_CUBIC)
         cv2.imshow(window_name, _disp)
