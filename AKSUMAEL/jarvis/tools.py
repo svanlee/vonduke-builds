@@ -1006,6 +1006,11 @@ TOOL_DISPATCH = {
         args["task"], args["domain"],
         args.get("context", ""), args.get("max_tokens", 600)
     ),
+    "storage_recovery": lambda args: storage_recovery(
+        args["action"],
+        args.get("device", ""),
+        args.get("output", ""),
+    ),
 }
 
 
@@ -1241,6 +1246,66 @@ def spawn_subagent(task: str, domain: str, context: str = "", max_tokens: int = 
         }
     except Exception as e:
         return {"error": str(e), "domain": domain, "task": task}
+
+
+def storage_recovery(action: str, device: str = "", output: str = "") -> dict:
+    """Storage/SD card diagnostic and recovery tool.
+
+    action: 'list' | 'dmesg' | 'check' | 'image' | 'recover'
+    device: e.g. '/dev/sdb'  (required for check/image/recover)
+    output: destination path for image/recover output
+    """
+    import subprocess as _sp
+
+    def _run(cmd):
+        try:
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=30)
+            return (r.stdout + r.stderr).strip()[:3000]
+        except Exception as e:
+            return str(e)
+
+    if action == 'list':
+        return {"block_devices": _run(["lsblk", "-o", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,LABEL"])}
+
+    if action == 'dmesg':
+        return {"dmesg": _run(["bash", "-c", "dmesg | tail -40 | grep -i 'mmc\\|sd\\|usb\\|error'"])}
+
+    if not device:
+        return {"error": "device required for this action"}
+
+    if action == 'check':
+        # Non-destructive 100MB raw read test
+        cmd = ["sudo", "dd", f"if={device}", "of=/dev/null", "bs=1M", "count=100", "status=progress"]
+        return {"read_test": _run(cmd)}
+
+    if action == 'image':
+        if not output:
+            output = str(BASE_DIR / f"data/{device.split('/')[-1]}_image.img")
+        log = output + ".log"
+        cmd = ["sudo", "ddrescue", "-d", "-r3", "-b", "512", device, output, log]
+        # Run in background — imaging can take 30+ minutes
+        try:
+            _sp.Popen(cmd, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            return {"status": "ddrescue started in background", "image": output, "log": log,
+                    "monitor": f"watch -n5 tail {log}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    if action == 'recover':
+        if not output:
+            output = str(pathlib.Path.home() / "sdcard_recovery")
+        # Run photorec on image (not raw device) if image exists, else on device
+        src = output.replace("_recovery", "_image.img") if "_image.img" not in output else output
+        if not pathlib.Path(src).exists():
+            src = device
+        cmd = ["sudo", "photorec", "/d", output, "/cmd", src, "partition_none,fileopt,everything,enable,search"]
+        try:
+            _sp.Popen(cmd, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            return {"status": "photorec started", "output_dir": output, "source": src}
+        except Exception as e:
+            return {"error": str(e)}
+
+    return {"error": f"unknown action: {action}. Use: list|dmesg|check|image|recover"}
 
 
 def call_tool(name: str, args: dict) -> str:
