@@ -456,9 +456,9 @@ def render_hud(pipeline, window_name: str, frame, objs):
     elif any(k in _dlg_text for k in _game_kw):
         _dlg_target = (30,  220, 60)   # green (BGR)
     else:
-        _dlg_target = (220, 185, 10)   # cyan (BGR) — default idle
+        _dlg_target = (0,  200, 215)   # gold (BGR: R=215,G=200,B=0) — general idle
     # Smooth lerp toward target — stored across frames
-    _prev_tint = getattr(pipeline.__class__, '_DIALOGUE_TINT', (0, 185, 255))
+    _prev_tint = getattr(pipeline.__class__, '_DIALOGUE_TINT', (0, 200, 215))
     _lerp_t = 0.04  # slow drift
     _cur_tint = tuple(int(_prev_tint[i] + (_dlg_target[i] - _prev_tint[i]) * _lerp_t)
                       for i in range(3))
