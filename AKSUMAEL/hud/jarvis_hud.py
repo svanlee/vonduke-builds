@@ -340,20 +340,8 @@ def render_hud(pipeline, window_name: str, frame, objs):
     # Data labels on left vertical trace
     for _lab, _ly in [('SYS', nn_y0+55), ('NET', nn_y0+115), ('VOX', nn_y0+175), ('ENV', nn_y0+235)]:
         cv2.putText(canvas, _lab, (_vl-28, _ly+4), FONT, 0.22, DCYAN, 1, cv2.LINE_AA)
-    # Concentric arcs decorating center (arc reactor rings) — fixed dim cyan
-    for _cr, _cv in [(140, (44, 37, 2)), (180, (30, 26, 1)), (225, (20, 17, 0)), (265, (14, 11, 0))]:
-        cv2.circle(canvas, (ncx, ncy), _cr, _cv, 1, cv2.LINE_AA)
-    # Bright inner rings (arc reactor core)
-    cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,  1, cv2.LINE_AA)
-    cv2.circle(canvas, (ncx, ncy), 108, (55, 46, 2), 2, cv2.LINE_AA)
-    # Tick marks on outer ring
-    for _ta in range(0, 360, 15):
-        _tr_rad = _math.radians(_ta)
-        _tx1 = int(ncx + 108 * _math.cos(_tr_rad)); _ty1 = int(ncy + 108 * _math.sin(_tr_rad))
-        _tlen = 8 if _ta % 90 == 0 else (5 if _ta % 45 == 0 else 3)
-        _tx2 = int(ncx + (108+_tlen) * _math.cos(_tr_rad)); _ty2 = int(ncy + (108+_tlen) * _math.sin(_tr_rad))
-        _tbr_v = (66, 55, 3) if _ta % 90 == 0 else (33, 27, 1)
-        cv2.line(canvas, (_tx1,_ty1), (_tx2,_ty2), _tbr_v, 1, cv2.LINE_AA)
+    # Arc reactor rings drawn AFTER glow composite (see below) so sphere glow
+    # does not overdraw them.  Variables ncx/ncy are available at that point.
 
     # ── Build 3-zone layered brain once ──────────────────────────────
     # Zone layout (180 nodes total):
@@ -852,6 +840,75 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _region=canvas[nn_y0:nn_y0+nn_h,nn_x0:nn_x0+nn_w].astype(_np.float32)
     _region=_np.clip(_region+_glow_blur*_bloom_base,0,255)
     canvas[nn_y0:nn_y0+nn_h,nn_x0:nn_x0+nn_w]=_region.astype(_np.uint8)
+
+    # ── Arc reactor rings — drawn after glow so sphere doesn't overdraw ──
+    for _cr, _cv in [(140,(44,37,2)),(180,(30,26,1)),(225,(20,17,0)),(265,(14,11,0))]:
+        cv2.circle(canvas, (ncx, ncy), _cr, _cv, 1, cv2.LINE_AA)
+    cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,         1, cv2.LINE_AA)
+    cv2.circle(canvas, (ncx, ncy), 108, (55, 46, 2),   2, cv2.LINE_AA)
+    for _ta in range(0, 360, 15):
+        _tr_rad = _math.radians(_ta)
+        _tx1=int(ncx+108*_math.cos(_tr_rad)); _ty1=int(ncy+108*_math.sin(_tr_rad))
+        _tlen=8 if _ta%90==0 else (5 if _ta%45==0 else 3)
+        _tx2=int(ncx+(108+_tlen)*_math.cos(_tr_rad)); _ty2=int(ncy+(108+_tlen)*_math.sin(_tr_rad))
+        cv2.line(canvas,(_tx1,_ty1),(_tx2,_ty2),(66,55,3) if _ta%90==0 else (33,27,1),1,cv2.LINE_AA)
+
+    # ── Left data panel — fills dead space between left edge and sphere ──
+    # Column: x=8..195, rows from HDR_H+12 downward
+    _ldp_x  = 8
+    _ldp_bx = 192
+    _ldp_y  = nn_y0 + 12
+    _ldp_lh = 20   # line height
+    _ldp_lf = 0.32  # label font scale
+    _ldp_vf = 0.36  # value font scale
+    _ldp_lc = DCYAN
+    _ldp_vc = VCYAN
+    # Thin bracket
+    cv2.line(canvas,(_ldp_x,_ldp_y),(_ldp_bx,_ldp_y),DCYAN,1,cv2.LINE_AA)
+    cv2.line(canvas,(_ldp_x,_ldp_y),(_ldp_x,_ldp_y+6),DCYAN,1,cv2.LINE_AA)
+    cv2.line(canvas,(_ldp_bx,_ldp_y),(_ldp_bx,_ldp_y+6),DCYAN,1,cv2.LINE_AA)
+    _ry = _ldp_y + 14
+    # Uptime
+    _up_s = int(time.time() - getattr(pipeline.__class__,'_JARVIS_START',time.time()))
+    _up_str = f'{_up_s//3600:02d}:{(_up_s%3600)//60:02d}:{_up_s%60:02d}'
+    cv2.putText(canvas,'UPTIME',(_ldp_x,_ry),FONT,_ldp_lf,_ldp_lc,1,cv2.LINE_AA); _ry+=_ldp_lh-4
+    cv2.putText(canvas,_up_str,(_ldp_x,_ry),FONT,_ldp_vf,_ldp_vc,1,cv2.LINE_AA); _ry+=_ldp_lh+2
+    # Active environment
+    try:
+        import config as _cfg_ldp
+        _env_str = _cfg_ldp.ACTIVE_ENV.upper()
+    except Exception:
+        _env_str = 'UNKNOWN'
+    cv2.putText(canvas,'ENV',(_ldp_x,_ry),FONT,_ldp_lf,_ldp_lc,1,cv2.LINE_AA); _ry+=_ldp_lh-4
+    cv2.putText(canvas,_env_str,(_ldp_x,_ry),FONT,_ldp_vf,_ldp_vc,1,cv2.LINE_AA); _ry+=_ldp_lh+2
+    # Voice mode
+    try:
+        import pathlib as _pl_vm; _vm_path = _pl_vm.Path('data/voice_mode.txt')
+        _vm_str = _vm_path.read_text().strip().upper() if _vm_path.exists() else 'OFF'
+    except Exception:
+        _vm_str = 'OFF'
+    cv2.putText(canvas,'VOICE',(_ldp_x,_ry),FONT,_ldp_lf,_ldp_lc,1,cv2.LINE_AA); _ry+=_ldp_lh-4
+    cv2.putText(canvas,_vm_str,(_ldp_x,_ry),FONT,_ldp_vf,_ldp_vc,1,cv2.LINE_AA); _ry+=_ldp_lh+2
+    # CPU temp if available
+    try:
+        import psutil as _psu
+        _temps = _psu.sensors_temperatures()
+        _ct = next(iter(next(iter(_temps.values()),[None])),None)
+        _temp_str = f'{_ct.current:.0f}C' if _ct else '--'
+    except Exception:
+        _temp_str = '--'
+    cv2.putText(canvas,'CPU TMP',(_ldp_x,_ry),FONT,_ldp_lf,_ldp_lc,1,cv2.LINE_AA); _ry+=_ldp_lh-4
+    cv2.putText(canvas,_temp_str,(_ldp_x,_ry),FONT,_ldp_vf,_ldp_vc,1,cv2.LINE_AA); _ry+=_ldp_lh+4
+    # Domain indicator bar
+    _dom_colors = {'game':(30,220,60),'robotics':(220,185,10),'platform':VCYAN,'training':VCYAN}
+    _dom_col = _dom_colors.get(_env_str.lower(), DCYAN)
+    cv2.putText(canvas,'DOMAIN',(_ldp_x,_ry),FONT,_ldp_lf,_ldp_lc,1,cv2.LINE_AA); _ry+=_ldp_lh-4
+    _dom_label = 'GAME' if _env_str.lower() in ('minecraft','fallout76') else _env_str
+    cv2.putText(canvas,_dom_label,(_ldp_x,_ry),FONT,_ldp_vf,_dom_col,1,cv2.LINE_AA); _ry+=_ldp_lh+4
+    # Bottom bracket
+    cv2.line(canvas,(_ldp_x,_ry),(_ldp_bx,_ry),DCYAN,1,cv2.LINE_AA)
+    cv2.line(canvas,(_ldp_x,_ry),(_ldp_x,_ry-6),DCYAN,1,cv2.LINE_AA)
+    cv2.line(canvas,(_ldp_bx,_ry),(_ldp_bx,_ry-6),DCYAN,1,cv2.LINE_AA)
 
     # ── Corner brackets ───────────────────────────────────────────
     BLEN=30
@@ -1399,6 +1456,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
         if _win_first:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             pipeline.__class__._WINDOW_CREATED = True
+            pipeline.__class__._MOUSE_CB_SET   = False  # re-register on new window
         else:
             # Guard: if the user closed the window (X button), getWindowProperty
             # returns -1. Skip imshow to avoid the C++ terminate() abort.
@@ -1416,24 +1474,25 @@ def render_hud(pipeline, window_name: str, frame, objs):
         cv2.imshow(window_name, _disp)
         # Maximize on first frame AND re-apply every 5 frames until confirmed full-size
         # (WM may ignore the first request before the window is fully mapped)
-        _sized = getattr(pipeline.__class__, '_WINDOW_SIZED', False)
-        _size_ticks = getattr(pipeline.__class__, '_SIZE_TICKS', 0)
-        _needs_size = _win_first or not _sized or _size_ticks < 10
-        if _needs_size:
-            pipeline.__class__._SIZE_TICKS = _size_ticks + 1
+        # Fullscreen: re-attempt every 60 frames until the WM confirms the window
+        # is at the right size.  A one-shot or 10-tick approach fails when the WM
+        # is still mapping the window on the first attempt.
+        _fs_tick = getattr(pipeline.__class__, '_FS_TICK', 0) + 1
+        pipeline.__class__._FS_TICK = _fs_tick
+        _do_fs = _win_first or (_fs_tick % 60 == 0)
+        if _do_fs:
             cv2.resizeWindow(window_name, 1920, 1080)
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             try:
                 import subprocess as _sp
-                _sp.Popen(['wmctrl', '-r', window_name, '-b', 'add,fullscreen'],
+                _sp.Popen(['bash', '-c',
+                           f'WID=$(xdotool search --name "{window_name}" 2>/dev/null | head -1);'
+                           f' [ -n "$WID" ] && xdotool windowmove $WID 0 0'
+                           f' windowsize $WID 1920 1080'
+                           f' && wmctrl -i -r $WID -b add,fullscreen'],
                           stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-                if _size_ticks == 3:   # give WM 3 frames to map the window then xdotool
-                    _sp.Popen(['xdotool', 'search', '--name', window_name,
-                               'windowmove', '0', '0', 'windowsize', '1920', '1080'],
-                              stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
-            pipeline.__class__._WINDOW_SIZED = True
 
 # ── Display pump (main-thread only) ──────────────────────────────────
 
