@@ -1404,19 +1404,23 @@ def render_hud(pipeline, window_name: str, frame, objs):
         # Scale canvas up before display for readability
         _disp = cv2.resize(canvas, (1920, 1080), interpolation=cv2.INTER_CUBIC)
         cv2.imshow(window_name, _disp)
-        # On first frame: maximize the window via every method available
-        if _win_first or not getattr(pipeline.__class__, '_WINDOW_SIZED', False):
+        # Maximize on first frame AND re-apply every 5 frames until confirmed full-size
+        # (WM may ignore the first request before the window is fully mapped)
+        _sized = getattr(pipeline.__class__, '_WINDOW_SIZED', False)
+        _size_ticks = getattr(pipeline.__class__, '_SIZE_TICKS', 0)
+        _needs_size = _win_first or not _sized or _size_ticks < 10
+        if _needs_size:
+            pipeline.__class__._SIZE_TICKS = _size_ticks + 1
             cv2.resizeWindow(window_name, 1920, 1080)
-            # Fullscreen property (most reliable on Linux/X11)
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             try:
                 import subprocess as _sp
-                # wmctrl maximize (EWMH-compliant WMs)
                 _sp.Popen(['wmctrl', '-r', window_name, '-b', 'add,maximized_vert,maximized_horz'],
                           stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-                # xdotool fallback
-                _sp.Popen(['xdotool', 'search', '--sync', '--name', window_name,
-                           'windowsize', '1920', '1080'], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                if _size_ticks == 3:   # give WM 3 frames to map the window then xdotool
+                    _sp.Popen(['xdotool', 'search', '--name', window_name,
+                               'windowmove', '0', '0', 'windowsize', '1920', '1080'],
+                              stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
             pipeline.__class__._WINDOW_SIZED = True
