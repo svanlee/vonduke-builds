@@ -841,17 +841,19 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _region=_np.clip(_region+_glow_blur*_bloom_base,0,255)
     canvas[nn_y0:nn_y0+nn_h,nn_x0:nn_x0+nn_w]=_region.astype(_np.uint8)
 
-    # ── Arc reactor rings — drawn after glow so sphere doesn't overdraw ──
-    for _cr, _cv in [(140,(44,37,2)),(180,(30,26,1)),(225,(20,17,0)),(265,(14,11,0))]:
-        cv2.circle(canvas, (ncx, ncy), _cr, _cv, 1, cv2.LINE_AA)
-    cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,         1, cv2.LINE_AA)
-    cv2.circle(canvas, (ncx, ncy), 108, (55, 46, 2),   2, cv2.LINE_AA)
-    for _ta in range(0, 360, 15):
-        _tr_rad = _math.radians(_ta)
-        _tx1=int(ncx+108*_math.cos(_tr_rad)); _ty1=int(ncy+108*_math.sin(_tr_rad))
-        _tlen=8 if _ta%90==0 else (5 if _ta%45==0 else 3)
-        _tx2=int(ncx+(108+_tlen)*_math.cos(_tr_rad)); _ty2=int(ncy+(108+_tlen)*_math.sin(_tr_rad))
-        cv2.line(canvas,(_tx1,_ty1),(_tx2,_ty2),(66,55,3) if _ta%90==0 else (33,27,1),1,cv2.LINE_AA)
+    # ── Arc reactor rings — after glow, only when no panel is expanded ──
+    _no_panel_open = not any(_pp['target'] > 0.05 for _pp in pipeline.__class__._PANELS.values())
+    if _no_panel_open:
+        for _cr, _cv in [(140,(44,37,2)),(180,(30,26,1)),(225,(20,17,0)),(265,(14,11,0))]:
+            cv2.circle(canvas, (ncx, ncy), _cr, _cv, 1, cv2.LINE_AA)
+        cv2.circle(canvas, (ncx, ncy), 95,  VCYAN,         1, cv2.LINE_AA)
+        cv2.circle(canvas, (ncx, ncy), 108, (55, 46, 2),   2, cv2.LINE_AA)
+        for _ta in range(0, 360, 15):
+            _tr_rad = _math.radians(_ta)
+            _tx1=int(ncx+108*_math.cos(_tr_rad)); _ty1=int(ncy+108*_math.sin(_tr_rad))
+            _tlen=8 if _ta%90==0 else (5 if _ta%45==0 else 3)
+            _tx2=int(ncx+(108+_tlen)*_math.cos(_tr_rad)); _ty2=int(ncy+(108+_tlen)*_math.sin(_tr_rad))
+            cv2.line(canvas,(_tx1,_ty1),(_tx2,_ty2),(66,55,3) if _ta%90==0 else (33,27,1),1,cv2.LINE_AA)
 
     # ── Left data panel — fills dead space between left edge and sphere ──
     # Column: x=8..195, rows from HDR_H+12 downward
