@@ -1101,16 +1101,23 @@ def render_hud(pipeline, window_name: str, frame, objs):
         _cw_e = _pw - 32
 
         if _eid == 'camera':
-            if frame is not None and frame.size > 0:
+            # Show webcam feed (_WEBCAM_FRAME), NOT the screen capture (frame)
+            _wc_exp = pipeline.__class__._WEBCAM_FRAME
+            _cam_src = _wc_exp if (_wc_exp is not None and _wc_exp.size > 0) else None
+            if _cam_src is not None:
                 _vw = max(2, _cw_e); _vh = max(2, int(_cw_e * 9 / 16))
                 if _vh > _ph - 56: _vh = max(2, _ph - 56); _vw = max(2, int(_vh * 16 / 9))
-                _ef = cv2.resize(frame, (_vw, _vh))
+                _ef = cv2.resize(_cam_src, (_vw, _vh))
                 _vx = _px2 + (_pw - _vw) // 2
-                canvas[_cy_e:_cy_e+_vh, _vx:_vx+_vw] = _ef
-                # Elliptical frame around video instead of rectangle
+                _vy_end = min(canvas.shape[0], _cy_e + _vh)
+                _vx_end = min(canvas.shape[1], _vx + _vw)
+                canvas[_cy_e:_vy_end, _vx:_vx_end] = _ef[:_vy_end-_cy_e, :_vx_end-_vx]
                 _vfcx = _vx + _vw // 2;  _vfcy = _cy_e + _vh // 2
-                cv2.ellipse(canvas, (_vfcx, _vfcy), (_vw//2, _vh//2),
+                cv2.ellipse(canvas, (_vfcx, _vfcy), (max(1,_vw//2), max(1,_vh//2)),
                             0, 0, 360, DCYAN, 1, cv2.LINE_AA)
+            else:
+                cv2.putText(canvas, 'NO WEBCAM FEED', (_cx_e, _cy_e + 40),
+                            FONT, 0.5, DCYAN, 1, cv2.LINE_AA)
 
         elif _eid == 'sysstat':
             _gr = min(38, (_ph - 56) // 3)
@@ -1225,9 +1232,9 @@ def render_hud(pipeline, window_name: str, frame, objs):
     _tc_active = pipeline.__class__._TEXT_ACTIVE
     _tc_input  = pipeline.__class__._TEXT_INPUT
     _sb_cl_w   = SIDE_W - 20
-    _log_font  = 0.36                          # readable font size
-    _log_lh_sb = 19                            # line height px
-    _sb_cl_chars = max(16, _sb_cl_w // 9)     # chars per row at 0.36
+    _log_font  = 0.40                          # readable font size
+    _log_lh_sb = 21                            # line height px
+    _sb_cl_chars = max(14, _sb_cl_w // 10)    # chars per row at 0.40
 
     _gtext(canvas, 'COMM LINK', (px, _cog_y - 2), 0.28, CYAN2, DCYAN)
 
@@ -1418,7 +1425,7 @@ def render_hud(pipeline, window_name: str, frame, objs):
             cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             try:
                 import subprocess as _sp
-                _sp.Popen(['wmctrl', '-r', window_name, '-b', 'add,maximized_vert,maximized_horz'],
+                _sp.Popen(['wmctrl', '-r', window_name, '-b', 'add,fullscreen'],
                           stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                 if _size_ticks == 3:   # give WM 3 frames to map the window then xdotool
                     _sp.Popen(['xdotool', 'search', '--name', window_name,
