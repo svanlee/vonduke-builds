@@ -1,0 +1,17 @@
+{
+  "name": "vision_eval",
+  "domain": "platform",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.60,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "Run vision model detection on a saved frame batch and log mAP / class confusion."
+}

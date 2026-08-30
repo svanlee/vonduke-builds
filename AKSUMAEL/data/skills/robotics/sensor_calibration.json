@@ -1,0 +1,17 @@
+{
+  "name": "sensor_calibration",
+  "domain": "robotics",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.60,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "Run IMU bias estimation and camera distortion check; write calibration results to data/calibration/."
+}

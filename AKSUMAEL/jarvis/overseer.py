@@ -523,13 +523,31 @@ class JarvisOverseer(threading.Thread):
                 pass
             # Load training domain results for cross-session awareness
             domain_ctx = self._load_training_domain_context()
+            # Determine active domain for goal selection guidance
+            try:
+                import config as _cfg
+                _active = _cfg.ACTIVE_ENV
+                _game_envs = _cfg.GAME_ENVS
+                if _active in _game_envs:
+                    _domain_hint = f"Active env is '{_active}' (game domain) — inject a game skill goal."
+                elif _active == 'robotics':
+                    _domain_hint = f"Active env is 'robotics' — inject a robotics skill goal (navigate_waypoint, motor_check, sensor_calibration)."
+                else:
+                    _domain_hint = (
+                        f"Active env is '{_active}' (platform/idle mode) — inject a platform self-improvement goal "
+                        f"(system_health, analyze_performance, vision_eval, skill_review). "
+                        f"Do NOT inject game-specific goals like craft_pickaxe or chop_tree when no game is running."
+                    )
+            except Exception:
+                _domain_hint = "Check self_eval for the current domain and best goal."
             prompt = (
                 f"[JARVIS STARTUP] System just started. "
                 f"AURORA has {ep_count} recorded episodes from prior sessions. "
                 + (f"Prior training results available.{domain_ctx[:400]} " if domain_ctx else "")
                 + f"Check the current bot state, review your recent history via query_aurora, "
-                f"run self_eval to see which goals perform best, then inject the highest-reward "
-                f"goal if the bot is idle. Respond with a one-sentence status. Act now."
+                f"run self_eval to see which goals perform best for the current domain, then inject the highest-reward "
+                f"domain-appropriate goal if the bot is idle. {_domain_hint} "
+                f"Respond with a one-sentence status. Act now."
             )
             brain = self._get_brain()
             response = brain.respond(prompt)

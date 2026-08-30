@@ -1,0 +1,17 @@
+{
+  "name": "navigate_waypoint",
+  "domain": "robotics",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.50,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "Publish a Nav2 goal pose to /robocar_01/goal_pose and wait for SUCCEEDED status."
+}

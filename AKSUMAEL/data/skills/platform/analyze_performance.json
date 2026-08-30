@@ -1,0 +1,17 @@
+{
+  "name": "analyze_performance",
+  "domain": "platform",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.65,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "Query AURORA for goal/skill performance, identify weak or stale skills, log findings."
+}

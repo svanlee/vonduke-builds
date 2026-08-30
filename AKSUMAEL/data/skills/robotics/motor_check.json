@@ -1,0 +1,17 @@
+{
+  "name": "motor_check",
+  "domain": "robotics",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.65,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "Command each motor through a short PWM sweep via /robocar_01/cmd_vel and log encoder response."
+}

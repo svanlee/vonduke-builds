@@ -1,0 +1,17 @@
+{
+  "name": "skill_review",
+  "domain": "platform",
+  "trigger_objects": [],
+  "steps": [],
+  "avg_reward": 0.55,
+  "uses": 0,
+  "created": 1756598400.0,
+  "last_used": null,
+  "preconditions": {},
+  "postconditions": {},
+  "success_count": 0,
+  "failed_count": 0,
+  "blacklisted": false,
+  "universal": false,
+  "description": "List skills sorted by avg_reward; propose blacklist or improvement for bottom quartile."
+}

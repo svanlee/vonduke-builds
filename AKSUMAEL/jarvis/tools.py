@@ -838,9 +838,62 @@ def capture_screen() -> dict:
         return {"error": str(e)}
 
 
+def _skill_domain_map() -> dict:
+    """Map skill name → domain by inspecting data/skills/ subdirectory layout.
+
+    Convention:
+      data/skills/*.json          → 'game'  (environment-specific behaviours)
+      data/skills/platform/*.json → 'platform'  (idle/training self-improvement)
+      data/skills/robotics/*.json → 'robotics'  (ROS 2 / physical robot)
+    Files that carry an explicit "domain" key use that value instead.
+    """
+    import config as _cfg
+    domain_map: dict = {}
+    skills_dir = _cfg.SKILLS_DIR
+    try:
+        for entry in os.scandir(skills_dir):
+            if entry.is_file() and entry.name.endswith('.json'):
+                _dir = 'game'
+            elif entry.is_dir() and entry.name in ('platform', 'robotics'):
+                _dir = entry.name
+            else:
+                continue
+            targets = [(entry.path, _dir)] if entry.is_file() else [
+                (sub.path, _dir) for sub in os.scandir(entry.path)
+                if sub.is_file() and sub.name.endswith('.json')
+            ]
+            for fpath, default_domain in targets:
+                try:
+                    with open(fpath) as _f:
+                        data = json.load(_f)
+                    name = data.get('name', os.path.splitext(os.path.basename(fpath))[0])
+                    domain_map[name] = data.get('domain', default_domain)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return domain_map
+
+
 def self_eval() -> dict:
-    """Compute performance metrics from AURORA + learn_log."""
-    result = {}
+    """Compute performance metrics from AURORA + learn_log.
+
+    best_goal is filtered to the current domain:
+      - ACTIVE_ENV in GAME_ENVS   → 'game'  skills only
+      - ACTIVE_ENV == 'robotics'  → 'robotics' skills only
+      - everything else           → 'platform' skills only
+    """
+    import config as _cfg
+    # Determine current domain
+    if _cfg.ACTIVE_ENV in _cfg.GAME_ENVS:
+        current_domain = 'game'
+    elif _cfg.ACTIVE_ENV == 'robotics':
+        current_domain = 'robotics'
+    else:
+        current_domain = 'platform'
+
+    skill_domains = _skill_domain_map()
+    result = {'current_domain': current_domain}
     try:
         from memory import aurora_memory
         # Episode counts by env
@@ -867,13 +920,20 @@ def self_eval() -> dict:
             except Exception:
                 pass
         result['goal_performance'] = goal_perf
-        if goal_perf:
+        # Filter to current domain before ranking
+        domain_goals = {
+            g: v for g, v in goal_perf.items()
+            if skill_domains.get(g, 'game') == current_domain
+        }
+        ranked_pool = domain_goals if domain_goals else goal_perf  # fallback to all if domain empty
+        if ranked_pool:
             ranked = sorted(
-                [(g, v['avg_reward']) for g, v in goal_perf.items() if v['avg_reward'] is not None],
+                [(g, v['avg_reward']) for g, v in ranked_pool.items() if v['avg_reward'] is not None],
                 key=lambda x: x[1], reverse=True
             )
             result['best_goal'] = ranked[0][0] if ranked else None
             result['worst_goal'] = ranked[-1][0] if len(ranked) > 1 else None
+        result['domain_goals'] = list(domain_goals.keys())
         conn.close()
     except Exception as e:
         result['error'] = str(e)
